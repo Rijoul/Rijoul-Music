@@ -1171,7 +1171,7 @@ function chunkString(str, size){
 }
 // Découpe le fichier audio en base64 et écrit chaque morceau dans
 // trackRef/audioChunks/{index}. Renvoie le nombre de morceaux et le type MIME.
-async function uploadAudioToFirestore(trackRef, file, onProgress){
+async function uploadAudioToFirestore(trackRef, file, uploaderId, onProgress){
   if(file.size > MAX_AUDIO_BYTES){
     throw new Error(`Fichier trop volumineux (max ${Math.round(MAX_AUDIO_BYTES / (1024*1024))} Mo).`);
   }
@@ -1179,7 +1179,7 @@ async function uploadAudioToFirestore(trackRef, file, onProgress){
   const chunks = chunkString(base64, AUDIO_CHUNK_SIZE);
   const chunksCol = trackRef.collection('audioChunks');
   for(let i = 0; i < chunks.length; i++){
-    await chunksCol.doc(String(i)).set({ index: i, data: chunks[i] });
+    await chunksCol.doc(String(i)).set({ index: i, data: chunks[i], uploaderId });
     if(onProgress) onProgress(Math.round(((i + 1) / chunks.length) * 100));
   }
   return { chunkCount: chunks.length, mimeType: file.type || 'audio/mpeg' };
@@ -1222,7 +1222,7 @@ document.getElementById('upload-submit').addEventListener('click', async ()=>{
   try{
     const duration = await readAudioDuration(uploadAudioFile);
     const trackRef = tracksRef.doc(); // id généré à l'avance pour pouvoir écrire les morceaux audio dessous
-    const { chunkCount, mimeType } = await uploadAudioToFirestore(trackRef, uploadAudioFile, (pct)=>{
+    const { chunkCount, mimeType } = await uploadAudioToFirestore(trackRef, uploadAudioFile, user.uid, (pct)=>{
       progressFill.style.width = pct + '%';
       progressLabel.textContent = `Envoi… ${pct}%`;
     });
@@ -1251,7 +1251,7 @@ document.getElementById('upload-submit').addEventListener('click', async ()=>{
   }
 });
 
-/* =========================================================
+    /* =========================================================
    LECTEUR AUDIO — barre du bas + vinyle du hero
    ========================================================= */
 const audioEl = document.getElementById('audio-el');
