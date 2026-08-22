@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RIJOUL SON</title>
-<meta name="application-name" content="RIJOUL SON">
-<meta name="apple-mobile-web-app-title" content="RIJOUL SON">
-<meta name="description" content="Écoute et partage de la musique — le même compte que RIJOUL VISION.">
+<title>RIJOUL MUSIC</title>
+<meta name="application-name" content="RIJOUL MUSIC">
+<meta name="apple-mobile-web-app-title" content="RIJOUL MUSIC">
+<meta name="description" content="Écoute et partage de la musique.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%23120e0a'/%3E%3Ccircle cx='50' cy='50' r='46' fill='none' stroke='%23cf9b46' stroke-width='1.5'/%3E%3Ccircle cx='50' cy='50' r='10' fill='%23cf9b46'/%3E%3Ccircle cx='50' cy='50' r='3' fill='%23120e0a'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,7 +15,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 
 <style>
 /* =========================================================
@@ -333,7 +332,7 @@ input,textarea{ font-family:inherit; }
 <nav class="topnav">
   <a href="#" class="brand" id="brand-home">
     <span class="brand-mark"></span>
-    <span class="brand-word">RIJOUL <em>SON</em></span>
+    <span class="brand-word">RIJOUL <em>MUSIC</em></span>
   </a>
   <div class="tabs">
     <button class="tab-btn active" data-view="library">Bibliothèque</button>
@@ -396,7 +395,7 @@ input,textarea{ font-family:inherit; }
     <div class="grid" id="library-grid"></div>
     <div class="empty-state" id="library-empty" style="display:none;">
       <h3>Aucun titre pour l'instant</h3>
-      <p>Sois le premier à ajouter un morceau à RIJOUL SON.</p>
+      <p>Sois le premier à ajouter un morceau à RIJOUL MUSIC.</p>
       <button class="btn btn-gold" id="empty-upload-btn">+ Ajouter un titre</button>
     </div>
   </section>
@@ -415,7 +414,7 @@ input,textarea{ font-family:inherit; }
     </div>
   </section>
 
-  <p class="footer-note">RIJOUL SON utilise le même compte que RIJOUL VISION — connecte-toi une fois, retrouve ton profil partout.</p>
+
 </div>
 
 <!-- =========================================================
@@ -589,8 +588,22 @@ const ONYX_APP_ID = "onyx-pro-chat"; // même espace de profils partagés que RI
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
-const storage = firebase.storage();
 const googleProvider = new firebase.auth.GoogleAuthProvider();
+
+/* =========================================================
+   STOCKAGE DES FICHIERS AUDIO — Cloudinary (gratuit)
+   au lieu de Firebase Storage (payant).
+   1) Crée un compte gratuit sur https://cloudinary.com
+   2) Dans Dashboard, note ton "Cloud name" et remplace-le ci-dessous
+   3) Va dans Settings > Upload > Upload presets > Add upload preset
+      - Signing Mode : "Unsigned"
+      - Folder : musicTracks (optionnel)
+      - Copie le nom du preset et remplace-le ci-dessous
+   ========================================================= */
+const CLOUDINARY_CLOUD_NAME = "TON_CLOUD_NAME"; // ex: "dabc123xy"
+const CLOUDINARY_UPLOAD_PRESET = "TON_UPLOAD_PRESET"; // ex: "rijoul_music_unsigned"
+const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`;
+// NB : Cloudinary range l'audio sous la ressource "video", c'est normal.
 
 // Profils utilisateurs PARTAGÉS avec RIJOUL VISION (même chemin Firestore) :
 // se connecter ici avec un compte RIJOUL VISION retrouve le même nom et la
@@ -981,7 +994,7 @@ function renderTracks(){
     currentQueue = list;
     paintGrid('library-grid', 'library-empty', 'library-count', list, {
       emptyTitle: searchTerm ? 'Aucun résultat' : "Aucun titre pour l'instant",
-      emptyText: searchTerm ? "Essaie un autre mot-clé." : "Sois le premier à ajouter un morceau à RIJOUL SON."
+      emptyText: searchTerm ? "Essaie un autre mot-clé." : "Sois le premier à ajouter un morceau à RIJOUL MUSIC."
     });
   }else{
     const list = allTracks.filter(t => uid && t.uploaderId === uid).filter(matchesSearch);
@@ -1063,9 +1076,9 @@ async function deleteTrack(trackId){
   if(!track) return;
   if(!confirm(`Supprimer « ${track.title || 'ce titre'} » définitivement ?`)) return;
   try{
-    if(track.audioPath){
-      try{ await storage.ref(track.audioPath).delete(); }catch(e){ console.warn('Fichier audio déjà absent du stockage :', e); }
-    }
+    // Le fichier audio reste sur Cloudinary (la suppression sans backend
+    // nécessiterait une requête signée) ; seule la fiche du morceau est
+    // retirée de Firestore, donc il disparaît de RIJOUL MUSIC.
     await tracksRef.doc(trackId).delete();
     if(currentTrackId === trackId) stopPlayback();
     showToast('Titre supprimé.');
@@ -1134,6 +1147,39 @@ function showUploadError(msg){
   el.textContent = msg;
   el.style.display = 'block';
 }
+function uploadAudioToCloudinary(file, onProgress){
+  return new Promise((resolve, reject)=>{
+    if(CLOUDINARY_CLOUD_NAME === "TON_CLOUD_NAME" || CLOUDINARY_UPLOAD_PRESET === "TON_UPLOAD_PRESET"){
+      reject(new Error("Configure CLOUDINARY_CLOUD_NAME et CLOUDINARY_UPLOAD_PRESET dans le code avant de publier un titre."));
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    formData.append('folder', 'musicTracks');
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', CLOUDINARY_UPLOAD_URL, true);
+    xhr.upload.onprogress = (e)=>{
+      if(e.lengthComputable && onProgress){
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = ()=>{
+      try{
+        const data = JSON.parse(xhr.responseText);
+        if(xhr.status >= 200 && xhr.status < 300 && data.secure_url){
+          resolve({ url: data.secure_url, publicId: data.public_id || null });
+        }else{
+          reject(new Error((data.error && data.error.message) || 'Échec de l\'envoi vers Cloudinary.'));
+        }
+      }catch(e){ reject(e); }
+    };
+    xhr.onerror = ()=> reject(new Error('Erreur réseau pendant l\'envoi.'));
+    xhr.send(formData);
+  });
+}
+
 document.getElementById('upload-submit').addEventListener('click', async ()=>{
   const user = auth.currentUser;
   if(!user){ clearAuthErrors(); openOverlay('account-overlay'); return; }
@@ -1153,26 +1199,15 @@ document.getElementById('upload-submit').addEventListener('click', async ()=>{
 
   try{
     const duration = await readAudioDuration(uploadAudioFile);
-    const safeName = uploadAudioFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const path = `musicTracks/${user.uid}/${Date.now()}_${safeName}`;
-    const ref = storage.ref(path);
-    const task = ref.put(uploadAudioFile, { contentType: uploadAudioFile.type || 'audio/mpeg' });
-
-    const audioURL = await new Promise((resolve, reject)=>{
-      task.on('state_changed', (snap)=>{
-        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
-        progressFill.style.width = pct + '%';
-        progressLabel.textContent = `Envoi… ${pct}%`;
-      }, reject, async ()=>{
-        try{ resolve(await task.snapshot.ref.getDownloadURL()); }
-        catch(e){ reject(e); }
-      });
+    const { url: audioURL, publicId: audioPath } = await uploadAudioToCloudinary(uploadAudioFile, (pct)=>{
+      progressFill.style.width = pct + '%';
+      progressLabel.textContent = `Envoi… ${pct}%`;
     });
 
     await tracksRef.add({
       title, artist: artist || null,
       coverURL: uploadCoverDataUrl || null,
-      audioURL, audioPath: path,
+      audioURL, audioPath,
       duration: duration || 0,
       uploaderId: user.uid,
       uploaderName: (currentProfile && currentProfile.displayName) || user.displayName || (user.email ? user.email.split('@')[0] : 'Membre'),
