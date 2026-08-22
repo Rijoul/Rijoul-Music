@@ -591,19 +591,16 @@ const auth = firebase.auth();
 const googleProvider = new firebase.auth.GoogleAuthProvider();
 
 /* =========================================================
-   STOCKAGE DES FICHIERS AUDIO — Cloudinary (gratuit)
-   au lieu de Firebase Storage (payant).
-   1) Crée un compte gratuit sur https://cloudinary.com
-   2) Dans Dashboard, note ton "Cloud name" et remplace-le ci-dessous
-   3) Va dans Settings > Upload > Upload presets > Add upload preset
-      - Signing Mode : "Unsigned"
-      - Folder : musicTracks (optionnel)
-      - Copie le nom du preset et remplace-le ci-dessous
+   STOCKAGE DES FICHIERS AUDIO — directement dans Firestore
+   (pas de Firebase Storage, pas de service externe).
+   Un document Firestore est limité à ~1 Mo, donc chaque fichier
+   audio (encodé en base64) est découpé en plusieurs petits
+   documents ("chunks") stockés dans une sous-collection du titre,
+   puis réassemblés au moment de la lecture.
    ========================================================= */
-const CLOUDINARY_CLOUD_NAME = "TON_CLOUD_NAME"; // ex: "dabc123xy"
-const CLOUDINARY_UPLOAD_PRESET = "TON_UPLOAD_PRESET"; // ex: "rijoul_music_unsigned"
-const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`;
-// NB : Cloudinary range l'audio sous la ressource "video", c'est normal.
+const AUDIO_CHUNK_SIZE = 700000; // caractères base64 par document (~700 Ko, sous la limite de 1 Mo)
+const MAX_AUDIO_BYTES = 10 * 1024 * 1024; // 10 Mo max par fichier audio d'origine
+const audioBlobCache = new Map(); // trackId -> URL de blob déjà reconstruite (évite de retélécharger)
 
 // Profils utilisateurs PARTAGÉS avec RIJOUL VISION (même chemin Firestore) :
 // se connecter ici avec un compte RIJOUL VISION retrouve le même nom et la
@@ -1076,18 +1073,26 @@ async function deleteTrack(trackId){
   if(!track) return;
   if(!confirm(`Supprimer « ${track.title || 'ce titre'} » définitivement ?`)) return;
   try{
-    // Le fichier audio reste sur Cloudinary (la suppression sans backend
-    // nécessiterait une requête signée) ; seule la fiche du morceau est
-    // retirée de Firestore, donc il disparaît de RIJOUL MUSIC.
+    // Supprime d'abord tous les morceaux audio (sous-collection), puis la fiche du titre.
+    const chunksSnap = await tracksRef.doc(trackId).collection('audioChunks').get();
+    if(!chunksSnap.empty){
+      const batch = db.batch();
+      chunksSnap.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    }
     await tracksRef.doc(trackId).delete();
+    if(audioBlobCache.has(trackId)){
+      URL.revokeObjectURL(audioBlobCache.get(trackId));
+      audioBlobCache.delete(trackId);
+    }
     if(currentTrackId === trackId) stopPlayback();
     showToast('Titre supprimé.');
   }catch(e){ console.error(e); showToast("Impossible de supprimer ce titre."); }
 }
 
 /* =========================================================
-   AJOUT D'UN TITRE (Firebase Storage pour l'audio,
-   image compressée en Firestore pour la pochette)
+   AJOUT D'UN TITRE (fichier audio découpé et stocké dans
+   Firestore, pochette compressée en base64 dans Firestore)
    ========================================================= */
 const uploadOpenBtns = ['upload-open-btn','empty-upload-btn','mine-upload-btn'];
 uploadOpenBtns.forEach(id=>{
@@ -1147,37 +1152,54 @@ function showUploadError(msg){
   el.textContent = msg;
   el.style.display = 'block';
 }
-function uploadAudioToCloudinary(file, onProgress){
+function readFileAsBase64(file){
   return new Promise((resolve, reject)=>{
-    if(CLOUDINARY_CLOUD_NAME === "TON_CLOUD_NAME" || CLOUDINARY_UPLOAD_PRESET === "TON_UPLOAD_PRESET"){
-      reject(new Error("Configure CLOUDINARY_CLOUD_NAME et CLOUDINARY_UPLOAD_PRESET dans le code avant de publier un titre."));
-      return;
-    }
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-    formData.append('folder', 'musicTracks');
-
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', CLOUDINARY_UPLOAD_URL, true);
-    xhr.upload.onprogress = (e)=>{
-      if(e.lengthComputable && onProgress){
-        onProgress(Math.round((e.loaded / e.total) * 100));
-      }
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const result = reader.result || '';
+      const commaIdx = result.indexOf(',');
+      resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
     };
-    xhr.onload = ()=>{
-      try{
-        const data = JSON.parse(xhr.responseText);
-        if(xhr.status >= 200 && xhr.status < 300 && data.secure_url){
-          resolve({ url: data.secure_url, publicId: data.public_id || null });
-        }else{
-          reject(new Error((data.error && data.error.message) || 'Échec de l\'envoi vers Cloudinary.'));
-        }
-      }catch(e){ reject(e); }
-    };
-    xhr.onerror = ()=> reject(new Error('Erreur réseau pendant l\'envoi.'));
-    xhr.send(formData);
+    reader.onerror = ()=> reject(new Error("Impossible de lire ce fichier."));
+    reader.readAsDataURL(file);
   });
+}
+function chunkString(str, size){
+  const chunks = [];
+  for(let i = 0; i < str.length; i += size) chunks.push(str.slice(i, i + size));
+  return chunks.length ? chunks : [''];
+}
+// Découpe le fichier audio en base64 et écrit chaque morceau dans
+// trackRef/audioChunks/{index}. Renvoie le nombre de morceaux et le type MIME.
+async function uploadAudioToFirestore(trackRef, file, onProgress){
+  if(file.size > MAX_AUDIO_BYTES){
+    throw new Error(`Fichier trop volumineux (max ${Math.round(MAX_AUDIO_BYTES / (1024*1024))} Mo).`);
+  }
+  const base64 = await readFileAsBase64(file);
+  const chunks = chunkString(base64, AUDIO_CHUNK_SIZE);
+  const chunksCol = trackRef.collection('audioChunks');
+  for(let i = 0; i < chunks.length; i++){
+    await chunksCol.doc(String(i)).set({ index: i, data: chunks[i] });
+    if(onProgress) onProgress(Math.round(((i + 1) / chunks.length) * 100));
+  }
+  return { chunkCount: chunks.length, mimeType: file.type || 'audio/mpeg' };
+}
+// Récupère tous les morceaux d'un titre, les réassemble en un Blob,
+// et renvoie une URL locale utilisable comme src audio. Mise en cache
+// pour ne reconstruire chaque morceau qu'une seule fois par session.
+async function getTrackAudioBlobUrl(track){
+  if(audioBlobCache.has(track.id)) return audioBlobCache.get(track.id);
+  const snap = await tracksRef.doc(track.id).collection('audioChunks').orderBy('index').get();
+  if(snap.empty) throw new Error("Fichier audio introuvable.");
+  let base64 = '';
+  snap.forEach(doc => { base64 += doc.data().data || ''; });
+  const byteChars = atob(base64);
+  const bytes = new Uint8Array(byteChars.length);
+  for(let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  const blob = new Blob([bytes], { type: track.audioMimeType || 'audio/mpeg' });
+  const url = URL.createObjectURL(blob);
+  audioBlobCache.set(track.id, url);
+  return url;
 }
 
 document.getElementById('upload-submit').addEventListener('click', async ()=>{
@@ -1199,15 +1221,17 @@ document.getElementById('upload-submit').addEventListener('click', async ()=>{
 
   try{
     const duration = await readAudioDuration(uploadAudioFile);
-    const { url: audioURL, publicId: audioPath } = await uploadAudioToCloudinary(uploadAudioFile, (pct)=>{
+    const trackRef = tracksRef.doc(); // id généré à l'avance pour pouvoir écrire les morceaux audio dessous
+    const { chunkCount, mimeType } = await uploadAudioToFirestore(trackRef, uploadAudioFile, (pct)=>{
       progressFill.style.width = pct + '%';
       progressLabel.textContent = `Envoi… ${pct}%`;
     });
 
-    await tracksRef.add({
+    await trackRef.set({
       title, artist: artist || null,
       coverURL: uploadCoverDataUrl || null,
-      audioURL, audioPath,
+      audioChunkCount: chunkCount,
+      audioMimeType: mimeType,
       duration: duration || 0,
       uploaderId: user.uid,
       uploaderName: (currentProfile && currentProfile.displayName) || user.displayName || (user.email ? user.email.split('@')[0] : 'Membre'),
@@ -1271,7 +1295,7 @@ function stopEq(){
   eqBars.forEach(b=> b.style.height = '4px');
 }
 
-function playTrackById(trackId){
+async function playTrackById(trackId){
   const track = allTracks.find(t => t.id === trackId);
   if(!track) return;
   const idxInQueue = currentQueue.findIndex(t => t.id === trackId);
@@ -1281,18 +1305,26 @@ function playTrackById(trackId){
     return;
   }
   currentTrackId = trackId;
-  audioEl.src = track.audioURL;
-  audioEl.crossOrigin = 'anonymous';
   document.getElementById('p-cover').src = track.coverURL || fallbackCoverSvg();
   document.getElementById('p-title').textContent = track.title || 'Sans titre';
-  document.getElementById('p-artist').textContent = track.artist || 'Artiste inconnu';
+  document.getElementById('p-artist').textContent = (track.artist || 'Artiste inconnu') + ' · chargement…';
   updateLikeButtons(track);
   playerBar.classList.add('visible');
-  ensureAnalyser();
-  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-  audioEl.play().catch(()=>{});
   renderTracks();
   updateHeroPlayState();
+  try{
+    const blobUrl = await getTrackAudioBlobUrl(track);
+    if(currentTrackId !== trackId) return; // l'utilisateur a changé de morceau entre-temps
+    audioEl.src = blobUrl;
+    document.getElementById('p-artist').textContent = track.artist || 'Artiste inconnu';
+    ensureAnalyser();
+    if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    audioEl.play().catch(()=>{});
+  }catch(e){
+    console.error(e);
+    showToast("Impossible de charger ce morceau.");
+    if(currentTrackId === trackId) stopPlayback();
+  }
 }
 function togglePlayPause(){
   if(!audioEl.src) return;
