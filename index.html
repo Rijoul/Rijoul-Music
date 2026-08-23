@@ -221,6 +221,9 @@ input,textarea{ font-family:inherit; }
 .card-uploader{ display:flex; align-items:center; gap:5px; overflow:hidden; }
 .card-uploader img{ width:16px; height:16px; border-radius:50%; object-fit:cover; flex-shrink:0; }
 .card-uploader span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Qui a ajouté un titre reste une info interne (permissions, "mes ajouts")
+   mais n'est plus affichée publiquement sur le site. */
+.hero-uploader, .card-uploader{ display:none !important; }
 .like-btn{ display:flex; align-items:center; gap:4px; background:transparent; border:0; color:var(--text-faint); font-size:11.5px; font-family:var(--mono); padding:2px; flex-shrink:0; }
 .like-btn.liked{ color:var(--copper); }
 .like-btn svg{ transition:.15s; }
@@ -312,8 +315,23 @@ input,textarea{ font-family:inherit; }
 .np-menu-dropdown.open{ display:block; }
 .np-menu-item{ display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:transparent; border:0; color:var(--text); padding:10px 12px; border-radius:11px; font-size:13.5px; font-weight:600; }
 .np-menu-item:hover{ background:rgba(255,255,255,0.09); }
-.np-art-wrap{ flex:1; display:flex; align-items:center; justify-content:center; min-height:0; padding:20px 0; }
-.np-art{ width:min(74vw,300px); height:min(74vw,300px); max-width:100%; max-height:100%; object-fit:cover; border-radius:22px; box-shadow:0 30px 70px -20px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.08); }
+.np-art-wrap{ position:relative; flex:1; display:flex; align-items:center; justify-content:center; min-height:0; padding:20px 0; overflow:hidden; }
+.np-art-track{ display:flex; align-items:center; justify-content:center; gap:12px; width:100%; }
+.np-art{ width:min(56vw,260px); height:min(56vw,260px); max-width:100%; max-height:100%; object-fit:cover; border-radius:22px; box-shadow:0 30px 70px -20px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.08); flex-shrink:0; }
+.np-art-side{
+  flex-shrink:0; width:min(20vw,110px); height:min(20vw,110px);
+  object-fit:cover; border-radius:16px; cursor:pointer;
+  opacity:.4; filter:brightness(.55) saturate(.9); transform:scale(.92);
+  box-shadow:0 18px 40px -16px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06);
+  transition:opacity .2s, transform .2s, filter .2s;
+}
+.np-art-side:hover{ opacity:.7; transform:scale(.97); filter:brightness(.7) saturate(1); }
+@keyframes npArtSlideLeft{ from{ transform:translateX(30px); opacity:0; } to{ transform:translateX(0); opacity:1; } }
+@keyframes npArtSlideRight{ from{ transform:translateX(-30px); opacity:0; } to{ transform:translateX(0); opacity:1; } }
+@keyframes npArtFade{ from{ transform:scale(.96); opacity:0; } to{ transform:scale(1); opacity:1; } }
+.np-art-track.anim-left{ animation:npArtSlideLeft .34s cubic-bezier(.25,1,.4,1) both; }
+.np-art-track.anim-right{ animation:npArtSlideRight .34s cubic-bezier(.25,1,.4,1) both; }
+.np-art-track.anim-fade{ animation:npArtFade .3s cubic-bezier(.25,1,.4,1) both; }
 .np-meta{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex-shrink:0; margin-bottom:20px; }
 .np-meta-text{ min-width:0; }
 .np-title{ font-family:var(--display); font-size:21px; font-weight:800; letter-spacing:-0.02em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -356,6 +374,9 @@ input,textarea{ font-family:inherit; }
   .np-sheet{ border-radius:24px; height:min(94vh,760px); }
   .np-title{ font-size:19px; }
   .np-controls{ gap:26px; }
+  .np-art{ width:min(50vw,240px); height:min(50vw,240px); }
+  .np-art-side{ width:min(17vw,90px); height:min(17vw,90px); }
+  .np-art-track{ gap:8px; }
 }
 
 /* =========================================================
@@ -606,7 +627,11 @@ input,textarea{ font-family:inherit; }
       </div>
 
       <div class="np-art-wrap">
-        <img class="np-art" id="np-cover" alt="">
+        <div class="np-art-track" id="np-art-track">
+          <img class="np-art-side" id="np-art-prev" alt="" aria-hidden="true">
+          <img class="np-art" id="np-cover" alt="">
+          <img class="np-art-side" id="np-art-next" alt="" aria-hidden="true">
+        </div>
       </div>
 
       <div class="np-meta">
@@ -771,6 +796,31 @@ input,textarea{ font-family:inherit; }
     </div>
 
     <button class="btn btn-gold btn-block" id="upload-submit" style="margin-top:16px;">Publier le titre</button>
+  </div>
+</div>
+
+<!-- Réservé à l'admin : modification des infos d'un titre déjà publié -->
+<div class="overlay" id="edit-overlay">
+  <div class="modal modal-wide">
+    <div class="modal-head">
+      <h3 class="modal-title">Modifier le titre</h3>
+      <button class="modal-close" data-close="edit-overlay">✕</button>
+    </div>
+    <div class="auth-error" id="edit-error"></div>
+
+    <div class="photo-row" style="margin-top:16px;">
+      <div class="photo-preview" id="edit-cover-preview">🎵</div>
+      <div class="photo-actions">
+        <button class="btn btn-ghost btn-sm" id="edit-cover-choose">Changer la pochette</button>
+        <button class="btn btn-ghost btn-sm" id="edit-cover-remove">Retirer</button>
+      </div>
+      <input type="file" id="edit-cover-input" accept="image/*" class="visually-hidden">
+    </div>
+
+    <div class="field" style="margin-top:14px;"><label>Titre</label><input type="text" id="edit-title" placeholder="Nom du morceau"></div>
+    <div class="field"><label>Artiste</label><input type="text" id="edit-artist" placeholder="Nom de l'artiste"></div>
+
+    <button class="btn btn-gold btn-block" id="edit-submit" style="margin-top:16px;">Enregistrer</button>
   </div>
 </div>
 
@@ -1061,6 +1111,11 @@ function subscribeToProfile(uid){
     document.getElementById('profile-name').value = label;
     currentProfilePhoto = data.photoURL || null;
     updateProfilePreview(label, data.photoURL || null);
+    applyEqSettings(
+      typeof data.eqBass === 'number' ? data.eqBass : 0,
+      typeof data.eqMid === 'number' ? data.eqMid : 0,
+      typeof data.eqTreble === 'number' ? data.eqTreble : 0
+    );
   });
 }
 function updateProfilePreview(label, photoURL){
@@ -1142,6 +1197,7 @@ auth.onAuthStateChanged(async (user)=>{
     userChip.classList.remove('open');
     if(profileUnsub){ profileUnsub(); profileUnsub = null; }
     currentProfile = null;
+    applyEqSettings(0, 0, 0);
   }
   renderTracks();
 });
@@ -1220,6 +1276,14 @@ function renderTracks(){
       emptyText: "Ajoute ton premier titre pour le voir apparaître ici."
     });
   }
+  // Garde les pochettes précédente/suivante du grand lecteur à jour si la
+  // liste affichée change (recherche, ajout/suppression d'un titre…),
+  // sans rejouer l'animation de glissement.
+  if(currentTrackId){
+    const idx = currentQueue.findIndex(t => t.id === currentTrackId);
+    if(idx >= 0) currentTrackIndex = idx;
+    refreshNpArtSides();
+  }
 }
 function paintGrid(gridId, emptyId, countId, list, texts){
   const grid = document.getElementById(gridId);
@@ -1237,7 +1301,10 @@ function paintGrid(gridId, emptyId, countId, list, texts){
   const uid = auth.currentUser ? auth.currentUser.uid : null;
   grid.innerHTML = list.map(t => {
     const liked = uid && Array.isArray(t.likes) && t.likes.includes(uid);
-    const canDelete = uid && (t.uploaderId === uid || isAdmin);
+    // Seul l'admin peut supprimer ou modifier les infos d'un titre, quel
+    // que soit qui l'a ajouté.
+    const canDelete = isAdmin;
+    const canEdit = isAdmin;
     const isPlaying = t.id === currentTrackId;
     return `
     <div class="card ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
@@ -1246,7 +1313,7 @@ function paintGrid(gridId, emptyId, countId, list, texts){
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
         </button>
-        ${canDelete ? `<div class="card-owner-actions"><button class="icon-btn" data-delete="${t.id}" aria-label="Supprimer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button></div>` : ''}
+        ${(canDelete || canEdit) ? `<div class="card-owner-actions">${canEdit ? `<button class="icon-btn" data-edit="${t.id}" aria-label="Modifier"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>` : ''}${canDelete ? `<button class="icon-btn" data-delete="${t.id}" aria-label="Supprimer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>` : ''}</div>` : ''}
       </div>
       <p class="card-title">${escapeHtml(t.title || 'Sans titre')}</p>
       <p class="card-artist">${escapeHtml(t.artist || 'Artiste inconnu')}</p>
@@ -1272,6 +1339,9 @@ function paintGrid(gridId, emptyId, countId, list, texts){
   grid.querySelectorAll('[data-delete]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); deleteTrack(btn.dataset.delete); });
   });
+  grid.querySelectorAll('[data-edit]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); openEditModal(btn.dataset.edit); });
+  });
 }
 
 async function toggleLike(trackId){
@@ -1288,6 +1358,7 @@ async function toggleLike(trackId){
 }
 
 async function deleteTrack(trackId){
+  if(!isAdmin){ showToast("Seul l'admin peut supprimer un titre."); return; }
   const track = allTracks.find(t => t.id === trackId);
   if(!track) return;
   if(!confirm(`Supprimer « ${track.title || 'ce titre'} » définitivement ?`)) return;
@@ -1308,6 +1379,82 @@ async function deleteTrack(trackId){
     showToast('Titre supprimé.');
   }catch(e){ console.error(e); showToast("Impossible de supprimer ce titre."); }
 }
+
+/* =========================================================
+   MODIFICATION D'UN TITRE (réservé à l'admin) — permet de
+   corriger le titre, l'artiste ou la pochette d'un morceau
+   déjà publié, quel que soit qui l'a ajouté.
+   ========================================================= */
+let editingTrackId = null;
+let editCoverDataUrl = null;
+function openEditModal(trackId){
+  if(!isAdmin){ showToast("Seul l'admin peut modifier les infos d'un titre."); return; }
+  const track = allTracks.find(t => t.id === trackId);
+  if(!track) return;
+  editingTrackId = trackId;
+  editCoverDataUrl = track.coverURL || null;
+  document.getElementById('edit-error').style.display = 'none';
+  document.getElementById('edit-title').value = track.title || '';
+  document.getElementById('edit-artist').value = track.artist || '';
+  const preview = document.getElementById('edit-cover-preview');
+  if(editCoverDataUrl){
+    preview.style.background = 'transparent';
+    preview.innerHTML = `<img src="${editCoverDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+  }else{
+    preview.style.background = '';
+    preview.innerHTML = '🎵';
+  }
+  openOverlay('edit-overlay');
+}
+function showEditError(msg){
+  const el = document.getElementById('edit-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+document.getElementById('edit-cover-choose').addEventListener('click', ()=> document.getElementById('edit-cover-input').click());
+document.getElementById('edit-cover-input').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    editCoverDataUrl = await compressImageToDataURL(file, 400, 0.85);
+    const preview = document.getElementById('edit-cover-preview');
+    preview.style.background = 'transparent';
+    preview.innerHTML = `<img src="${editCoverDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+  }catch(err){
+    showEditError("Impossible de lire cette image.");
+  }
+});
+document.getElementById('edit-cover-remove').addEventListener('click', ()=>{
+  editCoverDataUrl = null;
+  const preview = document.getElementById('edit-cover-preview');
+  preview.innerHTML = '';
+  preview.textContent = '🎵';
+});
+document.getElementById('edit-submit').addEventListener('click', async ()=>{
+  if(!isAdmin){ showToast("Seul l'admin peut modifier les infos d'un titre."); return; }
+  if(!editingTrackId) return;
+  const errEl = document.getElementById('edit-error');
+  errEl.style.display = 'none';
+  const title = document.getElementById('edit-title').value.trim();
+  const artist = document.getElementById('edit-artist').value.trim();
+  if(!title){ showEditError("Merci d'indiquer un titre."); return; }
+  const btn = document.getElementById('edit-submit');
+  btn.disabled = true; btn.textContent = 'Enregistrement…';
+  try{
+    await tracksRef.doc(editingTrackId).update({
+      title, artist: artist || null,
+      coverURL: editCoverDataUrl || null
+    });
+    showToast('Titre mis à jour.');
+    closeOverlay('edit-overlay');
+    editingTrackId = null;
+  }catch(err){
+    console.error(err);
+    showEditError("Impossible d'enregistrer les modifications.");
+  }finally{
+    btn.disabled = false; btn.textContent = 'Enregistrer';
+  }
+});
 
 /* =========================================================
    AJOUT D'UN TITRE (fichier audio découpé et stocké dans
@@ -1518,8 +1665,15 @@ document.addEventListener('keydown', (e)=>{
 
 let audioCtx = null, analyser = null, analyserSource = null, eqBars = [], eqRAF = null;
 let eqLow = null, eqMid = null, eqHigh = null, masterGain = null;
+// Réglages d'égaliseur liés au compte (sauvegardés dans usersRef) afin de se
+// retrouver identiques sur n'importe quel appareil une fois connecté.
+let savedEq = { bass: 0, mid: 0, treble: 0 };
+let eqSaveTimer = null;
 let targetVolume = 0.8; // volume "voulu" par l'utilisateur (0..1), indépendant du fondu en cours
-const FADE_MS = 220; // durée des fondus enchaînés (lecture/pause/changement de titre)
+const FADE_MS = 220; // durée des fondus courts (lecture/pause)
+const CROSSFADE_MS = 3000; // durée du fondu enchaîné entre deux morceaux, façon Apple Music
+let crossfadeEchoes = []; // lecteurs "fantômes" qui terminent le morceau précédent en fondu
+let crossfadeTriggered = false; // évite de déclencher deux fois le fondu enchaîné sur un même morceau
 
 // Convertit un volume linéaire (0..1, ce que montre le curseur) en gain perçu
 // plus naturel à l'oreille (courbe quasi-logarithmique) pour un rendu plus doux
@@ -1541,13 +1695,13 @@ function ensureAnalyser(){
     // Chaîne : source -> EQ 3 bandes (basses/médiums/aigus) -> gain maître
     // (contrôle du volume + fondus enchaînés) -> analyseur -> sortie.
     eqLow = audioCtx.createBiquadFilter();
-    eqLow.type = 'lowshelf'; eqLow.frequency.value = 200; eqLow.gain.value = 0;
+    eqLow.type = 'lowshelf'; eqLow.frequency.value = 200; eqLow.gain.value = savedEq.bass;
 
     eqMid = audioCtx.createBiquadFilter();
-    eqMid.type = 'peaking'; eqMid.frequency.value = 1000; eqMid.Q.value = 0.9; eqMid.gain.value = 0;
+    eqMid.type = 'peaking'; eqMid.frequency.value = 1000; eqMid.Q.value = 0.9; eqMid.gain.value = savedEq.mid;
 
     eqHigh = audioCtx.createBiquadFilter();
-    eqHigh.type = 'highshelf'; eqHigh.frequency.value = 3500; eqHigh.gain.value = 0;
+    eqHigh.type = 'highshelf'; eqHigh.frequency.value = 3500; eqHigh.gain.value = savedEq.treble;
 
     masterGain = audioCtx.createGain();
     masterGain.gain.value = perceptualGain(targetVolume);
@@ -1589,6 +1743,37 @@ function fadeGainTo(v, ms = FADE_MS){
     }, stepMs);
   }
 }
+// Fondu enchaîné (crossfade) façon Apple Music : le morceau qui se termine
+// continue de jouer un court instant sur un lecteur "fantôme" indépendant,
+// pendant qu'il descend en volume, tandis que le morceau suivant démarre et
+// monte en volume sur le lecteur principal. Les deux se superposent au lieu
+// de se couper net.
+function crossfadeOutgoing(blobUrl, fromTime, ms){
+  if(!blobUrl) return;
+  try{
+    const echo = new Audio();
+    echo.src = blobUrl;
+    echo.currentTime = fromTime || 0;
+    const startVol = masterGain ? Math.min(1, Math.max(0, masterGain.gain.value)) : audioEl.volume;
+    echo.volume = Math.min(1, Math.max(0, startVol));
+    echo.play().catch(()=>{});
+    crossfadeEchoes.push(echo);
+    const start = performance.now();
+    function step(now){
+      const t = Math.min(1, (now - start) / ms);
+      echo.volume = Math.min(1, Math.max(0, startVol * (1 - t)));
+      if(t < 1 && !echo.paused && !echo.ended){
+        requestAnimationFrame(step);
+      }else{
+        echo.pause();
+        echo.src = '';
+        const idx = crossfadeEchoes.indexOf(echo);
+        if(idx >= 0) crossfadeEchoes.splice(idx, 1);
+      }
+    }
+    requestAnimationFrame(step);
+  }catch(e){ /* Pas grave si le fondu sortant échoue : le morceau suivant démarre quand même. */ }
+}
 function animateEq(){
   eqRAF = requestAnimationFrame(animateEq);
   if(analyser){
@@ -1609,7 +1794,7 @@ function stopEq(){
   eqBars.forEach(b=> b.style.height = '4px');
 }
 
-async function playTrackById(trackId){
+async function playTrackById(trackId, direction){
   const track = allTracks.find(t => t.id === trackId);
   if(!track) return;
   const idxInQueue = currentQueue.findIndex(t => t.id === trackId);
@@ -1618,8 +1803,14 @@ async function playTrackById(trackId){
     togglePlayPause();
     return;
   }
-  const wasPlaying = currentTrackId && !audioEl.paused;
+  // Capture le morceau en cours de lecture avant de basculer, pour pouvoir
+  // le laisser finir en fondu (crossfade) pendant que le nouveau démarre.
+  const wasPlaying = !!(currentTrackId && audioEl.src && !audioEl.paused);
+  const outgoingSrc = wasPlaying ? audioEl.currentSrc : null;
+  const outgoingTime = wasPlaying ? audioEl.currentTime : 0;
+
   currentTrackId = trackId;
+  crossfadeTriggered = false;
   document.getElementById('p-cover').src = track.coverURL || fallbackCoverSvg();
   document.getElementById('p-title').textContent = track.title || 'Sans titre';
   document.getElementById('p-artist').textContent = (track.artist || 'Artiste inconnu') + ' · chargement…';
@@ -1628,25 +1819,19 @@ async function playTrackById(trackId){
   renderTracks();
   updateHeroPlayState();
   syncNowPlayingUI();
+  refreshNpArtSides();
+  animateNpArtTrack(direction);
   try{
-    // Fondu de sortie du morceau en cours AVANT de couper la source : sans
-    // ça, réaffecter audioEl.src interrompt la lecture (et l'égaliseur, qui
-    // dépend du même gain maître) de façon nette et audible.
-    if(wasPlaying){
-      fadeGainTo(0, FADE_MS);
-      await new Promise(res => setTimeout(res, FADE_MS));
-      if(currentTrackId !== trackId) return; // l'utilisateur a changé de morceau entre-temps
-      audioEl.pause();
-    }
     const blobUrl = await getTrackAudioBlobUrl(track);
     if(currentTrackId !== trackId) return; // l'utilisateur a changé de morceau entre-temps
+    if(outgoingSrc) crossfadeOutgoing(outgoingSrc, outgoingTime, CROSSFADE_MS);
     audioEl.src = blobUrl;
     document.getElementById('p-artist').textContent = track.artist || 'Artiste inconnu';
     ensureAnalyser();
     if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     if(masterGain) masterGain.gain.setValueAtTime(0.0001, audioCtx.currentTime); // silence net avant le fondu d'entrée
     else audioEl.volume = 0;
-    audioEl.play().then(()=> fadeGainTo(targetVolume)).catch(()=>{});
+    audioEl.play().then(()=> fadeGainTo(targetVolume, outgoingSrc ? CROSSFADE_MS : FADE_MS)).catch(()=>{});
     syncNowPlayingUI();
   }catch(e){
     console.error(e);
@@ -1667,6 +1852,8 @@ function togglePlayPause(){
 function stopPlayback(){
   audioEl.pause();
   audioEl.removeAttribute('src');
+  crossfadeEchoes.forEach(echo=>{ try{ echo.pause(); echo.src=''; }catch(e){} });
+  crossfadeEchoes = [];
   currentTrackId = null;
   playerBar.classList.remove('visible');
   renderTracks();
@@ -1678,8 +1865,59 @@ function playAdjacent(delta){
   let idx = currentTrackIndex + delta;
   if(idx < 0) idx = currentQueue.length - 1;
   if(idx >= currentQueue.length) idx = 0;
-  playTrackById(currentQueue[idx].id);
+  playTrackById(currentQueue[idx].id, delta > 0 ? 1 : -1);
 }
+
+/* =========================================================
+   CARROUSEL DE POCHETTES DU GRAND LECTEUR — affiche un aperçu
+   du morceau précédent et du suivant de part et d'autre de la
+   pochette en cours, avec un glissement à chaque changement de
+   titre (façon Apple Music).
+   ========================================================= */
+function getAdjacentTrack(offset){
+  if(currentQueue.length < 2 || currentTrackIndex < 0) return null;
+  let idx = currentTrackIndex + offset;
+  if(idx < 0) idx = currentQueue.length - 1;
+  if(idx >= currentQueue.length) idx = 0;
+  return currentQueue[idx] || null;
+}
+function refreshNpArtSides(){
+  const prevEl = document.getElementById('np-art-prev');
+  const nextEl = document.getElementById('np-art-next');
+  const prevTrack = getAdjacentTrack(-1);
+  const nextTrack = getAdjacentTrack(1);
+  if(prevTrack){
+    prevEl.src = prevTrack.coverURL || fallbackCoverSvg();
+    prevEl.style.visibility = 'visible';
+    prevEl.style.pointerEvents = 'auto';
+  }else{
+    prevEl.removeAttribute('src');
+    prevEl.style.visibility = 'hidden';
+    prevEl.style.pointerEvents = 'none';
+  }
+  if(nextTrack){
+    nextEl.src = nextTrack.coverURL || fallbackCoverSvg();
+    nextEl.style.visibility = 'visible';
+    nextEl.style.pointerEvents = 'auto';
+  }else{
+    nextEl.removeAttribute('src');
+    nextEl.style.visibility = 'hidden';
+    nextEl.style.pointerEvents = 'none';
+  }
+}
+// direction: 1 = on vient d'avancer (glissement vers la gauche),
+// -1 = on vient de reculer (glissement vers la droite), sinon un
+// simple fondu (sélection directe d'un titre dans une liste).
+function animateNpArtTrack(direction){
+  const track = document.getElementById('np-art-track');
+  if(!track) return;
+  track.classList.remove('anim-left', 'anim-right', 'anim-fade');
+  void track.offsetWidth; // force le reflow pour pouvoir rejouer l'animation
+  track.classList.add(direction === 1 ? 'anim-left' : direction === -1 ? 'anim-right' : 'anim-fade');
+}
+document.getElementById('np-art-prev').addEventListener('click', ()=>{ if(currentQueue.length > 1) playAdjacent(-1); });
+document.getElementById('np-art-next').addEventListener('click', ()=>{ if(currentQueue.length > 1) playAdjacent(1); });
+
 function updateLikeButtons(track){
   const uid = auth.currentUser ? auth.currentUser.uid : null;
   const liked = !!(uid && Array.isArray(track.likes) && track.likes.includes(uid));
@@ -1733,6 +1971,14 @@ audioEl.addEventListener('timeupdate', ()=>{
   document.getElementById('p-bar-fill').style.width = pct + '%';
   document.getElementById('np-time-current').textContent = formatTime(audioEl.currentTime);
   document.getElementById('np-bar-fill').style.width = pct + '%';
+  // Déclenche le fondu enchaîné un peu avant la fin, comme Apple Music,
+  // au lieu d'attendre la fin nette du morceau ("ended").
+  if(!crossfadeTriggered && currentQueue.length > 1 && audioEl.duration
+     && audioEl.duration > (CROSSFADE_MS/1000) * 1.3
+     && (audioEl.duration - audioEl.currentTime) <= (CROSSFADE_MS/1000)){
+    crossfadeTriggered = true;
+    playAdjacent(1);
+  }
 });
 document.getElementById('p-bar').addEventListener('click', (e)=>{
   if(!audioEl.duration) return;
@@ -1756,28 +2002,55 @@ audioEl.volume = 0.8;
    filtres Web Audio créés dans ensureAnalyser(). Sans contexte Web Audio
    disponible (ex. restrictions CORS), les curseurs restent inertes plutôt
    que de casser la lecture. */
-function wireEqSlider(sliderId, valId, getFilter){
+function wireEqSlider(sliderId, valId, getFilter, key){
   const slider = document.getElementById(sliderId);
   const val = document.getElementById(valId);
   slider.addEventListener('input', (e)=>{
     const db = Number(e.target.value);
     val.textContent = (db > 0 ? '+' : '') + db;
+    savedEq[key] = db;
     const filter = getFilter();
     if(filter) filter.gain.setTargetAtTime(db, audioCtx.currentTime, 0.02);
+    scheduleEqSave();
   });
 }
-wireEqSlider('eq-bass', 'eq-bass-val', ()=> eqLow);
-wireEqSlider('eq-mid', 'eq-mid-val', ()=> eqMid);
-wireEqSlider('eq-treble', 'eq-treble-val', ()=> eqHigh);
+wireEqSlider('eq-bass', 'eq-bass-val', ()=> eqLow, 'bass');
+wireEqSlider('eq-mid', 'eq-mid-val', ()=> eqMid, 'mid');
+wireEqSlider('eq-treble', 'eq-treble-val', ()=> eqHigh, 'treble');
 document.getElementById('np-eq-reset').addEventListener('click', ()=>{
-  [['eq-bass','eq-bass-val'],['eq-mid','eq-mid-val'],['eq-treble','eq-treble-val']].forEach(([sId,vId])=>{
-    document.getElementById(sId).value = 0;
-    document.getElementById(vId).textContent = '0';
-  });
-  if(eqLow) eqLow.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
-  if(eqMid) eqMid.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
-  if(eqHigh) eqHigh.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
+  applyEqSettings(0, 0, 0);
+  scheduleEqSave();
 });
+
+// Applique des valeurs d'égaliseur aux curseurs, au libellé et (si actifs)
+// aux filtres Web Audio en cours d'utilisation.
+function applyEqSettings(bass, mid, treble){
+  savedEq = { bass, mid, treble };
+  [['eq-bass','eq-bass-val',bass],['eq-mid','eq-mid-val',mid],['eq-treble','eq-treble-val',treble]].forEach(([sId,vId,db])=>{
+    document.getElementById(sId).value = db;
+    document.getElementById(vId).textContent = (db > 0 ? '+' : '') + db;
+  });
+  if(audioCtx){
+    if(eqLow) eqLow.gain.setTargetAtTime(bass, audioCtx.currentTime, 0.02);
+    if(eqMid) eqMid.gain.setTargetAtTime(mid, audioCtx.currentTime, 0.02);
+    if(eqHigh) eqHigh.gain.setTargetAtTime(treble, audioCtx.currentTime, 0.02);
+  }
+}
+
+// Sauvegarde (avec un léger délai pour ne pas écrire à chaque pixel glissé)
+// les réglages d'égaliseur sur le profil du compte connecté, pour qu'ils se
+// retrouvent identiques en changeant d'appareil.
+function scheduleEqSave(){
+  const uid = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser.uid : null;
+  if(!uid) return;
+  clearTimeout(eqSaveTimer);
+  eqSaveTimer = setTimeout(()=>{
+    usersRef.doc(uid).set({
+      eqBass: savedEq.bass, eqMid: savedEq.mid, eqTreble: savedEq.treble,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true }).catch(err=> console.error("Impossible d'enregistrer l'égaliseur :", err));
+  }, 500);
+}
 
 /* Menu "..." du grand lecteur (Now Playing) : n'ouvre pour l'instant
    qu'un seul item, l'égaliseur, qui s'affiche en panneau flottant. */
