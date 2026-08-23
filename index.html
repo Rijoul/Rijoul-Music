@@ -1327,13 +1327,21 @@ input,textarea{ font-family:inherit; }
       <span id="edit-concert-toggle-label">Certifier pour le mode concert</span>
     </button>
 
-    <!-- Volume propre à ce titre certifié : réglé et verrouillé par l'admin,
-         il remplace le curseur de volume habituel pour tout le monde tant
-         que ce titre est en cours de lecture (voir updateVolumeUIForTrack). -->
+    <!-- Volume propre à ce titre certifié : l'admin règle le curseur (simple
+         aperçu, non sauvegardé) puis choisit explicitement de le verrouiller
+         via le bouton — ce n'est qu'à ce moment-là que la valeur remplace le
+         curseur de volume habituel pour tout le monde (voir
+         updateVolumeUIForTrack). Un titre certifié sans verrouillage actif
+         laisse chacun régler son propre volume normalement. Le bouton
+         "Déverrouiller" retire ce blocage à tout moment. -->
     <div class="field" id="edit-concert-volume-field" style="margin-top:14px; display:none;">
-      <label>Volume verrouillé (mode concert) — <span id="edit-concert-volume-value">80%</span></label>
+      <label>Volume du mode concert — <span id="edit-concert-volume-value">80%</span></label>
       <input type="range" id="edit-concert-volume" min="0" max="100" value="80" style="width:100%;">
-      <p style="margin:6px 0 0; font-size:11px; color:var(--text-faint); line-height:1.4;">Ce volume sera imposé à tout le monde pendant la lecture de ce titre ; le curseur de volume du lecteur sera bloqué sur cette valeur.</p>
+      <p id="edit-concert-volume-status" style="margin:6px 0 0; font-size:11px; color:var(--text-faint); line-height:1.4;"></p>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button type="button" class="btn btn-gold btn-sm" id="edit-concert-volume-lock" style="flex:1;">🔒 Verrouiller ce volume</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="edit-concert-volume-unlock" style="flex:1; display:none;">Déverrouiller</button>
+      </div>
     </div>
 
     <button class="btn btn-gold btn-block" id="edit-submit" style="margin-top:16px;">Enregistrer</button>
@@ -3066,7 +3074,8 @@ async function deleteTrack(trackId){
 let editingTrackId = null;
 let editCoverDataUrl = null;
 let editConcertCertified = false;
-let editConcertVolume = 80; // volume (0..100) que l'admin verrouille pour ce titre certifié
+let editConcertVolume = 80; // valeur affichée sur le curseur (simple aperçu tant que non verrouillé)
+let editConcertVolumeLocked = false; // reflète track.concertVolume (présence = verrouillé)
 function refreshEditConcertToggleUI(){
   const btn = document.getElementById('edit-concert-toggle');
   const label = document.getElementById('edit-concert-toggle-label');
@@ -3077,6 +3086,25 @@ function refreshEditConcertToggleUI(){
   // Le réglage du volume verrouillé n'a de sens que pour un titre certifié.
   if(volField) volField.style.display = editConcertCertified ? '' : 'none';
 }
+// Reflète l'état verrouillé/déverrouillé : bouton "Verrouiller" visible tant
+// que ce n'est pas actif, bouton "Déverrouiller" une fois que ça l'est.
+function refreshEditConcertVolumeUI(){
+  const status = document.getElementById('edit-concert-volume-status');
+  const lockBtn = document.getElementById('edit-concert-volume-lock');
+  const unlockBtn = document.getElementById('edit-concert-volume-unlock');
+  if(!status || !lockBtn || !unlockBtn) return;
+  if(editConcertVolumeLocked){
+    status.textContent = `Verrouillé sur ${editConcertVolume}% pour tout le monde.`;
+    lockBtn.style.display = '';
+    lockBtn.textContent = '🔒 Mettre à jour le verrouillage';
+    unlockBtn.style.display = '';
+  }else{
+    status.textContent = "Non verrouillé — chacun garde son propre réglage de volume pour ce titre.";
+    lockBtn.style.display = '';
+    lockBtn.textContent = '🔒 Verrouiller ce volume';
+    unlockBtn.style.display = 'none';
+  }
+}
 function openEditModal(trackId){
   if(!isAdmin){ showToast("Seul l'admin peut modifier les infos d'un titre."); return; }
   const track = allTracks.find(t => t.id === trackId);
@@ -3084,10 +3112,12 @@ function openEditModal(trackId){
   editingTrackId = trackId;
   editCoverDataUrl = track.coverURL || null;
   editConcertCertified = !!track.concertCertified;
-  editConcertVolume = (typeof track.concertVolume === 'number') ? track.concertVolume : 80;
+  editConcertVolumeLocked = typeof track.concertVolume === 'number';
+  editConcertVolume = editConcertVolumeLocked ? track.concertVolume : 80;
   document.getElementById('edit-concert-volume').value = editConcertVolume;
   document.getElementById('edit-concert-volume-value').textContent = editConcertVolume + '%';
   refreshEditConcertToggleUI();
+  refreshEditConcertVolumeUI();
   document.getElementById('edit-error').style.display = 'none';
   document.getElementById('edit-title').value = track.title || '';
   document.getElementById('edit-artist').value = track.artist || '';
@@ -3146,24 +3176,49 @@ document.getElementById('edit-concert-toggle').addEventListener('click', async (
     btn.disabled = false;
   }
 });
-/* Volume verrouillé du mode concert : l'affichage (%) se met à jour en
-   direct pendant qu'on glisse le curseur (input), et l'enregistrement dans
-   Firestore ne se fait qu'au relâchement (change) pour éviter d'écrire à
-   chaque pixel. Se répercute en direct sur le lecteur de tout le monde via
-   l'onSnapshot du catalogue (voir updateVolumeUIForTrack). */
+/* Volume du mode concert : glisser le curseur ne fait que mettre à jour
+   l'aperçu (%) et la variable locale — rien n'est envoyé à Firestore tant
+   que l'admin n'a pas cliqué explicitement sur "Verrouiller ce volume". */
 document.getElementById('edit-concert-volume').addEventListener('input', (e)=>{
   editConcertVolume = Number(e.target.value);
   document.getElementById('edit-concert-volume-value').textContent = editConcertVolume + '%';
 });
-document.getElementById('edit-concert-volume').addEventListener('change', async (e)=>{
+// Verrouille (ou met à jour le verrouillage déjà actif) sur la valeur
+// actuelle du curseur : c'est cette action explicite, et elle seule, qui
+// bloque le volume pour tout le monde (voir updateVolumeUIForTrack).
+document.getElementById('edit-concert-volume-lock').addEventListener('click', async ()=>{
   if(!isAdmin || !editingTrackId) return;
-  const val = Number(e.target.value);
+  const btn = document.getElementById('edit-concert-volume-lock');
+  btn.disabled = true;
   try{
-    await tracksRef.doc(editingTrackId).update({ concertVolume: val });
-    showToast('Volume verrouillé mis à jour pour ce titre.');
+    await tracksRef.doc(editingTrackId).update({ concertVolume: editConcertVolume });
+    editConcertVolumeLocked = true;
+    refreshEditConcertVolumeUI();
+    showToast(`Volume verrouillé sur ${editConcertVolume}% pour ce titre.`);
   }catch(err){
     console.error(err);
-    showToast("Impossible d'enregistrer le volume verrouillé.");
+    showToast("Impossible de verrouiller le volume.");
+  }finally{
+    btn.disabled = false;
+  }
+});
+// Retire le verrouillage : chacun retrouve son propre réglage de volume
+// pour ce titre, y compris ceux qui l'écoutent déjà (voir l'onSnapshot du
+// catalogue plus bas, qui répercute le changement en direct).
+document.getElementById('edit-concert-volume-unlock').addEventListener('click', async ()=>{
+  if(!isAdmin || !editingTrackId) return;
+  const btn = document.getElementById('edit-concert-volume-unlock');
+  btn.disabled = true;
+  try{
+    await tracksRef.doc(editingTrackId).update({ concertVolume: firebase.firestore.FieldValue.delete() });
+    editConcertVolumeLocked = false;
+    refreshEditConcertVolumeUI();
+    showToast('Volume déverrouillé pour ce titre.');
+  }catch(err){
+    console.error(err);
+    showToast('Impossible de déverrouiller le volume.');
+  }finally{
+    btn.disabled = false;
   }
 });
 document.getElementById('edit-submit').addEventListener('click', async ()=>{
