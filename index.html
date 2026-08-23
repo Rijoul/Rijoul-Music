@@ -230,6 +230,49 @@ input,textarea{ font-family:inherit; }
 .like-btn.liked svg{ fill:var(--copper); }
 .card-owner-actions{ position:absolute; top:8px; right:8px; display:flex; gap:4px; opacity:0; transition:.15s; }
 .card:hover .card-owner-actions{ opacity:1; }
+
+/* =========================================================
+   EXTRAITS — section page d'accueil + cartes de passages courts
+   ========================================================= */
+.extracts-section{ margin-bottom:8px; }
+.extract-row{ display:flex; gap:16px; overflow-x:auto; padding:2px 2px 14px; margin-bottom:8px; scrollbar-width:thin; }
+.extract-row::-webkit-scrollbar{ height:8px; }
+.extract-card{ flex:0 0 160px; width:160px; cursor:pointer; }
+.extract-card-cover{ position:relative; width:100%; aspect-ratio:1/1; border-radius:14px; overflow:hidden; background:var(--panel-solid); margin-bottom:9px; box-shadow:inset 0 0 0 1px var(--glass-border); }
+.extract-card-cover img{ width:100%; height:100%; object-fit:cover; display:block; }
+.extract-card-play{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) scale(.85);
+  width:42px; height:42px; border-radius:50%; background:var(--copper); color:#241a06;
+  display:flex; align-items:center; justify-content:center; opacity:0; transition:.18s;
+  box-shadow:0 6px 16px rgba(0,0,0,0.45);
+}
+.extract-card:hover .extract-card-play, .extract-card.is-playing .extract-card-play{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+.extract-card.is-playing .extract-card-cover{ box-shadow:0 0 0 2px var(--copper-bright); }
+.extract-card-duration{ position:absolute; right:7px; bottom:7px; background:rgba(0,0,0,0.65); color:#fff; font-family:var(--mono); font-size:10.5px; padding:2px 6px; border-radius:8px; }
+.extract-card-label{ font-weight:700; font-size:13.5px; margin:0 0 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.extract-card-track{ font-size:11.5px; color:var(--text-dim); margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* --- Modale de création d'extrait --- */
+.extract-form-track{ display:flex; align-items:center; gap:12px; margin-bottom:16px; padding:10px; background:var(--panel); border:1px solid var(--line); border-radius:16px; }
+.extract-form-cover{ width:52px; height:52px; border-radius:11px; overflow:hidden; flex-shrink:0; background:var(--panel-solid); }
+.extract-form-cover img{ width:100%; height:100%; object-fit:cover; display:block; }
+.extract-form-meta{ min-width:0; }
+.extract-form-title{ font-weight:700; font-size:14px; margin:0 0 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.extract-form-artist{ font-size:12px; color:var(--text-dim); margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.extract-range-wrap{ margin:16px 0 6px; }
+.extract-range-times{ display:flex; justify-content:space-between; font-family:var(--mono); font-size:11.5px; color:var(--text-dim); margin-bottom:10px; }
+.extract-range-times #extract-form-selection-label{ color:var(--copper-bright); font-weight:700; }
+.extract-range-track{ position:relative; height:6px; border-radius:6px; background:rgba(255,255,255,0.1); margin:22px 4px 6px; }
+.extract-range-fill{ position:absolute; top:0; bottom:0; background:var(--copper); border-radius:6px; }
+.extract-range-handle{
+  position:absolute; top:50%; width:18px; height:18px; margin-left:-9px; border-radius:50%;
+  background:var(--copper-bright); border:2px solid #1a1206; transform:translateY(-50%);
+  cursor:grab; box-shadow:0 2px 6px rgba(0,0,0,0.5); touch-action:none;
+}
+.extract-mark-row{ display:flex; gap:10px; margin-top:14px; }
+.extract-mark-row .btn{ flex:1; }
+.extract-form-actions{ display:flex; gap:10px; margin-top:18px; }
+.extract-form-actions .btn{ flex:1; }
 .icon-btn{ width:28px; height:28px; border-radius:50%; background:rgba(0,0,0,0.55); backdrop-filter:blur(6px); border:1px solid var(--glass-border-strong); color:var(--text); display:flex; align-items:center; justify-content:center; }
 .icon-btn:hover{ background:var(--danger); border-color:var(--danger); }
 
@@ -630,6 +673,15 @@ input,textarea{ font-family:inherit; }
     </div>
   </section>
 
+  <!-- EXTRAITS — passages courts marqués par les membres, mis en avant sur la page d'accueil -->
+  <section class="extracts-section" id="extracts-section" style="display:none;">
+    <div class="section-head">
+      <h2 class="section-title">Extraits</h2>
+      <span class="section-count" id="extracts-count">0 extrait</span>
+    </div>
+    <div class="extract-row" id="extract-row"></div>
+  </section>
+
   <!-- BIBLIOTHÈQUE -->
   <section id="view-library">
     <div class="section-head">
@@ -797,6 +849,10 @@ input,textarea{ font-family:inherit; }
             <button class="np-menu-item" id="np-menu-eq-btn" type="button">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21V14M4 10V3M12 21V12M12 8V3M20 21V16M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>
               Égaliseur
+            </button>
+            <button class="np-menu-item" id="np-menu-extract-btn" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v18l6-4.5L18 21V3H6z"/></svg>
+              Créer un extrait
             </button>
           </div>
         </div>
@@ -1080,6 +1136,52 @@ input,textarea{ font-family:inherit; }
   </div>
 </div>
 
+<!-- =========================================================
+     CRÉER UN EXTRAIT — sélection d'un passage d'un titre
+     (début / fin) affiché ensuite dans la section "Extraits"
+     de la page d'accueil.
+     ========================================================= -->
+<div class="overlay" id="extract-form-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 class="modal-title">Créer un extrait</h3>
+      <button class="modal-close" data-close="extract-form-overlay">✕</button>
+    </div>
+    <div class="auth-error" id="extract-form-error"></div>
+    <div class="extract-form-track">
+      <div class="extract-form-cover"><img id="extract-form-cover" alt=""></div>
+      <div class="extract-form-meta">
+        <p class="extract-form-title" id="extract-form-title">—</p>
+        <p class="extract-form-artist" id="extract-form-artist">—</p>
+      </div>
+    </div>
+    <div class="field">
+      <label>Nom de l'extrait</label>
+      <input type="text" id="extract-form-label" placeholder="Ex : Refrain, Intro, Meilleur passage…" maxlength="60">
+    </div>
+    <div class="extract-range-wrap">
+      <div class="extract-range-times">
+        <span id="extract-form-start-label">0:00</span>
+        <span id="extract-form-selection-label">0:00</span>
+        <span id="extract-form-end-label">0:00</span>
+      </div>
+      <div class="extract-range-track" id="extract-range-track">
+        <div class="extract-range-fill" id="extract-range-fill"></div>
+        <div class="extract-range-handle" id="extract-range-handle-start" data-handle="start" tabindex="0" aria-label="Début de l'extrait"></div>
+        <div class="extract-range-handle" id="extract-range-handle-end" data-handle="end" tabindex="0" aria-label="Fin de l'extrait"></div>
+      </div>
+      <div class="extract-mark-row">
+        <button class="btn btn-ghost btn-sm" id="extract-form-mark-start" type="button">Marquer le début ici</button>
+        <button class="btn btn-ghost btn-sm" id="extract-form-mark-end" type="button">Marquer la fin ici</button>
+      </div>
+    </div>
+    <div class="extract-form-actions">
+      <button class="btn btn-ghost" id="extract-form-preview" type="button">▶ Aperçu de l'extrait</button>
+      <button class="btn btn-gold" id="extract-form-save" type="button">Créer l'extrait</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast-wrap" id="toast-wrap"></div>
 
 <script>
@@ -1133,6 +1235,10 @@ const tracksRef = db.collection("musicTracks");
 // par son créateur (filtrée côté serveur via `ownerId`) et référence des
 // titres du catalogue via un tableau ordonné d'identifiants (`trackIds`).
 const playlistsRef = db.collection("musicPlaylists");
+
+// Extraits (courts passages d'un titre, ex. "Refrain") créés par les
+// membres et mis en avant dans la section "Extraits" de la page d'accueil.
+const extractsRef = db.collection("musicExtracts");
 
 /* =========================================================
    UTILITAIRES
@@ -1227,6 +1333,14 @@ let currentPlaylistId = null; // playlist affichée en vue détail
 let editingPlaylistId = null; // playlist en cours de modification dans playlist-form-overlay
 let playlistFormCoverDataUrl = null;
 let pickerTrackId = null;  // titre ciblé par la modale "Ajouter à une playlist"
+
+let allExtracts = [];        // tous les extraits, tel que reçu de Firestore (onSnapshot)
+let activeClipEnd = null;    // instant (s) où couper la lecture en cours si elle rejoue un extrait
+let extractFormTrackId = null; // titre ciblé par la modale "Créer un extrait"
+let extractFormDuration = 0;
+let extractFormStart = 0;
+let extractFormEnd = 0;
+let extractRangeDragging = null; // 'start' | 'end' | null
 
 /* =========================================================
    AUTHENTIFICATION (reprise du système de RIJOUL VISION)
@@ -1542,9 +1656,209 @@ tracksRef.orderBy('createdAt', 'desc').onSnapshot((snap)=>{
   allTracks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   renderHero();
   renderTracks();
+  renderExtractsSection();
 }, (err)=>{
   console.error('Erreur de chargement de la musique :', err);
   showToast("Impossible de charger la musique pour le moment.");
+});
+
+/* =========================================================
+   EXTRAITS (Firestore, collection "musicExtracts")
+   ========================================================= */
+extractsRef.orderBy('createdAt', 'desc').onSnapshot((snap)=>{
+  allExtracts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  renderExtractsSection();
+}, (err)=>{
+  console.error('Erreur de chargement des extraits :', err);
+});
+
+function renderExtractsSection(){
+  const section = document.getElementById('extracts-section');
+  const row = document.getElementById('extract-row');
+  const count = document.getElementById('extracts-count');
+  if(!allExtracts.length){
+    section.style.display = 'none';
+    row.innerHTML = '';
+    return;
+  }
+  section.style.display = '';
+  count.textContent = allExtracts.length + (allExtracts.length > 1 ? ' extraits' : ' extrait');
+  row.innerHTML = allExtracts.map(ex=>{
+    const isPlaying = ex.trackId === currentTrackId && activeClipEnd === ex.end && !audioEl.paused;
+    return `
+    <div class="extract-card ${isPlaying ? 'is-playing' : ''}" data-extract-id="${ex.id}">
+      <div class="extract-card-cover">
+        <img src="${escapeHtml(ex.coverURL || fallbackCoverSvg())}" alt="">
+        <button class="extract-card-play" data-play-extract="${ex.id}" aria-label="Lire l'extrait">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
+        </button>
+        <span class="extract-card-duration">${formatTime(Math.max(0,(ex.end||0)-(ex.start||0)))}</span>
+      </div>
+      <p class="extract-card-label">${escapeHtml(ex.label || 'Extrait')}</p>
+      <p class="extract-card-track">${escapeHtml(ex.trackTitle || 'Titre inconnu')} · ${escapeHtml(ex.trackArtist || 'Artiste inconnu')}</p>
+    </div>`;
+  }).join('');
+  row.querySelectorAll('[data-play-extract]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); playExtractById(btn.dataset.playExtract); });
+  });
+  row.querySelectorAll('.extract-card').forEach(el=>{
+    el.addEventListener('click', ()=> playExtractById(el.dataset.extractId));
+  });
+}
+
+async function playExtractById(extractId){
+  const ex = allExtracts.find(e => e.id === extractId);
+  if(!ex) return;
+  const track = allTracks.find(t => t.id === ex.trackId);
+  if(!track){ showToast("Ce titre n'est plus disponible."); return; }
+  const applyClip = ()=>{
+    audioEl.currentTime = ex.start || 0;
+    activeClipEnd = ex.end || null;
+    renderExtractsSection();
+  };
+  if(currentTrackId === ex.trackId && audioEl.src){
+    applyClip();
+    if(audioEl.paused) togglePlayPause();
+  }else{
+    await playTrackById(ex.trackId);
+    if(currentTrackId !== ex.trackId) return; // le titre a changé entre-temps
+    const onLoaded = ()=>{ applyClip(); audioEl.removeEventListener('loadedmetadata', onLoaded); };
+    if(audioEl.readyState >= 1) applyClip();
+    else audioEl.addEventListener('loadedmetadata', onLoaded);
+  }
+}
+
+/* --- Modale : créer un extrait à partir du titre en cours de lecture --- */
+function openExtractFormModal(){
+  if(!auth.currentUser){ clearAuthErrors(); openOverlay('account-overlay'); return; }
+  if(!currentTrackId){ showToast("Lance d'abord un titre pour en créer un extrait."); return; }
+  const track = allTracks.find(t => t.id === currentTrackId);
+  if(!track) return;
+  extractFormTrackId = currentTrackId;
+  extractFormDuration = audioEl.duration && isFinite(audioEl.duration) ? audioEl.duration : 0;
+  const cur = audioEl.currentTime || 0;
+  extractFormStart = Math.max(0, cur);
+  extractFormEnd = extractFormDuration ? Math.min(extractFormDuration, cur + 15) : cur + 15;
+  if(extractFormEnd <= extractFormStart) extractFormEnd = extractFormStart + 1;
+  document.getElementById('extract-form-error').style.display = 'none';
+  document.getElementById('extract-form-label').value = '';
+  document.getElementById('extract-form-cover').src = track.coverURL || fallbackCoverSvg();
+  document.getElementById('extract-form-title').textContent = track.title || 'Sans titre';
+  document.getElementById('extract-form-artist').textContent = track.artist || 'Artiste inconnu';
+  updateExtractRangeUI();
+  openOverlay('extract-form-overlay');
+}
+document.getElementById('np-menu-extract-btn').addEventListener('click', ()=>{
+  closeNpMenu();
+  openExtractFormModal();
+});
+
+function updateExtractRangeUI(){
+  const dur = extractFormDuration || 1;
+  const startPct = Math.max(0, Math.min(100, (extractFormStart / dur) * 100));
+  const endPct = Math.max(0, Math.min(100, (extractFormEnd / dur) * 100));
+  document.getElementById('extract-range-handle-start').style.left = startPct + '%';
+  document.getElementById('extract-range-handle-end').style.left = endPct + '%';
+  document.getElementById('extract-range-fill').style.left = startPct + '%';
+  document.getElementById('extract-range-fill').style.width = Math.max(0, endPct - startPct) + '%';
+  document.getElementById('extract-form-start-label').textContent = formatTime(extractFormStart);
+  document.getElementById('extract-form-end-label').textContent = formatTime(extractFormEnd);
+  document.getElementById('extract-form-selection-label').textContent = formatTime(Math.max(0, extractFormEnd - extractFormStart));
+}
+function extractRangeTrackToTime(clientX){
+  const track = document.getElementById('extract-range-track');
+  const rect = track.getBoundingClientRect();
+  const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  return pct * (extractFormDuration || 0);
+}
+['extract-range-handle-start','extract-range-handle-end'].forEach(id=>{
+  const handle = document.getElementById(id);
+  handle.addEventListener('pointerdown', (e)=>{
+    extractRangeDragging = id === 'extract-range-handle-start' ? 'start' : 'end';
+    handle.setPointerCapture(e.pointerId);
+  });
+});
+document.getElementById('extract-range-track').addEventListener('pointermove', (e)=>{
+  if(!extractRangeDragging) return;
+  const t = extractRangeTrackToTime(e.clientX);
+  if(extractRangeDragging === 'start'){
+    extractFormStart = Math.max(0, Math.min(t, extractFormEnd - 0.5));
+  }else{
+    extractFormEnd = Math.min(extractFormDuration || t, Math.max(t, extractFormStart + 0.5));
+  }
+  updateExtractRangeUI();
+});
+window.addEventListener('pointerup', ()=>{ extractRangeDragging = null; });
+window.addEventListener('pointermove', (e)=>{
+  if(!extractRangeDragging) return;
+  const t = extractRangeTrackToTime(e.clientX);
+  if(extractRangeDragging === 'start'){
+    extractFormStart = Math.max(0, Math.min(t, extractFormEnd - 0.5));
+  }else{
+    extractFormEnd = Math.min(extractFormDuration || t, Math.max(t, extractFormStart + 0.5));
+  }
+  updateExtractRangeUI();
+});
+document.getElementById('extract-form-mark-start').addEventListener('click', ()=>{
+  if(currentTrackId !== extractFormTrackId) return;
+  extractFormStart = Math.max(0, Math.min(audioEl.currentTime || 0, extractFormEnd - 0.5));
+  updateExtractRangeUI();
+});
+document.getElementById('extract-form-mark-end').addEventListener('click', ()=>{
+  if(currentTrackId !== extractFormTrackId) return;
+  extractFormEnd = Math.max(audioEl.currentTime || 0, extractFormStart + 0.5);
+  if(extractFormDuration) extractFormEnd = Math.min(extractFormEnd, extractFormDuration);
+  updateExtractRangeUI();
+});
+document.getElementById('extract-form-preview').addEventListener('click', ()=>{
+  if(currentTrackId !== extractFormTrackId){ showToast("Le titre a changé, rouvre la modale."); return; }
+  audioEl.currentTime = extractFormStart;
+  activeClipEnd = extractFormEnd;
+  if(audioEl.paused) audioEl.play().catch(()=>{});
+});
+document.getElementById('extract-form-save').addEventListener('click', async ()=>{
+  const user = auth.currentUser;
+  if(!user || !extractFormTrackId) return;
+  const track = allTracks.find(t => t.id === extractFormTrackId);
+  if(!track) return;
+  const label = document.getElementById('extract-form-label').value.trim();
+  const errEl = document.getElementById('extract-form-error');
+  if(!label){
+    errEl.textContent = "Merci de donner un nom à ton extrait.";
+    errEl.style.display = 'block';
+    return;
+  }
+  if(extractFormEnd - extractFormStart < 0.5){
+    errEl.textContent = "L'extrait doit durer au moins une seconde.";
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  const btn = document.getElementById('extract-form-save');
+  btn.disabled = true;
+  try{
+    await extractsRef.add({
+      trackId: extractFormTrackId,
+      trackTitle: track.title || 'Sans titre',
+      trackArtist: track.artist || 'Artiste inconnu',
+      coverURL: track.coverURL || null,
+      start: extractFormStart,
+      end: extractFormEnd,
+      label,
+      creatorId: user.uid,
+      creatorName: (currentProfile && currentProfile.displayName) || user.displayName || (user.email ? user.email.split('@')[0] : 'Membre'),
+      creatorPhoto: (currentProfile && currentProfile.photoURL) || user.photoURL || null,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    closeOverlay('extract-form-overlay');
+    showToast('Extrait créé ✂️');
+  }catch(e){
+    console.error(e);
+    errEl.textContent = "Impossible de créer l'extrait.";
+    errEl.style.display = 'block';
+  }finally{
+    btn.disabled = false;
+  }
 });
 
 /* =========================================================
@@ -2836,6 +3150,7 @@ async function playTrackById(trackId, direction){
   currentTrackId = trackId;
   crossfadeTriggered = false;
   nextTrackPrefetchTriggered = false;
+  activeClipEnd = null; // lecture normale : plus de borne de fin d'extrait
   // Incrémente le compteur d'écoutes du titre (utilisé par le Classement).
   tracksRef.doc(trackId).update({ plays: firebase.firestore.FieldValue.increment(1) }).catch(()=>{});
   document.getElementById('p-cover').src = track.coverURL || fallbackCoverSvg();
@@ -2887,6 +3202,7 @@ function stopPlayback(){
   crossfadeEchoes.forEach(echo=>{ try{ echo.pause(); echo.src=''; }catch(e){} });
   crossfadeEchoes = [];
   currentTrackId = null;
+  activeClipEnd = null;
   playerBar.classList.remove('visible');
   renderTracks();
   updateHeroPlayState();
@@ -3050,6 +3366,13 @@ audioEl.addEventListener('loadedmetadata', ()=>{
   document.getElementById('np-time-total').textContent = formatTime(audioEl.duration);
 });
 audioEl.addEventListener('timeupdate', ()=>{
+  // Si un extrait (passage court) est en cours de lecture, on coupe
+  // automatiquement une fois sa borne de fin atteinte.
+  if(activeClipEnd !== null && audioEl.currentTime >= activeClipEnd){
+    audioEl.pause();
+    activeClipEnd = null;
+    renderExtractsSection();
+  }
   // Pendant que l'utilisateur glisse le curseur, on ne touche plus à
   // l'affichage : c'est le geste de glissement qui pilote la barre.
   if(isScrubbing) return;
