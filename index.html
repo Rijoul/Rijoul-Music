@@ -233,6 +233,30 @@ input,textarea{ font-family:inherit; }
 .icon-btn{ width:28px; height:28px; border-radius:50%; background:rgba(0,0,0,0.55); backdrop-filter:blur(6px); border:1px solid var(--glass-border-strong); color:var(--text); display:flex; align-items:center; justify-content:center; }
 .icon-btn:hover{ background:var(--danger); border-color:var(--danger); }
 
+/* =========================================================
+   CLASSEMENT — liste des titres les plus écoutés
+   ========================================================= */
+.ranking-list{ display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
+.ranking-row{
+  display:grid; grid-template-columns:36px 48px 1fr auto auto; align-items:center; gap:14px;
+  background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:9px 14px;
+  transition:.18s cubic-bezier(.4,0,.2,1);
+}
+.ranking-row:hover{ border-color:var(--glass-border-strong); background:var(--panel-2); }
+.ranking-row.is-playing{ box-shadow:0 0 0 1.5px var(--copper-bright); }
+.ranking-rank{ font-family:var(--mono); font-size:15px; font-weight:800; color:var(--text-faint); text-align:center; }
+.ranking-row:nth-child(1) .ranking-rank{ color:var(--copper-bright); font-size:18px; }
+.ranking-row:nth-child(2) .ranking-rank{ color:var(--copper); }
+.ranking-row:nth-child(3) .ranking-rank{ color:var(--copper); opacity:.85; }
+.ranking-cover{ position:relative; width:48px; height:48px; border-radius:10px; overflow:hidden; background:var(--panel-solid); flex-shrink:0; cursor:pointer; }
+.ranking-cover img{ width:100%; height:100%; object-fit:cover; }
+.ranking-cover .card-play{ width:28px; height:28px; right:0; left:0; top:0; bottom:0; margin:auto; }
+.ranking-info{ min-width:0; overflow:hidden; }
+.ranking-title{ font-weight:700; font-size:13.5px; margin:0 0 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ranking-artist{ font-size:12px; color:var(--text-dim); margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ranking-plays{ font-family:var(--mono); font-size:12px; color:var(--text-faint); white-space:nowrap; display:flex; align-items:center; gap:5px; }
+.ranking-more-wrap{ display:flex; justify-content:center; margin-bottom:40px; }
+
 .empty-state{ text-align:center; padding:60px 20px; color:var(--text-faint); border:1px dashed var(--glass-border-strong); border-radius:var(--radius); background:rgba(255,255,255,0.02); }
 .empty-state h3{ font-family:var(--display); color:var(--text); font-size:19px; margin:0 0 6px; font-weight:800; }
 .empty-state p{ font-size:13.5px; max-width:360px; margin:0 auto 16px; }
@@ -546,6 +570,7 @@ input,textarea{ font-family:inherit; }
     <button class="tab-btn active" data-view="library">Bibliothèque</button>
     <button class="tab-btn" data-view="mine">Mes ajouts</button>
     <button class="tab-btn" data-view="playlists">Playlists</button>
+    <button class="tab-btn" data-view="classement">Classement</button>
   </div>
   <!-- Champs leurres : absorbent l'autofill agressif de Chrome (email/mot de passe)
        pour qu'il ne se colle jamais dans la vraie barre de recherche juste en dessous. -->
@@ -647,6 +672,22 @@ input,textarea{ font-family:inherit; }
       <h3>Aucune playlist</h3>
       <p>Crée ta première playlist pour organiser tes titres préférés.</p>
       <button class="btn btn-gold" id="playlists-empty-create-btn">+ Nouvelle playlist</button>
+    </div>
+  </section>
+
+  <!-- CLASSEMENT -->
+  <section id="view-classement" style="display:none;">
+    <div class="section-head">
+      <h2 class="section-title">Classement</h2>
+      <span class="section-count" id="classement-count">0 titre</span>
+    </div>
+    <div class="ranking-list" id="ranking-list"></div>
+    <div class="ranking-more-wrap" id="ranking-more-wrap" style="display:none;">
+      <button class="btn btn-ghost" id="ranking-more-btn">Voir plus</button>
+    </div>
+    <div class="empty-state" id="classement-empty" style="display:none;">
+      <h3>Aucun titre pour l'instant</h3>
+      <p>Le classement apparaîtra dès que des titres seront écoutés.</p>
     </div>
   </section>
 
@@ -1172,9 +1213,10 @@ let currentProfilePhoto = null;
 
 let allTracks = [];      // tout le catalogue, tel que reçu de Firestore (onSnapshot)
 let currentQueue = [];    // liste actuellement affichée (filtrée / vue active)
-let currentView = 'library'; // 'library' | 'mine' | 'playlists' | 'playlist-detail'
+let currentView = 'library'; // 'library' | 'mine' | 'playlists' | 'playlist-detail' | 'classement'
 let searchTerm = '';
 let currentTrackId = null;
+let rankingVisibleCount = 20; // Top20 -> Top50 -> Top100 via le bouton "Voir plus"
 let currentTrackIndex = -1;
 let uploadAudioFile = null;
 let uploadCoverDataUrl = null;
@@ -1451,7 +1493,12 @@ function switchView(view){
   document.getElementById('view-library').style.display = view === 'library' ? '' : 'none';
   document.getElementById('view-mine').style.display = view === 'mine' ? '' : 'none';
   document.getElementById('view-playlists').style.display = view === 'playlists' ? '' : 'none';
+  document.getElementById('view-classement').style.display = view === 'classement' ? '' : 'none';
   document.getElementById('view-playlist-detail').style.display = 'none';
+  if(view === 'classement'){
+    rankingVisibleCount = 20;
+    renderRanking();
+  }
   renderTracks();
   renderPlaylistsGrid();
 }
@@ -2084,6 +2131,8 @@ function renderTracks(){
     });
   }else if(currentView === 'playlist-detail'){
     renderPlaylistDetailTracks(); // gère elle-même currentQueue, dans l'ordre de la playlist
+  }else if(currentView === 'classement'){
+    renderRanking();
   }
   // Garde les pochettes précédente/suivante du grand lecteur à jour si la
   // liste affichée change (recherche, ajout/suppression d'un titre…),
@@ -2158,6 +2207,80 @@ function paintGrid(gridId, emptyId, countId, list, texts){
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); openEditModal(btn.dataset.edit); });
   });
 }
+
+/* =========================================================
+   CLASSEMENT — Top20 / Top50 / Top100 des titres les plus écoutés
+   ========================================================= */
+function renderRanking(){
+  const list = document.getElementById('ranking-list');
+  const empty = document.getElementById('classement-empty');
+  const countEl = document.getElementById('classement-count');
+  const moreWrap = document.getElementById('ranking-more-wrap');
+  const moreBtn = document.getElementById('ranking-more-btn');
+
+  const ranked = allTracks
+    .slice()
+    .sort((a, b) => (b.plays || 0) - (a.plays || 0));
+
+  if(!ranked.length){
+    list.innerHTML = '';
+    empty.style.display = '';
+    moreWrap.style.display = 'none';
+    countEl.textContent = '0 titre';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const total = Math.min(ranked.length, 100);
+  countEl.textContent = total + (total > 1 ? ' titres classés' : ' titre classé');
+
+  const visible = ranked.slice(0, Math.min(rankingVisibleCount, total));
+  list.innerHTML = visible.map((t, i)=>{
+    const isPlaying = t.id === currentTrackId;
+    const plays = t.plays || 0;
+    return `
+    <div class="ranking-row ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
+      <span class="ranking-rank">${i + 1}</span>
+      <div class="ranking-cover" data-play="${t.id}">
+        <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
+        <button class="card-play" data-play="${t.id}" aria-label="Lire">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
+        </button>
+      </div>
+      <div class="ranking-info">
+        <p class="ranking-title">${escapeHtml(t.title || 'Sans titre')}</p>
+        <p class="ranking-artist">${escapeHtml(t.artist || 'Artiste inconnu')}</p>
+      </div>
+      <span class="ranking-plays">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5v14l11-7z"/></svg>
+        ${plays} ${plays > 1 ? 'écoutes' : 'écoute'}
+      </span>
+      <button class="like-btn addpl-btn" data-add-to-playlist="${t.id}" aria-label="Ajouter à une playlist">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('[data-play]').forEach(el=>{
+    el.addEventListener('click', (e)=>{ e.stopPropagation(); playTrackById(el.dataset.play); });
+  });
+  list.querySelectorAll('[data-add-to-playlist]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); openAddToPlaylistModal(btn.dataset.addToPlaylist); });
+  });
+
+  // Bouton "Voir plus" : Top20 -> Top50 -> Top100, puis disparaît.
+  if(rankingVisibleCount < total){
+    moreWrap.style.display = '';
+    const nextStep = rankingVisibleCount < 50 ? 50 : 100;
+    moreBtn.textContent = `Voir plus (Top ${Math.min(nextStep, total)})`;
+  }else{
+    moreWrap.style.display = 'none';
+  }
+}
+document.getElementById('ranking-more-btn').addEventListener('click', ()=>{
+  rankingVisibleCount = rankingVisibleCount < 50 ? 50 : 100;
+  renderRanking();
+});
 
 async function toggleLike(trackId){
   const user = auth.currentUser;
@@ -2431,6 +2554,7 @@ document.getElementById('upload-submit').addEventListener('click', async ()=>{
       uploaderName: (currentProfile && currentProfile.displayName) || user.displayName || (user.email ? user.email.split('@')[0] : 'Membre'),
       uploaderPhoto: (currentProfile && currentProfile.photoURL) || user.photoURL || null,
       likes: [],
+      plays: 0,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
@@ -2712,6 +2836,8 @@ async function playTrackById(trackId, direction){
   currentTrackId = trackId;
   crossfadeTriggered = false;
   nextTrackPrefetchTriggered = false;
+  // Incrémente le compteur d'écoutes du titre (utilisé par le Classement).
+  tracksRef.doc(trackId).update({ plays: firebase.firestore.FieldValue.increment(1) }).catch(()=>{});
   document.getElementById('p-cover').src = track.coverURL || fallbackCoverSvg();
   document.getElementById('p-title').textContent = track.title || 'Sans titre';
   document.getElementById('p-artist').textContent = (track.artist || 'Artiste inconnu') + ' · chargement…';
