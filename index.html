@@ -909,7 +909,7 @@ input,textarea{ font-family:inherit; }
       </button>
     </div>
     <div>
-      <p class="hero-eyebrow">Dernier ajout</p>
+      <p class="hero-eyebrow" id="hero-eyebrow">Dernier ajout</p>
       <h1 class="hero-title" id="hero-title">—</h1>
       <p class="hero-artist" id="hero-artist">—</p>
       <div class="hero-actions">
@@ -1332,6 +1332,16 @@ input,textarea{ font-family:inherit; }
     <button type="button" class="btn btn-ghost btn-sm edit-concert-toggle" id="edit-concert-toggle" style="margin-top:14px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;">
       <span id="edit-concert-toggle-icon">🎤</span>
       <span id="edit-concert-toggle-label">Certifier pour le mode concert</span>
+    </button>
+
+    <!-- Réservé aux modos : met ce titre en avant dans le bandeau d'accueil
+         comme "musique de l'événement". Un seul titre peut être mis en
+         avant à la fois : activer ce bouton sur un titre désactive
+         automatiquement celui qui l'était sur un autre. Se sauvegarde
+         immédiatement au clic (indépendant du bouton "Enregistrer"). -->
+    <button type="button" class="btn btn-ghost btn-sm edit-concert-toggle" id="edit-event-toggle" style="margin-top:10px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;">
+      <span id="edit-event-toggle-icon">🎉</span>
+      <span id="edit-event-toggle-label">Mettre en avant comme musique de l'événement</span>
     </button>
 
     <!-- Volume propre à ce titre certifié : l'admin règle le curseur (simple
@@ -2863,8 +2873,13 @@ document.getElementById('np-menu-addpl-btn').addEventListener('click', ()=>{
 function renderHero(){
   const hero = document.getElementById('hero');
   if(!allTracks.length){ hero.style.display = 'none'; return; }
-  const t = allTracks[0];
+  // Priorité au titre choisi par l'admin comme "musique de l'événement" ;
+  // à défaut, on retombe sur le dernier titre ajouté au catalogue.
+  const featured = allTracks.find(tr => tr.eventFeatured);
+  const t = featured || allTracks[0];
   hero.style.display = '';
+  const eyebrow = document.getElementById('hero-eyebrow');
+  if(eyebrow) eyebrow.textContent = featured ? "🎉 Musique de l'événement" : 'Dernier ajout';
   document.getElementById('hero-title').textContent = t.title || 'Sans titre';
   document.getElementById('hero-artist').textContent = t.artist || 'Artiste inconnu';
   document.getElementById('hero-cover').src = t.coverURL || fallbackCoverSvg();
@@ -3095,8 +3110,16 @@ async function deleteTrack(trackId){
 let editingTrackId = null;
 let editCoverDataUrl = null;
 let editConcertCertified = false;
+let editEventFeatured = false;
 let editConcertVolume = 80; // valeur affichée sur le curseur (simple aperçu tant que non verrouillé)
 let editConcertVolumeLocked = false; // reflète track.concertVolume (présence = verrouillé)
+function refreshEditEventToggleUI(){
+  const btn = document.getElementById('edit-event-toggle');
+  const label = document.getElementById('edit-event-toggle-label');
+  if(!btn || !label) return;
+  btn.classList.toggle('is-active', editEventFeatured);
+  label.textContent = editEventFeatured ? 'Musique de l\'événement ✓ (bandeau d\'accueil)' : "Mettre en avant comme musique de l'événement";
+}
 function refreshEditConcertToggleUI(){
   const btn = document.getElementById('edit-concert-toggle');
   const label = document.getElementById('edit-concert-toggle-label');
@@ -3134,6 +3157,8 @@ function openEditModal(trackId){
   editingTrackId = trackId;
   editCoverDataUrl = track.coverURL || null;
   editConcertCertified = !!track.concertCertified;
+  editEventFeatured = !!track.eventFeatured;
+  refreshEditEventToggleUI();
   editConcertVolumeLocked = typeof track.concertVolume === 'number';
   editConcertVolume = editConcertVolumeLocked ? track.concertVolume : 80;
   document.getElementById('edit-concert-volume').value = editConcertVolume;
@@ -3194,6 +3219,39 @@ document.getElementById('edit-concert-toggle').addEventListener('click', async (
   }catch(err){
     console.error(err);
     showToast('Impossible de mettre à jour la certification.');
+  }finally{
+    btn.disabled = false;
+  }
+});
+/* Mise en avant "musique de l'événement" dans le bandeau d'accueil : un
+   seul titre à la fois. Au clic, si on active, on retire d'abord le
+   marqueur sur tout autre titre qui l'aurait (via un batch Firestore)
+   avant de le poser sur le titre en cours d'édition. Se sauvegarde
+   immédiatement, indépendamment du bouton "Enregistrer". */
+document.getElementById('edit-event-toggle').addEventListener('click', async ()=>{
+  if(!isAdmin || !editingTrackId) return;
+  const btn = document.getElementById('edit-event-toggle');
+  const newVal = !editEventFeatured;
+  btn.disabled = true;
+  try{
+    const batch = db.batch();
+    if(newVal){
+      allTracks.forEach(t=>{
+        if(t.eventFeatured && t.id !== editingTrackId){
+          batch.update(tracksRef.doc(t.id), { eventFeatured: firebase.firestore.FieldValue.delete() });
+        }
+      });
+      batch.update(tracksRef.doc(editingTrackId), { eventFeatured: true });
+    }else{
+      batch.update(tracksRef.doc(editingTrackId), { eventFeatured: firebase.firestore.FieldValue.delete() });
+    }
+    await batch.commit();
+    editEventFeatured = newVal;
+    refreshEditEventToggleUI();
+    showToast(newVal ? "Titre mis en avant comme musique de l'événement." : "Mise en avant retirée.");
+  }catch(err){
+    console.error(err);
+    showToast("Impossible de mettre à jour la mise en avant.");
   }finally{
     btn.disabled = false;
   }
