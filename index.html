@@ -640,9 +640,15 @@ input,textarea{ font-family:inherit; }
         <h2 class="pl-detail-title" id="pl-detail-title">—</h2>
         <p class="pl-detail-desc" id="pl-detail-desc" style="display:none;"></p>
         <span class="section-count" id="pl-detail-count">0 titre</span>
+        <span class="section-count" id="pl-detail-shared-badge" style="display:none; margin-left:8px;">🔗 Partagée avec toi</span>
         <div class="pl-detail-actions">
           <button class="btn btn-gold" id="pl-detail-play">▶ Lire</button>
+          <button class="btn btn-ghost" id="pl-detail-shuffle" aria-label="Lecture aléatoire">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px; vertical-align:-2px;"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>Aléatoire
+          </button>
           <button class="btn btn-ghost btn-sm" id="pl-detail-add-tracks">+ Ajouter des titres</button>
+          <button class="btn btn-ghost btn-sm" id="pl-detail-share">↗ Partager</button>
+          <button class="btn btn-gold btn-sm" id="pl-detail-save" style="display:none;">+ Enregistrer dans ma bibliothèque</button>
           <button class="btn btn-ghost btn-sm" id="pl-detail-edit">Modifier</button>
           <button class="btn btn-ghost btn-sm" id="pl-detail-delete">Supprimer</button>
         </div>
@@ -948,6 +954,30 @@ input,textarea{ font-family:inherit; }
     <div class="field" style="margin-top:14px;"><label>Nom</label><input type="text" id="playlist-form-name" placeholder="Ma playlist"></div>
     <div class="field"><label>Description (optionnelle)</label><input type="text" id="playlist-form-desc" placeholder="Quelques mots sur cette playlist"></div>
     <button class="btn btn-gold btn-block" id="playlist-form-submit" style="margin-top:8px;">Créer la playlist</button>
+  </div>
+</div>
+
+<!-- =========================================================
+     PLAYLIST — PARTAGE
+     ========================================================= -->
+<div class="overlay" id="share-playlist-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 class="modal-title">Partager la playlist</h3>
+      <button class="modal-close" data-close="share-playlist-overlay">✕</button>
+    </div>
+    <p style="color:var(--text-dim); font-size:13.5px; margin:0 0 6px; line-height:1.5;">Active le partage pour obtenir un lien. Toute personne qui l'ouvre peut écouter la playlist et l'ajouter à sa propre bibliothèque.</p>
+    <label class="field-check" style="margin-top:12px;">
+      <input type="checkbox" id="share-playlist-toggle">
+      <span>Activer le partage par lien</span>
+    </label>
+    <div id="share-playlist-link-row" style="display:none; margin-top:6px;">
+      <div class="field"><input type="text" id="share-playlist-link" readonly></div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-gold btn-sm" id="share-playlist-copy">Copier le lien</button>
+        <button class="btn btn-ghost btn-sm" id="share-playlist-native" style="display:none;">Partager…</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1413,9 +1443,18 @@ function openPlaylistDetail(id){
   document.getElementById('view-playlist-detail').style.display = '';
   renderTracks();
 }
-document.getElementById('playlist-detail-back').addEventListener('click', ()=> switchView('playlists'));
+document.getElementById('playlist-detail-back').addEventListener('click', ()=>{
+  // Une playlist partagée ouverte via un lien n'appartient pas forcément à
+  // l'utilisateur courant : on revient à la bibliothèque plutôt que
+  // d'imposer une connexion pour accéder à l'onglet "Playlists".
+  switchView(auth.currentUser ? 'playlists' : 'library');
+});
+// Cache local des playlists d'AUTRES utilisateurs consultées via un lien de
+// partage (elles ne font pas partie de allPlaylists, qui ne contient que les
+// playlists possédées par l'utilisateur connecté).
+let sharedPlaylistCache = {};
 function currentPlaylist(){
-  return allPlaylists.find(p => p.id === currentPlaylistId) || null;
+  return allPlaylists.find(p => p.id === currentPlaylistId) || sharedPlaylistCache[currentPlaylistId] || null;
 }
 document.getElementById('brand-home').addEventListener('click', (e)=>{ e.preventDefault(); switchView('library'); });
 document.getElementById('search-input').addEventListener('input', (e)=>{
@@ -1520,6 +1559,25 @@ function playPlaylistById(id){
   playTrackById(list[0].id);
 }
 
+// Mélange façon Fisher-Yates : chaque permutation a une chance égale, plutôt
+// qu'un simple tri par Math.random() qui biaiserait le résultat.
+function shuffleArray(arr){
+  const a = arr.slice();
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function shufflePlaylistTracks(pl){
+  const ids = Array.isArray(pl.trackIds) ? pl.trackIds : [];
+  const list = ids.map(tid=> allTracks.find(t=>t.id===tid)).filter(Boolean);
+  if(!list.length){ showToast('Cette playlist est vide.'); return; }
+  currentQueue = shuffleArray(list);
+  currentTrackIndex = 0;
+  playTrackById(currentQueue[0].id);
+}
+
 async function deletePlaylist(id){
   const pl = allPlaylists.find(p=>p.id===id);
   if(!pl) return;
@@ -1538,11 +1596,12 @@ function renderPlaylistDetailTracks(){
   let list = orderedIds.map(id => allTracks.find(t => t.id === id)).filter(Boolean);
   if(searchTerm) list = list.filter(matchesSearch);
   currentQueue = list;
-  paintPlaylistHeader(pl, list);
-  paintPlaylistRows(list);
+  const isOwner = !!(auth.currentUser && pl.ownerId === auth.currentUser.uid);
+  paintPlaylistHeader(pl, list, isOwner);
+  paintPlaylistRows(list, isOwner);
 }
 
-function paintPlaylistHeader(pl, list){
+function paintPlaylistHeader(pl, list, isOwner){
   document.getElementById('pl-detail-title').textContent = pl.name || 'Playlist sans nom';
   const descEl = document.getElementById('pl-detail-desc');
   descEl.textContent = pl.description || '';
@@ -1550,9 +1609,19 @@ function paintPlaylistHeader(pl, list){
   document.getElementById('pl-detail-count').textContent = list.length + (list.length > 1 ? ' titres' : ' titre');
   const cover = pl.coverURL || (list[0] && list[0].coverURL) || fallbackCoverSvg();
   document.getElementById('pl-detail-cover').src = cover;
+
+  // Seul le propriétaire peut modifier / supprimer / partager sa playlist ;
+  // un visiteur arrivé via un lien de partage peut seulement l'écouter et
+  // l'enregistrer dans sa propre bibliothèque.
+  document.getElementById('pl-detail-add-tracks').style.display = isOwner ? '' : 'none';
+  document.getElementById('pl-detail-edit').style.display = isOwner ? '' : 'none';
+  document.getElementById('pl-detail-delete').style.display = isOwner ? '' : 'none';
+  document.getElementById('pl-detail-share').style.display = isOwner ? '' : 'none';
+  document.getElementById('pl-detail-save').style.display = isOwner ? 'none' : '';
+  document.getElementById('pl-detail-shared-badge').style.display = isOwner ? 'none' : '';
 }
 
-function paintPlaylistRows(list){
+function paintPlaylistRows(list, isOwner){
   const wrap = document.getElementById('pl-track-list');
   const empty = document.getElementById('pl-detail-empty');
   if(!list.length){
@@ -1572,6 +1641,7 @@ function paintPlaylistRows(list){
         <div class="pl-row-artist">${escapeHtml(t.artist || 'Artiste inconnu')}</div>
       </div>
       <span class="pl-row-duration">${formatTime(t.duration || 0)}</span>
+      ${isOwner ? `
       <div class="pl-row-actions">
         <button class="icon-btn" data-pl-up="${t.id}" aria-label="Monter" ${i===0 ? 'disabled' : ''}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg>
@@ -1582,7 +1652,7 @@ function paintPlaylistRows(list){
         <button class="icon-btn" data-pl-remove="${t.id}" aria-label="Retirer de la playlist">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
-      </div>
+      </div>` : ''}
     </div>`;
   }).join('');
 
@@ -1667,6 +1737,128 @@ document.getElementById('playlists-empty-create-btn').addEventListener('click', 
 document.getElementById('pl-detail-edit').addEventListener('click', ()=> openPlaylistForm(currentPlaylistId));
 document.getElementById('pl-detail-delete').addEventListener('click', ()=>{ if(currentPlaylistId) deletePlaylist(currentPlaylistId); });
 document.getElementById('pl-detail-play').addEventListener('click', ()=>{ if(currentPlaylistId) playPlaylistById(currentPlaylistId); });
+document.getElementById('pl-detail-shuffle').addEventListener('click', ()=>{
+  const pl = currentPlaylist();
+  if(pl) shufflePlaylistTracks(pl);
+});
+
+/* --- Enregistrer une playlist partagée (lecture seule) dans sa bibliothèque --- */
+document.getElementById('pl-detail-save').addEventListener('click', async ()=>{
+  if(!auth.currentUser){ clearAuthErrors(); openOverlay('account-overlay'); return; }
+  const pl = currentPlaylist();
+  if(!pl) return;
+  const btn = document.getElementById('pl-detail-save');
+  btn.disabled = true;
+  try{
+    await playlistsRef.add({
+      name: pl.name ? `${pl.name} (copie)` : 'Playlist partagée',
+      description: pl.description || null,
+      coverURL: pl.coverURL || null,
+      trackIds: Array.isArray(pl.trackIds) ? [...pl.trackIds] : [],
+      ownerId: auth.currentUser.uid,
+      ownerName: (currentProfile && currentProfile.displayName) || auth.currentUser.displayName || (auth.currentUser.email ? auth.currentUser.email.split('@')[0] : 'Membre'),
+      ownerPhoto: (currentProfile && currentProfile.photoURL) || auth.currentUser.photoURL || null,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    showToast('Playlist enregistrée dans ta bibliothèque 🎶');
+  }catch(e){
+    console.error(e);
+    showToast("Impossible d'enregistrer cette playlist.");
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+/* --- Modale : partager une playlist par lien --- */
+let sharePlaylistTargetId = null;
+function buildPlaylistShareLink(id){
+  const url = new URL(location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('playlist', id);
+  return url.toString();
+}
+function updateShareLinkUI(pl){
+  const row = document.getElementById('share-playlist-link-row');
+  if(pl && pl.isPublic){
+    row.style.display = '';
+    document.getElementById('share-playlist-link').value = buildPlaylistShareLink(pl.id);
+  }else{
+    row.style.display = 'none';
+  }
+}
+document.getElementById('pl-detail-share').addEventListener('click', ()=>{
+  const pl = currentPlaylist();
+  if(!pl) return;
+  sharePlaylistTargetId = pl.id;
+  document.getElementById('share-playlist-toggle').checked = !!pl.isPublic;
+  updateShareLinkUI(pl);
+  openOverlay('share-playlist-overlay');
+});
+document.getElementById('share-playlist-toggle').addEventListener('change', async (e)=>{
+  if(!sharePlaylistTargetId) return;
+  const isPublic = e.target.checked;
+  e.target.disabled = true;
+  try{
+    await playlistsRef.doc(sharePlaylistTargetId).set({
+      isPublic,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    const pl = allPlaylists.find(p=>p.id===sharePlaylistTargetId) || currentPlaylist() || { id: sharePlaylistTargetId };
+    updateShareLinkUI({ ...pl, isPublic });
+    showToast(isPublic ? 'Partage activé : le lien est actif.' : 'Partage désactivé.');
+  }catch(err){
+    console.error(err);
+    e.target.checked = !isPublic;
+    showToast("Impossible de modifier le partage de cette playlist.");
+  }finally{
+    e.target.disabled = false;
+  }
+});
+document.getElementById('share-playlist-copy').addEventListener('click', async ()=>{
+  const input = document.getElementById('share-playlist-link');
+  try{
+    await navigator.clipboard.writeText(input.value);
+    showToast('Lien copié !');
+  }catch(e){
+    input.select();
+    try{ document.execCommand('copy'); showToast('Lien copié !'); }
+    catch(e2){ showToast("Impossible de copier le lien."); }
+  }
+});
+if(navigator.share) document.getElementById('share-playlist-native').style.display = '';
+document.getElementById('share-playlist-native').addEventListener('click', async ()=>{
+  const input = document.getElementById('share-playlist-link');
+  const pl = currentPlaylist();
+  try{
+    await navigator.share({
+      title: pl ? (pl.name || 'Playlist RIJOUL MUSIC') : 'Playlist RIJOUL MUSIC',
+      text: 'Écoute cette playlist sur RIJOUL MUSIC :',
+      url: input.value
+    });
+  }catch(e){ /* partage annulé par l'utilisateur */ }
+});
+
+/* --- Ouvre automatiquement une playlist partagée via ?playlist=ID dans l'URL --- */
+async function openSharedPlaylistFromURL(){
+  const sharedId = new URLSearchParams(location.search).get('playlist');
+  if(!sharedId) return;
+  try{
+    const doc = await playlistsRef.doc(sharedId).get();
+    if(!doc.exists){ showToast("Cette playlist n'existe pas ou plus."); return; }
+    const data = doc.data();
+    if(!data.isPublic && !(auth.currentUser && data.ownerId === auth.currentUser.uid)){
+      showToast("Cette playlist n'est pas (ou plus) partagée.");
+      return;
+    }
+    sharedPlaylistCache[sharedId] = { id: sharedId, ...data };
+    openPlaylistDetail(sharedId);
+  }catch(e){
+    console.error(e);
+    showToast("Impossible d'ouvrir cette playlist partagée.");
+  }
+}
 document.getElementById('playlist-form-cover-choose').addEventListener('click', ()=> document.getElementById('playlist-form-cover-input').click());
 document.getElementById('playlist-form-cover-input').addEventListener('change', async (e)=>{
   const file = e.target.files[0];
@@ -2757,6 +2949,10 @@ tracksRef.onSnapshot(()=>{
     if(t) updateLikeButtons(t);
   }
 });
+
+// Si l'app est ouverte via un lien de partage (?playlist=ID), ouvre
+// directement cette playlist en lecture, connecté ou non.
+openSharedPlaylistFromURL();
 
 })();
 </script>
