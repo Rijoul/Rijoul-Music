@@ -244,6 +244,7 @@ input,textarea{ font-family:inherit; }
 /* Qui a ajouté un titre reste une info interne (permissions, "mes ajouts")
    mais n'est plus affichée publiquement sur le site. */
 .hero-uploader, .card-uploader{ display:none !important; }
+.offline-badge{ display:inline-flex; align-items:center; justify-content:center; font-size:10px; color:var(--copper-bright); vertical-align:2px; }
 .like-btn{ display:flex; align-items:center; gap:4px; background:transparent; border:0; color:var(--text-faint); font-size:11.5px; font-family:var(--mono); padding:2px; flex-shrink:0; }
 .like-btn.liked{ color:var(--copper); }
 .like-btn svg{ transition:.15s; }
@@ -1017,6 +1018,7 @@ input,textarea{ font-family:inherit; }
           <button class="btn btn-ghost btn-sm" id="pl-detail-add-tracks">+ Ajouter des titres</button>
           <button class="btn btn-ghost btn-sm" id="pl-detail-share">↗ Partager</button>
           <button class="btn btn-gold btn-sm" id="pl-detail-save" style="display:none;">+ Enregistrer dans ma bibliothèque</button>
+          <button class="btn btn-ghost btn-sm" id="pl-detail-offline">⬇ Télécharger pour écoute hors-ligne</button>
           <button class="btn btn-ghost btn-sm" id="pl-detail-edit">Modifier</button>
           <button class="btn btn-ghost btn-sm" id="pl-detail-delete">Supprimer</button>
         </div>
@@ -1550,6 +1552,182 @@ const googleProvider = new firebase.auth.GoogleAuthProvider();
 const AUDIO_CHUNK_SIZE = 700000; // caractères base64 par document (~700 Ko, sous la limite de 1 Mo)
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024; // 10 Mo max par fichier audio d'origine
 const audioBlobCache = new Map(); // trackId -> URL de blob déjà reconstruite (évite de retélécharger)
+
+/* =========================================================
+   ÉCOUTE HORS-LIGNE — stockage local (IndexedDB) des morceaux
+   téléchargés depuis une playlist, pour pouvoir les rejouer sans
+   connexion internet. Contrairement à audioBlobCache ci-dessus (qui ne
+   survit pas au rechargement de la page), IndexedDB persiste vraiment
+   sur l'appareil.
+   ========================================================= */
+const OFFLINE_DB_NAME = 'rijoulMusicOffline';
+const OFFLINE_DB_VERSION = 1;
+const OFFLINE_STORE = 'tracks';
+let offlineDbPromise = null;
+function openOfflineDb(){
+  if(offlineDbPromise) return offlineDbPromise;
+  offlineDbPromise = new Promise((resolve, reject)=>{
+    if(!('indexedDB' in window)){ reject(new Error("IndexedDB indisponible sur ce navigateur.")); return; }
+    const req = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
+    req.onupgradeneeded = ()=>{
+      const db = req.result;
+      if(!db.objectStoreNames.contains(OFFLINE_STORE)){
+        db.createObjectStore(OFFLINE_STORE, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+  return offlineDbPromise;
+}
+async function offlineDbGet(id){
+  const db = await openOfflineDb();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(OFFLINE_STORE, 'readonly');
+    const req = tx.objectStore(OFFLINE_STORE).get(id);
+    req.onsuccess = ()=> resolve(req.result || null);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function offlineDbPut(record){
+  const db = await openOfflineDb();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(OFFLINE_STORE, 'readwrite');
+    tx.objectStore(OFFLINE_STORE).put(record);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+async function offlineDbDelete(id){
+  const db = await openOfflineDb();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(OFFLINE_STORE, 'readwrite');
+    tx.objectStore(OFFLINE_STORE).delete(id);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+async function offlineDbAllIds(){
+  const db = await openOfflineDb();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(OFFLINE_STORE, 'readonly');
+    const req = tx.objectStore(OFFLINE_STORE).getAllKeys();
+    req.onsuccess = ()=> resolve(req.result || []);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+
+// Ensemble en mémoire des ids de titres déjà présents hors-ligne, pour un
+// affichage instantané des badges/boutons sans requêter IndexedDB à chaque
+// rendu. Rafraîchi au démarrage et après chaque téléchargement/suppression.
+let offlineTrackIds = new Set();
+async function refreshOfflineTrackIdsCache(){
+  try{
+    const ids = await offlineDbAllIds();
+    offlineTrackIds = new Set(ids);
+  }catch(err){
+    console.warn("Impossible de lire le cache hors-ligne :", err);
+  }
+  renderPlaylistsGrid();
+  updateOfflinePlaylistButton();
+}
+refreshOfflineTrackIdsCache();
+
+// Télécharge l'intégralité d'un morceau (chunks base64 Firestore) et le
+// stocke sous forme de Blob dans IndexedDB, avec les métadonnées utiles à
+// une lecture 100% locale (titre, artiste, pochette déjà en data URL).
+async function downloadTrackOffline(track){
+  if(offlineTrackIds.has(track.id)) return;
+  const snap = await tracksRef.doc(track.id).collection('audioChunks').orderBy('index').get();
+  if(snap.empty) throw new Error(`Fichier audio introuvable pour "${track.title || 'ce titre'}".`);
+  let base64 = '';
+  snap.forEach(doc => { base64 += doc.data().data || ''; });
+  const byteChars = atob(base64);
+  const bytes = new Uint8Array(byteChars.length);
+  for(let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  const blob = new Blob([bytes], { type: track.audioMimeType || 'audio/mpeg' });
+  await offlineDbPut({
+    id: track.id,
+    title: track.title || 'Sans titre',
+    artist: track.artist || 'Artiste inconnu',
+    coverURL: track.coverURL || null,
+    duration: track.duration || 0,
+    mimeType: track.audioMimeType || 'audio/mpeg',
+    blob,
+    savedAt: Date.now()
+  });
+  offlineTrackIds.add(track.id);
+}
+async function removeTrackOffline(trackId){
+  await offlineDbDelete(trackId);
+  offlineTrackIds.delete(trackId);
+  if(audioBlobCache.has(trackId)){
+    URL.revokeObjectURL(audioBlobCache.get(trackId));
+    audioBlobCache.delete(trackId);
+  }
+}
+let offlineDownloadInProgress = false;
+// Bascule le bouton "Télécharger pour écoute hors-ligne" du détail de
+// playlist : libellé, état actif, et affichage (masqué si playlist vide).
+function updateOfflinePlaylistButton(){
+  const btn = document.getElementById('pl-detail-offline');
+  if(!btn) return;
+  const pl = currentPlaylist();
+  const ids = pl && Array.isArray(pl.trackIds) ? pl.trackIds : [];
+  if(!pl || !ids.length){ btn.style.display = 'none'; return; }
+  if(offlineDownloadInProgress) return; // ne pas écraser le texte de progression
+  btn.style.display = '';
+  const allOffline = ids.every(id => offlineTrackIds.has(id));
+  btn.classList.toggle('btn-gold', allOffline);
+  btn.classList.toggle('btn-ghost', !allOffline);
+  btn.textContent = allOffline ? '✓ Disponible hors-ligne · Supprimer' : '⬇ Télécharger pour écoute hors-ligne';
+}
+document.getElementById('pl-detail-offline').addEventListener('click', async ()=>{
+  const pl = currentPlaylist();
+  if(!pl || offlineDownloadInProgress) return;
+  const ids = Array.isArray(pl.trackIds) ? pl.trackIds : [];
+  const tracks = ids.map(id => allTracks.find(t => t.id === id)).filter(Boolean);
+  if(!tracks.length){ showToast('Cette playlist est vide.'); return; }
+  const btn = document.getElementById('pl-detail-offline');
+  const allOffline = ids.every(id => offlineTrackIds.has(id));
+  if(allOffline){
+    btn.disabled = true;
+    try{
+      for(const t of tracks) await removeTrackOffline(t.id);
+      showToast('Copie hors-ligne supprimée pour cette playlist.');
+    }catch(err){
+      console.error(err);
+      showToast('Impossible de supprimer les fichiers hors-ligne.');
+    }finally{
+      btn.disabled = false;
+      updateOfflinePlaylistButton();
+      renderPlaylistsGrid();
+    }
+    return;
+  }
+  const toDownload = tracks.filter(t => !offlineTrackIds.has(t.id));
+  offlineDownloadInProgress = true;
+  btn.disabled = true;
+  let done = 0, failed = 0;
+  btn.textContent = `Téléchargement… 0/${toDownload.length}`;
+  for(const t of toDownload){
+    try{ await downloadTrackOffline(t); }
+    catch(err){ console.error(err); failed++; }
+    done++;
+    btn.textContent = `Téléchargement… ${done}/${toDownload.length}`;
+  }
+  offlineDownloadInProgress = false;
+  btn.disabled = false;
+  updateOfflinePlaylistButton();
+  renderPlaylistsGrid();
+  if(failed) showToast(`${failed} titre(s) n'ont pas pu être téléchargé(s) (vérifie ta connexion).`);
+  else showToast('Playlist disponible pour une écoute hors-ligne. 🎧');
+});
+// Petit avertissement quand la connexion tombe/revient, pour que
+// l'utilisateur comprenne pourquoi seuls les titres téléchargés jouent.
+window.addEventListener('offline', ()=> showToast('Hors connexion — seuls les titres téléchargés peuvent être lus. 📴'));
+window.addEventListener('online', ()=> showToast('Connexion rétablie. ✅'));
+
 
 // Profils utilisateurs PARTAGÉS avec RIJOUL VISION (même chemin Firestore) :
 // se connecter ici avec un compte RIJOUL VISION retrouve le même nom et la
@@ -2374,6 +2552,7 @@ function renderPlaylistsGrid(){
     const trackIds = Array.isArray(pl.trackIds) ? pl.trackIds : [];
     const firstTrack = trackIds.map(id=> allTracks.find(t=>t.id===id)).find(Boolean);
     const cover = pl.coverURL || (firstTrack && firstTrack.coverURL) || fallbackCoverSvg();
+    const isOfflineReady = trackIds.length > 0 && trackIds.every(id => offlineTrackIds.has(id));
     return `
     <div class="card" data-playlist-id="${pl.id}">
       <div class="card-cover">
@@ -2387,7 +2566,7 @@ function renderPlaylistsGrid(){
           </button>
         </div>
       </div>
-      <p class="card-title">${escapeHtml(pl.name || 'Playlist sans nom')}</p>
+      <p class="card-title">${escapeHtml(pl.name || 'Playlist sans nom')}${isOfflineReady ? ' <span class="offline-badge" title="Disponible hors-ligne">⬇</span>' : ''}</p>
       <p class="card-artist">${trackIds.length} ${trackIds.length > 1 ? 'titres' : 'titre'}</p>
     </div>`;
   }).join('');
@@ -2479,6 +2658,7 @@ function paintPlaylistHeader(pl, list, isOwner){
   document.getElementById('pl-detail-share').style.display = isOwner ? '' : 'none';
   document.getElementById('pl-detail-save').style.display = isOwner ? 'none' : '';
   document.getElementById('pl-detail-shared-badge').style.display = isOwner ? 'none' : '';
+  updateOfflinePlaylistButton();
 }
 
 function paintPlaylistRows(list, isOwner){
@@ -3592,6 +3772,21 @@ async function uploadAudioToFirestore(trackRef, file, uploaderId, onProgress){
 // pour ne reconstruire chaque morceau qu'une seule fois par session.
 async function getTrackAudioBlobUrl(track){
   if(audioBlobCache.has(track.id)) return audioBlobCache.get(track.id);
+  // Priorité à la copie hors-ligne locale si elle existe : lecture instantanée
+  // et fonctionne même sans connexion (voir downloadTrackOffline / IndexedDB).
+  try{
+    const offlineRecord = await offlineDbGet(track.id);
+    if(offlineRecord && offlineRecord.blob){
+      const url = URL.createObjectURL(offlineRecord.blob);
+      audioBlobCache.set(track.id, url);
+      return url;
+    }
+  }catch(err){
+    console.warn("Lecture du cache hors-ligne impossible, on tente Firestore :", err);
+  }
+  if(!navigator.onLine){
+    throw new Error("Ce titre n'est pas téléchargé et tu es hors connexion.");
+  }
   const snap = await tracksRef.doc(track.id).collection('audioChunks').orderBy('index').get();
   if(snap.empty) throw new Error("Fichier audio introuvable.");
   let base64 = '';
@@ -4008,7 +4203,9 @@ async function playTrackById(trackId, direction){
     syncNowPlayingUI();
   }catch(e){
     console.error(e);
-    showToast("Impossible de charger ce morceau.");
+    showToast(e && e.message === "Ce titre n'est pas téléchargé et tu es hors connexion."
+      ? "Hors connexion : ce titre n'a pas été téléchargé. 📴"
+      : "Impossible de charger ce morceau.");
     if(currentTrackId === trackId) stopPlayback();
   }
 }
