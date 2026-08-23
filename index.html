@@ -431,14 +431,19 @@ input,textarea{ font-family:inherit; }
   filter:blur(3px); opacity:0; transform-origin:top center; will-change:transform, opacity;
   transition:opacity .18s ease-out;
 }
-.np-beam-1{ --beam-color:rgba(255,138,61,.95); left:-6%; animation:npBeamSweep1 7s ease-in-out infinite; }
-.np-beam-2{ --beam-color:rgba(120,190,255,.9); left:22%; animation:npBeamSweep2 9s ease-in-out infinite; }
-.np-beam-3{ --beam-color:rgba(255,90,200,.85); left:46%; animation:npBeamSweep3 8s ease-in-out infinite; }
-.np-beam-4{ --beam-color:rgba(140,255,170,.85); left:70%; animation:npBeamSweep4 10s ease-in-out infinite; }
+/* 5 faisceaux : aigus à gauche / centre / droite (np-beam-1, np-beam-3,
+   np-beam-5), médiums dans les espaces restants entre eux (np-beam-2,
+   np-beam-4) — répartition régulière sur toute la largeur. */
+.np-beam-1{ --beam-color:rgba(255,138,61,.95); left:-6%;  animation:npBeamSweep1 7s ease-in-out infinite; }
+.np-beam-2{ --beam-color:rgba(120,190,255,.9); left:13%;  animation:npBeamSweep2 9s ease-in-out infinite; }
+.np-beam-3{ --beam-color:rgba(255,90,200,.85); left:32%;  animation:npBeamSweep3 8s ease-in-out infinite; }
+.np-beam-4{ --beam-color:rgba(140,255,170,.85); left:51%; animation:npBeamSweep4 10s ease-in-out infinite; }
+.np-beam-5{ --beam-color:rgba(255,138,61,.95); left:70%;  animation:npBeamSweep5 8.5s ease-in-out infinite; }
 @keyframes npBeamSweep1{ 0%,100%{ transform:rotate(8deg); } 50%{ transform:rotate(26deg); } }
 @keyframes npBeamSweep2{ 0%,100%{ transform:rotate(-20deg); } 50%{ transform:rotate(-4deg); } }
 @keyframes npBeamSweep3{ 0%,100%{ transform:rotate(0deg); } 50%{ transform:rotate(15deg); } }
 @keyframes npBeamSweep4{ 0%,100%{ transform:rotate(-24deg); } 50%{ transform:rotate(-9deg); } }
+@keyframes npBeamSweep5{ 0%,100%{ transform:rotate(18deg); } 50%{ transform:rotate(-2deg); } }
 .np-strobe{
   position:absolute; inset:0; opacity:0; pointer-events:none;
   background:radial-gradient(circle at 50% 28%, rgba(255,255,255,0.95), transparent 62%);
@@ -973,6 +978,7 @@ input,textarea{ font-family:inherit; }
     <span class="np-beam np-beam-2"></span>
     <span class="np-beam np-beam-3"></span>
     <span class="np-beam np-beam-4"></span>
+    <span class="np-beam np-beam-5"></span>
     <span class="np-strobe" id="np-strobe"></span>
   </div>
   <div class="np-sheet" id="np-sheet">
@@ -3878,10 +3884,13 @@ function updateConcertLights(data){
   concertTrebleOn = concertTrebleOn ? (treble > offT) : (treble > onT);
   const midOpacity = concertMidOn ? clamp(0.16 + mid * 0.85) : 0;
   const trebleOpacity = concertTrebleOn ? clamp(0.14 + treble * 0.85) : 0;
-  if(concertBeams[0]) concertBeams[0].style.opacity = midOpacity;
-  if(concertBeams[1]) concertBeams[1].style.opacity = trebleOpacity;
-  if(concertBeams[2]) concertBeams[2].style.opacity = midOpacity;
-  if(concertBeams[3]) concertBeams[3].style.opacity = trebleOpacity;
+  // Faisceaux 1/3/5 (gauche / centre / droite) = aigus.
+  // Faisceaux 2/4 (entre gauche-centre et centre-droite) = médiums.
+  if(concertBeams[0]) concertBeams[0].style.opacity = trebleOpacity; // gauche
+  if(concertBeams[1]) concertBeams[1].style.opacity = midOpacity;    // entre gauche et centre
+  if(concertBeams[2]) concertBeams[2].style.opacity = trebleOpacity; // centre
+  if(concertBeams[3]) concertBeams[3].style.opacity = midOpacity;    // entre centre et droite
+  if(concertBeams[4]) concertBeams[4].style.opacity = trebleOpacity; // droite
 
   // Flash blanc : ne se déclenche plus dès que la basse est "haute" en
   // continu, mais seulement sur un vrai coup, c'est-à-dire un pic net
@@ -3891,7 +3900,7 @@ function updateConcertLights(data){
   if(concertBassHistory.length > 40) concertBassHistory.shift();
   const avg = concertBassHistory.reduce((a,b)=>a+b, 0) / concertBassHistory.length;
   const now = performance.now();
-  const isHit = bass > 0.66 && bass > avg * 1.55 + 0.12 && (now - concertLastHitTime) > 260;
+  const isHit = bass > 0.48 && bass > avg * 1.3 + 0.08 && (now - concertLastHitTime) > 260;
   if(isHit){
     concertLastHitTime = now;
     concertStrobeLevel = clamp((bass - 0.5) * 1.6);
