@@ -133,6 +133,11 @@ input,textarea{ font-family:inherit; }
 .user-chip.open .chip-caret{ transform:rotate(180deg); }
 .user-dd{ position:absolute; top:calc(100% + 10px); right:0; width:224px; background:rgba(28,28,30,0.75); backdrop-filter:var(--glass-blur); -webkit-backdrop-filter:var(--glass-blur); border:1px solid var(--glass-border-strong); border-radius:18px; box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,0.1); padding:6px; display:none; z-index:50; }
 .user-chip.open .user-dd{ display:block; }
+/* Sur mobile, .topnav passe en overflow:hidden pour contenir ses lignes
+   empilées : ça coupait ce menu (le bouton "Se déconnecter" devenait
+   inaccessible). En position "fixed", calculée en JS à l'ouverture, le menu
+   sort de ce conteneur et reste toujours entièrement visible et cliquable. */
+.user-dd.fixed-pos{ position:fixed; top:var(--dd-top,60px); right:var(--dd-right,12px); left:auto; }
 .dd-item{ display:flex; align-items:center; gap:9px; width:100%; text-align:left; background:transparent; border:0; color:var(--text); padding:10px 11px; border-radius:12px; font-size:13.5px; font-weight:500; }
 .dd-item:hover{ background:rgba(255,255,255,0.09); }
 .dd-item.danger{ color:var(--danger); }
@@ -405,11 +410,14 @@ input,textarea{ font-family:inherit; }
 .np-sheet.concert-mode .np-bg{ filter:blur(0px) saturate(150%) brightness(0.55) contrast(1.08); transform:scale(1.04); opacity:1; }
 .np-sheet.concert-mode .np-bg-shade{ opacity:.7; }
 .np-concert-lights{
-  position:absolute; inset:0; z-index:1; overflow:hidden; pointer-events:none;
+  /* Positionné directement sur .nowplaying-overlay (position:fixed, inset:0),
+     donc "inset:0" ici correspond à l'écran entier, pas seulement à la
+     carte du lecteur. */
+  position:absolute; inset:0; z-index:5; overflow:hidden; pointer-events:none;
   opacity:0; transition:opacity .6s ease; mix-blend-mode:screen;
   animation:npConcertHue 16s linear infinite; animation-play-state:paused;
 }
-.np-sheet.concert-mode .np-concert-lights{ opacity:1; animation-play-state:running; }
+.np-concert-lights.active{ opacity:1; animation-play-state:running; }
 @keyframes npConcertHue{ from{ filter:hue-rotate(0deg); } to{ filter:hue-rotate(360deg); } }
 .np-beam{
   position:absolute; top:-25%; left:50%; width:42%; height:150%;
@@ -950,16 +958,20 @@ input,textarea{ font-family:inherit; }
      S'ouvre en cliquant sur le bandeau du lecteur (hors boutons).
      ========================================================= -->
 <div class="overlay nowplaying-overlay" id="nowplaying-overlay">
+  <!-- Mode concert : posé directement sur l'overlay (qui couvre déjà tout
+       l'écran) et non plus dans .np-sheet (qui est limité à la carte du
+       lecteur et masquée par son overflow:hidden). Les faisceaux et le
+       flash balaient donc désormais la page entière. -->
+  <div class="np-concert-lights" id="np-concert-lights" aria-hidden="true">
+    <span class="np-beam np-beam-1"></span>
+    <span class="np-beam np-beam-2"></span>
+    <span class="np-beam np-beam-3"></span>
+    <span class="np-beam np-beam-4"></span>
+    <span class="np-strobe" id="np-strobe"></span>
+  </div>
   <div class="np-sheet" id="np-sheet">
     <img class="np-bg" id="np-bg" alt="">
     <div class="np-bg-shade"></div>
-    <div class="np-concert-lights" id="np-concert-lights" aria-hidden="true">
-      <span class="np-beam np-beam-1"></span>
-      <span class="np-beam np-beam-2"></span>
-      <span class="np-beam np-beam-3"></span>
-      <span class="np-beam np-beam-4"></span>
-      <span class="np-strobe" id="np-strobe"></span>
-    </div>
     <div class="np-content">
       <div class="np-topbar">
         <button class="np-close" id="np-close" data-close="nowplaying-overlay" aria-label="Réduire">
@@ -1488,10 +1500,25 @@ const userAvatar = document.getElementById('user-avatar');
 const userNameLabel = document.getElementById('user-name-label');
 
 accountBtn.addEventListener('click', ()=>{ clearAuthErrors(); openOverlay('account-overlay'); });
+const userDropdown = userChip.querySelector('.user-dd');
+// Repositionne le menu (dont "Se déconnecter") en position fixe, calculée
+// depuis la position réelle du bouton compte. Ça évite qu'il soit coupé par
+// le `overflow:hidden` de la barre de nav sur mobile, et le garde toujours
+// visible et accessible au doigt.
+function positionUserDropdown(){
+  const r = userChip.getBoundingClientRect();
+  userDropdown.classList.add('fixed-pos');
+  userDropdown.style.setProperty('--dd-top', (r.bottom + 10) + 'px');
+  userDropdown.style.setProperty('--dd-right', Math.max(8, window.innerWidth - r.right) + 'px');
+}
 userChip.addEventListener('click', (e)=>{
   if(e.target.closest('#dd-logout') || e.target.closest('#dd-edit-profile') || e.target.closest('#dd-my-uploads')) return;
-  userChip.classList.toggle('open');
+  const willOpen = !userChip.classList.contains('open');
+  userChip.classList.toggle('open', willOpen);
+  if(willOpen) positionUserDropdown();
 });
+window.addEventListener('resize', ()=>{ if(userChip.classList.contains('open')) positionUserDropdown(); });
+window.addEventListener('scroll', ()=>{ if(userChip.classList.contains('open')) positionUserDropdown(); }, true);
 document.addEventListener('click', (e)=>{ if(!userChip.contains(e.target)) userChip.classList.remove('open'); });
 
 document.getElementById('dd-logout').addEventListener('click', async ()=>{
@@ -3803,11 +3830,21 @@ document.addEventListener('click', (e)=>{ if(!npMenuBtn.contains(e.target) && !n
    l'égaliseur animé, façon éclairage de scène de concert. */
 let concertModeOn = false;
 const npSheetEl = document.getElementById('np-sheet');
+const npConcertLightsEl = document.getElementById('np-concert-lights');
 const concertBeams = Array.from(document.querySelectorAll('.np-beam'));
 const concertStrobe = document.getElementById('np-strobe');
+// Historique court de la basse (pour détecter un vrai "coup" plutôt qu'un
+// niveau de basse simplement élevé) + anti-rebond pour ne pas re-flasher
+// en boucle tant que la basse reste haute.
+let concertBassHistory = [];
+let concertLastHitTime = 0;
+let concertStrobeLevel = 0;
 function resetConcertLights(){
   concertBeams.forEach(b=> b.style.opacity = concertModeOn ? 0.16 : 0);
   if(concertStrobe) concertStrobe.style.opacity = 0;
+  concertBassHistory = [];
+  concertLastHitTime = 0;
+  concertStrobeLevel = 0;
 }
 function updateConcertLights(data){
   if(!concertModeOn || !concertBeams.length) return;
@@ -3823,11 +3860,28 @@ function updateConcertLights(data){
   if(concertBeams[1]) concertBeams[1].style.opacity = clamp(0.10 + bass*0.75);
   if(concertBeams[2]) concertBeams[2].style.opacity = clamp(0.12 + mid*0.90);
   if(concertBeams[3]) concertBeams[3].style.opacity = clamp(0.10 + treble*0.90);
-  if(concertStrobe) concertStrobe.style.opacity = bass > 0.72 ? clamp((bass - 0.72) * 3.2) : 0;
+
+  // Flash blanc : ne se déclenche plus dès que la basse est "haute" en
+  // continu, mais seulement sur un vrai coup, c'est-à-dire un pic net
+  // au-dessus de la moyenne récente, avec un temps minimum entre deux
+  // flashs pour éviter le stroboscope permanent.
+  concertBassHistory.push(bass);
+  if(concertBassHistory.length > 40) concertBassHistory.shift();
+  const avg = concertBassHistory.reduce((a,b)=>a+b, 0) / concertBassHistory.length;
+  const now = performance.now();
+  const isHit = bass > 0.66 && bass > avg * 1.55 + 0.12 && (now - concertLastHitTime) > 260;
+  if(isHit){
+    concertLastHitTime = now;
+    concertStrobeLevel = clamp((bass - 0.5) * 1.6);
+  }else{
+    concertStrobeLevel *= 0.72; // extinction rapide façon flash, pas un fondu
+  }
+  if(concertStrobe) concertStrobe.style.opacity = concertStrobeLevel < 0.03 ? 0 : concertStrobeLevel;
 }
 document.getElementById('np-menu-concert-toggle').addEventListener('change', function(){
   concertModeOn = this.checked;
   npSheetEl.classList.toggle('concert-mode', concertModeOn);
+  if(npConcertLightsEl) npConcertLightsEl.classList.toggle('active', concertModeOn);
   resetConcertLights();
   if(concertModeOn){
     ensureAnalyser();
