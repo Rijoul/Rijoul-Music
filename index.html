@@ -420,14 +420,16 @@ input,textarea{ font-family:inherit; }
      autour de la carte et à travers son fond translucide. */
   position:absolute; inset:0; overflow:hidden; pointer-events:none;
   opacity:0; transition:opacity .6s ease; mix-blend-mode:screen;
-  animation:npConcertHue 16s linear infinite; animation-play-state:paused;
+  /* Pas de rotation de teinte continue ici : les couleurs des faisceaux
+     doivent rester fixes (calquées sur la pochette) pendant toute la
+     lecture, et ne changer qu'au moment où l'image du morceau change
+     (voir applyConcertBeamColors en JS). */
   /* contain isole le repaint de la zone (faisceaux + flash) du reste de la
      page : sur mobile, ça évite de faire recalculer/repeindre le layout
      environnant à chaque frame animée, ce qui coûte cher sur ces appareils. */
   contain:strict;
 }
-.np-concert-lights.active{ opacity:1; animation-play-state:running; }
-@keyframes npConcertHue{ from{ filter:hue-rotate(0deg); } to{ filter:hue-rotate(360deg); } }
+.np-concert-lights.active{ opacity:1; }
 .np-beam{
   position:absolute; top:-25%; left:50%; width:42%; height:150%;
   background:linear-gradient(180deg, var(--beam-color, rgba(255,176,32,.9)) 0%, transparent 75%);
