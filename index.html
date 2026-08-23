@@ -777,6 +777,31 @@ input,textarea{ font-family:inherit; }
   </div>
 </div>
 
+<!-- Réservé à l'admin : modification des infos d'un titre déjà publié -->
+<div class="overlay" id="edit-overlay">
+  <div class="modal modal-wide">
+    <div class="modal-head">
+      <h3 class="modal-title">Modifier le titre</h3>
+      <button class="modal-close" data-close="edit-overlay">✕</button>
+    </div>
+    <div class="auth-error" id="edit-error"></div>
+
+    <div class="photo-row" style="margin-top:16px;">
+      <div class="photo-preview" id="edit-cover-preview">🎵</div>
+      <div class="photo-actions">
+        <button class="btn btn-ghost btn-sm" id="edit-cover-choose">Changer la pochette</button>
+        <button class="btn btn-ghost btn-sm" id="edit-cover-remove">Retirer</button>
+      </div>
+      <input type="file" id="edit-cover-input" accept="image/*" class="visually-hidden">
+    </div>
+
+    <div class="field" style="margin-top:14px;"><label>Titre</label><input type="text" id="edit-title" placeholder="Nom du morceau"></div>
+    <div class="field"><label>Artiste</label><input type="text" id="edit-artist" placeholder="Nom de l'artiste"></div>
+
+    <button class="btn btn-gold btn-block" id="edit-submit" style="margin-top:16px;">Enregistrer</button>
+  </div>
+</div>
+
 <div class="toast-wrap" id="toast-wrap"></div>
 
 <script>
@@ -1246,7 +1271,10 @@ function paintGrid(gridId, emptyId, countId, list, texts){
   const uid = auth.currentUser ? auth.currentUser.uid : null;
   grid.innerHTML = list.map(t => {
     const liked = uid && Array.isArray(t.likes) && t.likes.includes(uid);
-    const canDelete = uid && (t.uploaderId === uid || isAdmin);
+    // Seul l'admin peut supprimer ou modifier les infos d'un titre, quel
+    // que soit qui l'a ajouté.
+    const canDelete = isAdmin;
+    const canEdit = isAdmin;
     const isPlaying = t.id === currentTrackId;
     return `
     <div class="card ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
@@ -1255,7 +1283,7 @@ function paintGrid(gridId, emptyId, countId, list, texts){
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
         </button>
-        ${canDelete ? `<div class="card-owner-actions"><button class="icon-btn" data-delete="${t.id}" aria-label="Supprimer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button></div>` : ''}
+        ${(canDelete || canEdit) ? `<div class="card-owner-actions">${canEdit ? `<button class="icon-btn" data-edit="${t.id}" aria-label="Modifier"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>` : ''}${canDelete ? `<button class="icon-btn" data-delete="${t.id}" aria-label="Supprimer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>` : ''}</div>` : ''}
       </div>
       <p class="card-title">${escapeHtml(t.title || 'Sans titre')}</p>
       <p class="card-artist">${escapeHtml(t.artist || 'Artiste inconnu')}</p>
@@ -1281,6 +1309,9 @@ function paintGrid(gridId, emptyId, countId, list, texts){
   grid.querySelectorAll('[data-delete]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); deleteTrack(btn.dataset.delete); });
   });
+  grid.querySelectorAll('[data-edit]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); openEditModal(btn.dataset.edit); });
+  });
 }
 
 async function toggleLike(trackId){
@@ -1297,6 +1328,7 @@ async function toggleLike(trackId){
 }
 
 async function deleteTrack(trackId){
+  if(!isAdmin){ showToast("Seul l'admin peut supprimer un titre."); return; }
   const track = allTracks.find(t => t.id === trackId);
   if(!track) return;
   if(!confirm(`Supprimer « ${track.title || 'ce titre'} » définitivement ?`)) return;
@@ -1317,6 +1349,82 @@ async function deleteTrack(trackId){
     showToast('Titre supprimé.');
   }catch(e){ console.error(e); showToast("Impossible de supprimer ce titre."); }
 }
+
+/* =========================================================
+   MODIFICATION D'UN TITRE (réservé à l'admin) — permet de
+   corriger le titre, l'artiste ou la pochette d'un morceau
+   déjà publié, quel que soit qui l'a ajouté.
+   ========================================================= */
+let editingTrackId = null;
+let editCoverDataUrl = null;
+function openEditModal(trackId){
+  if(!isAdmin){ showToast("Seul l'admin peut modifier les infos d'un titre."); return; }
+  const track = allTracks.find(t => t.id === trackId);
+  if(!track) return;
+  editingTrackId = trackId;
+  editCoverDataUrl = track.coverURL || null;
+  document.getElementById('edit-error').style.display = 'none';
+  document.getElementById('edit-title').value = track.title || '';
+  document.getElementById('edit-artist').value = track.artist || '';
+  const preview = document.getElementById('edit-cover-preview');
+  if(editCoverDataUrl){
+    preview.style.background = 'transparent';
+    preview.innerHTML = `<img src="${editCoverDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+  }else{
+    preview.style.background = '';
+    preview.innerHTML = '🎵';
+  }
+  openOverlay('edit-overlay');
+}
+function showEditError(msg){
+  const el = document.getElementById('edit-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+document.getElementById('edit-cover-choose').addEventListener('click', ()=> document.getElementById('edit-cover-input').click());
+document.getElementById('edit-cover-input').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    editCoverDataUrl = await compressImageToDataURL(file, 400, 0.85);
+    const preview = document.getElementById('edit-cover-preview');
+    preview.style.background = 'transparent';
+    preview.innerHTML = `<img src="${editCoverDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+  }catch(err){
+    showEditError("Impossible de lire cette image.");
+  }
+});
+document.getElementById('edit-cover-remove').addEventListener('click', ()=>{
+  editCoverDataUrl = null;
+  const preview = document.getElementById('edit-cover-preview');
+  preview.innerHTML = '';
+  preview.textContent = '🎵';
+});
+document.getElementById('edit-submit').addEventListener('click', async ()=>{
+  if(!isAdmin){ showToast("Seul l'admin peut modifier les infos d'un titre."); return; }
+  if(!editingTrackId) return;
+  const errEl = document.getElementById('edit-error');
+  errEl.style.display = 'none';
+  const title = document.getElementById('edit-title').value.trim();
+  const artist = document.getElementById('edit-artist').value.trim();
+  if(!title){ showEditError("Merci d'indiquer un titre."); return; }
+  const btn = document.getElementById('edit-submit');
+  btn.disabled = true; btn.textContent = 'Enregistrement…';
+  try{
+    await tracksRef.doc(editingTrackId).update({
+      title, artist: artist || null,
+      coverURL: editCoverDataUrl || null
+    });
+    showToast('Titre mis à jour.');
+    closeOverlay('edit-overlay');
+    editingTrackId = null;
+  }catch(err){
+    console.error(err);
+    showEditError("Impossible d'enregistrer les modifications.");
+  }finally{
+    btn.disabled = false; btn.textContent = 'Enregistrer';
+  }
+});
 
 /* =========================================================
    AJOUT D'UN TITRE (fichier audio découpé et stocké dans
