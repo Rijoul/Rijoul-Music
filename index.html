@@ -407,13 +407,18 @@ input,textarea{ font-family:inherit; }
 /* Mode concert : le fond retrouve sa netteté et des faisceaux de lumière
    colorés balaient la scène, leur intensité réagissant en direct aux
    basses/médiums/aigus de la musique (voir updateConcertLights en JS). */
-.np-sheet.concert-mode .np-bg{ filter:blur(0px) saturate(150%) brightness(0.55) contrast(1.08); transform:scale(1.04); opacity:1; }
-.np-sheet.concert-mode .np-bg-shade{ opacity:.7; }
+/* Le fond flouté du lecteur reste flouté (comme en mode normal) même en
+   mode concert : le mode concert n'agit plus sur .np-bg, seulement sur les
+   faisceaux/flash affichés derrière l'image principale. */
 .np-concert-lights{
   /* Positionné directement sur .nowplaying-overlay (position:fixed, inset:0),
      donc "inset:0" ici correspond à l'écran entier, pas seulement à la
-     carte du lecteur. */
-  position:absolute; inset:0; z-index:5; overflow:hidden; pointer-events:none;
+     carte du lecteur. Pas de z-index explicite ici : comme il est placé
+     avant .np-sheet dans le HTML, .np-sheet (et donc l'image principale du
+     lecteur, au-dessus de son propre fond) le recouvre naturellement — le
+     flash et les faisceaux restent bien derrière l'image, visibles surtout
+     autour de la carte et à travers son fond translucide. */
+  position:absolute; inset:0; overflow:hidden; pointer-events:none;
   opacity:0; transition:opacity .6s ease; mix-blend-mode:screen;
   animation:npConcertHue 16s linear infinite; animation-play-state:paused;
 }
@@ -423,7 +428,8 @@ input,textarea{ font-family:inherit; }
   position:absolute; top:-25%; left:50%; width:42%; height:150%;
   background:linear-gradient(180deg, var(--beam-color, rgba(255,176,32,.9)) 0%, transparent 75%);
   clip-path:polygon(48% 0%, 52% 0%, 100% 100%, 0% 100%);
-  filter:blur(3px); opacity:.16; transform-origin:top center; will-change:transform, opacity;
+  filter:blur(3px); opacity:0; transform-origin:top center; will-change:transform, opacity;
+  transition:opacity .18s ease-out;
 }
 .np-beam-1{ --beam-color:rgba(255,138,61,.95); left:-6%; animation:npBeamSweep1 7s ease-in-out infinite; }
 .np-beam-2{ --beam-color:rgba(120,190,255,.9); left:22%; animation:npBeamSweep2 9s ease-in-out infinite; }
@@ -3829,7 +3835,6 @@ document.addEventListener('click', (e)=>{ if(!npMenuBtn.contains(e.target) && !n
    basses/médiums/aigus détectés par l'analyseur audio déjà utilisé pour
    l'égaliseur animé, façon éclairage de scène de concert. */
 let concertModeOn = false;
-const npSheetEl = document.getElementById('np-sheet');
 const npConcertLightsEl = document.getElementById('np-concert-lights');
 const concertBeams = Array.from(document.querySelectorAll('.np-beam'));
 const concertStrobe = document.getElementById('np-strobe');
@@ -3839,12 +3844,19 @@ const concertStrobe = document.getElementById('np-strobe');
 let concertBassHistory = [];
 let concertLastHitTime = 0;
 let concertStrobeLevel = 0;
+// Faisceaux : état ON/OFF (avec hystérésis) piloté par les médiums et les
+// aigus, pour qu'ils apparaissent/disparaissent nettement au lieu de
+// varier en continu.
+let concertMidOn = false;
+let concertTrebleOn = false;
 function resetConcertLights(){
-  concertBeams.forEach(b=> b.style.opacity = concertModeOn ? 0.16 : 0);
+  concertBeams.forEach(b=> b.style.opacity = 0);
   if(concertStrobe) concertStrobe.style.opacity = 0;
   concertBassHistory = [];
   concertLastHitTime = 0;
   concertStrobeLevel = 0;
+  concertMidOn = false;
+  concertTrebleOn = false;
 }
 function updateConcertLights(data){
   if(!concertModeOn || !concertBeams.length) return;
@@ -3856,10 +3868,20 @@ function updateConcertLights(data){
   }else{
     bass = 0.3 + Math.random()*0.4; mid = 0.3 + Math.random()*0.4; treble = 0.3 + Math.random()*0.4;
   }
-  if(concertBeams[0]) concertBeams[0].style.opacity = clamp(0.12 + bass*0.95);
-  if(concertBeams[1]) concertBeams[1].style.opacity = clamp(0.10 + bass*0.75);
-  if(concertBeams[2]) concertBeams[2].style.opacity = clamp(0.12 + mid*0.90);
-  if(concertBeams[3]) concertBeams[3].style.opacity = clamp(0.10 + treble*0.90);
+
+  // Faisceaux : apparaissent/disparaissent selon les médiums et les aigus
+  // (pas la basse, réservée au flash ci-dessous). Hystérésis (seuil plus
+  // haut pour s'allumer que pour s'éteindre) pour éviter un clignotement
+  // frame par frame quand le niveau oscille juste autour du seuil.
+  const onT = 0.4, offT = 0.28;
+  concertMidOn = concertMidOn ? (mid > offT) : (mid > onT);
+  concertTrebleOn = concertTrebleOn ? (treble > offT) : (treble > onT);
+  const midOpacity = concertMidOn ? clamp(0.16 + mid * 0.85) : 0;
+  const trebleOpacity = concertTrebleOn ? clamp(0.14 + treble * 0.85) : 0;
+  if(concertBeams[0]) concertBeams[0].style.opacity = midOpacity;
+  if(concertBeams[1]) concertBeams[1].style.opacity = trebleOpacity;
+  if(concertBeams[2]) concertBeams[2].style.opacity = midOpacity;
+  if(concertBeams[3]) concertBeams[3].style.opacity = trebleOpacity;
 
   // Flash blanc : ne se déclenche plus dès que la basse est "haute" en
   // continu, mais seulement sur un vrai coup, c'est-à-dire un pic net
@@ -3880,7 +3902,6 @@ function updateConcertLights(data){
 }
 document.getElementById('np-menu-concert-toggle').addEventListener('change', function(){
   concertModeOn = this.checked;
-  npSheetEl.classList.toggle('concert-mode', concertModeOn);
   if(npConcertLightsEl) npConcertLightsEl.classList.toggle('active', concertModeOn);
   resetConcertLights();
   if(concertModeOn){
