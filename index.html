@@ -1711,6 +1711,11 @@ function subscribeToProfile(uid){
       typeof data.eqMid === 'number' ? data.eqMid : 0,
       typeof data.eqTreble === 'number' ? data.eqTreble : 0
     );
+    // Mode concert : réglage synchronisé avec le compte (Firestore), pour
+    // retrouver le même état à la réouverture de la page et sur les autres
+    // appareils. `save:false` car on applique ici ce qui vient déjà du
+    // compte — on ne doit pas le réécrire immédiatement dessus.
+    if(typeof setConcertMode === 'function') setConcertMode(data.concertMode === true, { save:false });
   });
 }
 function updateProfilePreview(label, photoURL){
@@ -1794,6 +1799,7 @@ auth.onAuthStateChanged(async (user)=>{
     if(profileUnsub){ profileUnsub(); profileUnsub = null; }
     currentProfile = null;
     applyEqSettings(0, 0, 0);
+    if(typeof setConcertMode === 'function') setConcertMode(false, { save:false });
     if(playlistsUnsub){ playlistsUnsub(); playlistsUnsub = null; }
     allPlaylists = [];
     if(currentView === 'playlists' || currentView === 'playlist-detail'){ switchView('library'); }
@@ -4078,8 +4084,18 @@ function updateConcertLights(data){
     }
   }
 }
-document.getElementById('np-menu-concert-toggle').addEventListener('change', function(){
-  concertModeOn = this.checked;
+// Active/désactive le mode concert (checkbox + variable d'état + effets
+// visuels) et, en option, enregistre le réglage sur le profil du compte
+// connecté afin qu'il se retrouve identique sur les autres appareils et à
+// la réouverture de la page (comme l'égaliseur, voir scheduleEqSave).
+// `save:false` est utilisé quand on ne fait qu'appliquer une valeur reçue
+// du compte (snapshot Firestore) ou une réinitialisation locale (déconnexion),
+// pour ne pas réécrire immédiatement ce qu'on vient de lire.
+function setConcertMode(enabled, opts){
+  const save = !opts || opts.save !== false;
+  concertModeOn = !!enabled;
+  const toggleEl = document.getElementById('np-menu-concert-toggle');
+  if(toggleEl) toggleEl.checked = concertModeOn;
   if(npConcertLightsEl) npConcertLightsEl.classList.toggle('active', concertModeOn);
   resetConcertLights();
   if(concertModeOn){
@@ -4087,6 +4103,20 @@ document.getElementById('np-menu-concert-toggle').addEventListener('change', fun
     if(!eqRAF && !audioEl.paused) animateEq();
     applyConcertBeamColors();
   }
+  if(save) saveConcertModeSetting(concertModeOn);
+}
+// Sauvegarde le réglage du mode concert sur le profil du compte connecté
+// (aucun effet si personne n'est connecté, ex. session anonyme).
+function saveConcertModeSetting(enabled){
+  const uid = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser.uid : null;
+  if(!uid) return;
+  usersRef.doc(uid).set({
+    concertMode: enabled,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge:true }).catch(err=> console.error("Impossible d'enregistrer le mode concert :", err));
+}
+document.getElementById('np-menu-concert-toggle').addEventListener('change', function(){
+  setConcertMode(this.checked);
 });
 
 function openEqPanel(){
