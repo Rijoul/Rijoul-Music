@@ -1790,10 +1790,9 @@ function crossfadeOutgoing(blobUrl, fromTime, ms){
         }catch(e){ return false; }
       }
 
-      let started = false;
-      const startFade = ()=>{
-        if(started) return; started = true;
-        try{ if(fromTime) echo.currentTime = fromTime; }catch(e){}
+      let playStarted = false;
+      const beginPlayback = ()=>{
+        if(playStarted) return; playStarted = true;
         if(!routeThroughEq()) echo.volume = Math.min(1, Math.max(0, startVol));
         echo.play().then(done).catch(done);
         crossfadeEchoes.push(echo);
@@ -1817,12 +1816,26 @@ function crossfadeOutgoing(blobUrl, fromTime, ms){
         }
         requestAnimationFrame(step);
       };
-      // On démarre dès que le fantôme a assez de données pour jouer sans
-      // à-coup (idéalement quasi instantané car blobUrl est déjà local) ; un
-      // filet de sécurité évite de bloquer indéfiniment si l'évènement tarde.
-      if(echo.readyState >= 2){ startFade(); }
-      else{ echo.addEventListener('canplay', startFade, { once:true }); }
-      setTimeout(startFade, 150);
+      // Il faut ATTENDRE que le fantôme ait fini de se positionner exactement
+      // là où le morceau principal s'est arrêté (évènement 'seeked') avant de
+      // lancer sa lecture : appeler play() pendant que le calage est encore
+      // en cours produit justement ce genre de micro-blanc/déphasage audible.
+      let seekStarted = false;
+      const seekThenPlay = ()=>{
+        if(seekStarted) return; seekStarted = true;
+        if(!fromTime){ beginPlayback(); return; }
+        let seeked = false;
+        const onSeeked = ()=>{ if(seeked) return; seeked = true; beginPlayback(); };
+        echo.addEventListener('seeked', onSeeked, { once:true });
+        try{ echo.currentTime = fromTime; }catch(e){ onSeeked(); }
+        setTimeout(onSeeked, 120); // filet de sécurité si 'seeked' ne se déclenche pas
+      };
+      // On attend d'avoir au moins les métadonnées (durée connue) pour que le
+      // calage de position ait un sens ; sinon on tente quand même après un
+      // court délai plutôt que de bloquer indéfiniment.
+      if(echo.readyState >= 1){ seekThenPlay(); }
+      else{ echo.addEventListener('loadedmetadata', seekThenPlay, { once:true }); }
+      setTimeout(seekThenPlay, 150);
     }catch(e){ done(); /* Pas grave si le fondu sortant échoue : le morceau suivant démarre quand même. */ }
   });
 }
