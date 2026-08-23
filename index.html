@@ -3993,8 +3993,14 @@ function extractConcertBeamColors(imgEl){
     if(!sorted.length) return null;
     const luminance = c => 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
     const dist = (a, b) => Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b);
-    const light = sorted.find(c => luminance(c) >= 170) || sorted.find(c => luminance(c) >= 130) || sorted[0];
-    const secondary = sorted.find(c => c !== light && dist(c, light) > 70) || sorted.find(c => c !== light) || light;
+    let light = sorted.find(c => luminance(c) >= 170) || sorted.find(c => luminance(c) >= 130) || sorted[0];
+    let secondary = sorted.find(c => c !== light && dist(c, light) > 70) || sorted.find(c => c !== light) || light;
+    // Le noir (ou une teinte trop proche du noir) est quasi invisible une
+    // fois projeté en faisceau : on le remplace par un gris clair, bien
+    // plus visible à l'écran, plutôt que de garder une couleur trop sombre.
+    const DARK_THRESHOLD = 45;
+    if(luminance(light) < DARK_THRESHOLD) light = { r:190, g:190, b:190, count: light.count };
+    if(luminance(secondary) < DARK_THRESHOLD) secondary = { r:150, g:150, b:150, count: secondary.count };
     return { light, secondary };
   }catch(err){
     return null; // image cross-origin non autorisée pour le canevas : on garde les couleurs par défaut
