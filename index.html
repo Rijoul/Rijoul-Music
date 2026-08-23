@@ -434,6 +434,62 @@ input,textarea{ font-family:inherit; }
 
 .footer-note{ text-align:center; color:var(--text-faint); font-size:11.5px; padding:20px; }
 
+/* =========================================================
+   PLAYLISTS
+   ========================================================= */
+.section-head-actions{ display:flex; align-items:center; gap:12px; }
+.addpl-btn svg{ transition:.15s; }
+.addpl-btn:hover{ color:var(--copper-bright); }
+
+.pl-detail-back{ margin-bottom:18px; }
+.pl-detail-head{ display:flex; align-items:center; gap:28px; margin-bottom:32px; flex-wrap:wrap; }
+.pl-detail-cover{ width:180px; height:180px; flex-shrink:0; border-radius:20px; overflow:hidden; background:var(--panel-solid); box-shadow:var(--shadow), 0 0 0 1px var(--glass-border); }
+.pl-detail-cover img{ width:100%; height:100%; object-fit:cover; }
+.pl-detail-info{ min-width:0; flex:1; }
+.pl-detail-title{ font-family:var(--display); font-size:clamp(22px,3vw,32px); font-weight:900; margin:2px 0 6px; letter-spacing:-0.02em; }
+.pl-detail-desc{ color:var(--text-dim); font-size:13.5px; margin:0 0 8px; max-width:520px; }
+.pl-detail-actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:16px; }
+
+.pl-track-list{ display:flex; flex-direction:column; gap:4px; margin-bottom:40px; }
+.pl-row{ display:grid; grid-template-columns:28px 44px 1fr auto auto; align-items:center; gap:14px; padding:8px 12px; border-radius:14px; transition:.15s; cursor:pointer; }
+.pl-row:hover{ background:var(--panel); }
+.pl-row.is-playing{ background:var(--panel-2); }
+.pl-row.is-playing .pl-row-title{ color:var(--copper-bright); }
+.pl-row-num{ font-family:var(--mono); font-size:12px; color:var(--text-faint); text-align:center; }
+.pl-row-cover{ width:44px; height:44px; border-radius:10px; overflow:hidden; background:var(--panel-solid); flex-shrink:0; }
+.pl-row-cover img{ width:100%; height:100%; object-fit:cover; }
+.pl-row-meta{ min-width:0; }
+.pl-row-title{ font-size:13.5px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pl-row-artist{ font-size:12px; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; }
+.pl-row-duration{ font-family:var(--mono); font-size:11.5px; color:var(--text-faint); flex-shrink:0; }
+.pl-row-actions{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.pl-row-actions .icon-btn{ background:rgba(255,255,255,0.06); }
+.pl-row-actions .icon-btn:disabled{ opacity:.3; pointer-events:none; }
+.pl-row-actions .icon-btn:hover{ background:rgba(255,255,255,0.14); border-color:var(--glass-border-strong); }
+.pl-row-actions .icon-btn[data-pl-remove]:hover{ background:var(--danger); border-color:var(--danger); }
+
+/* Listes de sélection (ajout à une playlist / ajout de titres) */
+.picker-list{ max-height:320px; overflow-y:auto; display:flex; flex-direction:column; gap:2px; margin:4px -6px 10px; padding:0 6px; }
+.picker-item{ display:flex; align-items:center; gap:11px; padding:9px 8px; border-radius:12px; cursor:pointer; transition:.15s; font-size:13.5px; }
+.picker-item:hover{ background:var(--panel); }
+.picker-item input[type="checkbox"]{ width:17px; height:17px; accent-color:var(--copper); flex-shrink:0; }
+.picker-item-cover{ width:32px; height:32px; border-radius:8px; overflow:hidden; background:var(--panel-solid); flex-shrink:0; }
+.picker-item-cover img{ width:100%; height:100%; object-fit:cover; }
+.picker-item-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.picker-item-sub{ color:var(--text-dim); font-weight:500; margin-left:6px; }
+.picker-item-count{ font-family:var(--mono); font-size:11px; color:var(--text-faint); flex-shrink:0; }
+.playlist-inline-create{ display:flex; gap:8px; margin-top:6px; }
+.playlist-inline-create input{ flex:1; background:rgba(255,255,255,0.07); border:1px solid var(--line); color:var(--text); border-radius:14px; padding:10px 13px; font-size:13.5px; }
+.playlist-inline-create input:focus{ border-color:var(--glass-border-strong); background:rgba(255,255,255,0.11); }
+
+@media (max-width:760px){
+  .pl-detail-head{ flex-direction:column; text-align:center; }
+  .pl-detail-cover{ width:150px; height:150px; }
+  .pl-detail-actions{ justify-content:center; }
+  .pl-row{ grid-template-columns:22px 38px 1fr auto; gap:10px; }
+  .pl-row-duration{ display:none; }
+}
+
 @media (max-width: 760px){
   .topnav{ flex-wrap:wrap; padding:12px 16px; gap:10px; margin:10px 10px 0; border-radius:24px; }
   .tabs{ order:1; }
@@ -469,6 +525,7 @@ input,textarea{ font-family:inherit; }
   <div class="tabs">
     <button class="tab-btn active" data-view="library">Bibliothèque</button>
     <button class="tab-btn" data-view="mine">Mes ajouts</button>
+    <button class="tab-btn" data-view="playlists">Playlists</button>
   </div>
   <!-- Champs leurres : absorbent l'autofill agressif de Chrome (email/mot de passe)
        pour qu'il ne se colle jamais dans la vraie barre de recherche juste en dessous. -->
@@ -556,6 +613,48 @@ input,textarea{ font-family:inherit; }
     </div>
   </section>
 
+  <!-- PLAYLISTS -->
+  <section id="view-playlists" style="display:none;">
+    <div class="section-head">
+      <h2 class="section-title">Mes playlists</h2>
+      <div class="section-head-actions">
+        <span class="section-count" id="playlists-count">0 playlist</span>
+        <button class="btn btn-gold btn-sm" id="create-playlist-btn">+ Nouvelle playlist</button>
+      </div>
+    </div>
+    <div class="grid" id="playlists-grid"></div>
+    <div class="empty-state" id="playlists-empty" style="display:none;">
+      <h3>Aucune playlist</h3>
+      <p>Crée ta première playlist pour organiser tes titres préférés.</p>
+      <button class="btn btn-gold" id="playlists-empty-create-btn">+ Nouvelle playlist</button>
+    </div>
+  </section>
+
+  <!-- DÉTAIL D'UNE PLAYLIST -->
+  <section id="view-playlist-detail" style="display:none;">
+    <button class="btn btn-ghost btn-sm pl-detail-back" id="playlist-detail-back">← Playlists</button>
+    <div class="pl-detail-head">
+      <div class="pl-detail-cover"><img id="pl-detail-cover" alt=""></div>
+      <div class="pl-detail-info">
+        <p class="hero-eyebrow">Playlist</p>
+        <h2 class="pl-detail-title" id="pl-detail-title">—</h2>
+        <p class="pl-detail-desc" id="pl-detail-desc" style="display:none;"></p>
+        <span class="section-count" id="pl-detail-count">0 titre</span>
+        <div class="pl-detail-actions">
+          <button class="btn btn-gold" id="pl-detail-play">▶ Lire</button>
+          <button class="btn btn-ghost btn-sm" id="pl-detail-add-tracks">+ Ajouter des titres</button>
+          <button class="btn btn-ghost btn-sm" id="pl-detail-edit">Modifier</button>
+          <button class="btn btn-ghost btn-sm" id="pl-detail-delete">Supprimer</button>
+        </div>
+      </div>
+    </div>
+    <div class="pl-track-list" id="pl-track-list"></div>
+    <div class="empty-state" id="pl-detail-empty" style="display:none;">
+      <h3>Playlist vide</h3>
+      <p>Ajoute des titres depuis ta bibliothèque pour commencer.</p>
+      <button class="btn btn-gold" id="pl-detail-empty-add">+ Ajouter des titres</button>
+    </div>
+  </section>
 
 </div>
 
@@ -618,6 +717,10 @@ input,textarea{ font-family:inherit; }
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg>
           </button>
           <div class="np-menu-dropdown" id="np-menu-dropdown">
+            <button class="np-menu-item" id="np-menu-addpl-btn" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              Ajouter à une playlist
+            </button>
             <button class="np-menu-item" id="np-menu-eq-btn" type="button">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21V14M4 10V3M12 21V12M12 8V3M20 21V16M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>
               Égaliseur
@@ -824,6 +927,62 @@ input,textarea{ font-family:inherit; }
   </div>
 </div>
 
+<!-- =========================================================
+     PLAYLIST — CRÉATION / MODIFICATION
+     ========================================================= -->
+<div class="overlay" id="playlist-form-overlay">
+  <div class="modal modal-wide">
+    <div class="modal-head">
+      <h3 class="modal-title" id="playlist-form-title">Nouvelle playlist</h3>
+      <button class="modal-close" data-close="playlist-form-overlay">✕</button>
+    </div>
+    <div class="auth-error" id="playlist-form-error"></div>
+    <div class="photo-row" style="margin-top:4px;">
+      <div class="photo-preview" id="playlist-form-cover-preview">🎵</div>
+      <div class="photo-actions">
+        <button class="btn btn-ghost btn-sm" id="playlist-form-cover-choose">Ajouter une pochette</button>
+        <button class="btn btn-ghost btn-sm" id="playlist-form-cover-remove">Retirer</button>
+      </div>
+      <input type="file" id="playlist-form-cover-input" accept="image/*" class="visually-hidden">
+    </div>
+    <div class="field" style="margin-top:14px;"><label>Nom</label><input type="text" id="playlist-form-name" placeholder="Ma playlist"></div>
+    <div class="field"><label>Description (optionnelle)</label><input type="text" id="playlist-form-desc" placeholder="Quelques mots sur cette playlist"></div>
+    <button class="btn btn-gold btn-block" id="playlist-form-submit" style="margin-top:8px;">Créer la playlist</button>
+  </div>
+</div>
+
+<!-- =========================================================
+     AJOUTER UN TITRE À UNE (OU PLUSIEURS) PLAYLIST(S)
+     ========================================================= -->
+<div class="overlay" id="add-to-playlist-overlay">
+  <div class="modal modal-wide">
+    <div class="modal-head">
+      <h3 class="modal-title">Ajouter à une playlist</h3>
+      <button class="modal-close" data-close="add-to-playlist-overlay">✕</button>
+    </div>
+    <div class="auth-error" id="add-to-playlist-error"></div>
+    <div class="picker-list" id="add-to-playlist-list"></div>
+    <div class="playlist-inline-create">
+      <input type="text" id="add-to-playlist-new-name" placeholder="Nouvelle playlist…">
+      <button class="btn btn-gold btn-sm" id="add-to-playlist-new-btn">Créer</button>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================
+     AJOUTER DES TITRES À LA PLAYLIST OUVERTE
+     ========================================================= -->
+<div class="overlay" id="add-tracks-overlay">
+  <div class="modal modal-wide">
+    <div class="modal-head">
+      <h3 class="modal-title">Ajouter des titres</h3>
+      <button class="modal-close" data-close="add-tracks-overlay">✕</button>
+    </div>
+    <div class="field"><input type="text" id="add-tracks-search" placeholder="Chercher un titre, un artiste…"></div>
+    <div class="picker-list" id="add-tracks-list"></div>
+  </div>
+</div>
+
 <div class="toast-wrap" id="toast-wrap"></div>
 
 <script>
@@ -872,6 +1031,11 @@ const usersRef = db.collection("artifacts").doc(ONYX_APP_ID).collection("public"
 // Nouvelle collection, dans la MÊME base Firestore, dédiée à la musique
 // ajoutée par les utilisateurs.
 const tracksRef = db.collection("musicTracks");
+
+// Playlists créées par les utilisateurs. Chaque playlist n'est visible que
+// par son créateur (filtrée côté serveur via `ownerId`) et référence des
+// titres du catalogue via un tableau ordonné d'identifiants (`trackIds`).
+const playlistsRef = db.collection("musicPlaylists");
 
 /* =========================================================
    UTILITAIRES
@@ -952,12 +1116,19 @@ let currentProfilePhoto = null;
 
 let allTracks = [];      // tout le catalogue, tel que reçu de Firestore (onSnapshot)
 let currentQueue = [];    // liste actuellement affichée (filtrée / vue active)
-let currentView = 'library'; // 'library' | 'mine'
+let currentView = 'library'; // 'library' | 'mine' | 'playlists' | 'playlist-detail'
 let searchTerm = '';
 let currentTrackId = null;
 let currentTrackIndex = -1;
 let uploadAudioFile = null;
 let uploadCoverDataUrl = null;
+
+let allPlaylists = [];     // playlists de l'utilisateur connecté (onSnapshot filtré par ownerId)
+let playlistsUnsub = null;
+let currentPlaylistId = null; // playlist affichée en vue détail
+let editingPlaylistId = null; // playlist en cours de modification dans playlist-form-overlay
+let playlistFormCoverDataUrl = null;
+let pickerTrackId = null;  // titre ciblé par la modale "Ajouter à une playlist"
 
 /* =========================================================
    AUTHENTIFICATION (reprise du système de RIJOUL VISION)
@@ -1191,6 +1362,7 @@ auth.onAuthStateChanged(async (user)=>{
       await ensureUserProfile(realUser);
       subscribeToProfile(realUser.uid);
     }catch(err){ console.error("Profil partagé indisponible :", err); }
+    subscribeToPlaylists(realUser.uid);
   }else{
     accountBtn.style.display = 'flex';
     userChip.classList.remove('visible');
@@ -1198,6 +1370,10 @@ auth.onAuthStateChanged(async (user)=>{
     if(profileUnsub){ profileUnsub(); profileUnsub = null; }
     currentProfile = null;
     applyEqSettings(0, 0, 0);
+    if(playlistsUnsub){ playlistsUnsub(); playlistsUnsub = null; }
+    allPlaylists = [];
+    if(currentView === 'playlists' || currentView === 'playlist-detail'){ switchView('library'); }
+    renderPlaylistsGrid();
   }
   renderTracks();
 });
@@ -1209,7 +1385,7 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click', ()=> switchView(btn.dataset.view));
 });
 function switchView(view){
-  if(view === 'mine' && !auth.currentUser){
+  if((view === 'mine' || view === 'playlists') && !auth.currentUser){
     clearAuthErrors();
     openOverlay('account-overlay');
     return;
@@ -1218,7 +1394,28 @@ function switchView(view){
   document.querySelectorAll('.tab-btn').forEach(b=> b.classList.toggle('active', b.dataset.view === view));
   document.getElementById('view-library').style.display = view === 'library' ? '' : 'none';
   document.getElementById('view-mine').style.display = view === 'mine' ? '' : 'none';
+  document.getElementById('view-playlists').style.display = view === 'playlists' ? '' : 'none';
+  document.getElementById('view-playlist-detail').style.display = 'none';
   renderTracks();
+  renderPlaylistsGrid();
+}
+
+/* =========================================================
+   PLAYLISTS — vue détail (liste ordonnée d'un seul titre)
+   ========================================================= */
+function openPlaylistDetail(id){
+  currentPlaylistId = id;
+  currentView = 'playlist-detail';
+  document.querySelectorAll('.tab-btn').forEach(b=> b.classList.toggle('active', b.dataset.view === 'playlists'));
+  document.getElementById('view-library').style.display = 'none';
+  document.getElementById('view-mine').style.display = 'none';
+  document.getElementById('view-playlists').style.display = 'none';
+  document.getElementById('view-playlist-detail').style.display = '';
+  renderTracks();
+}
+document.getElementById('playlist-detail-back').addEventListener('click', ()=> switchView('playlists'));
+function currentPlaylist(){
+  return allPlaylists.find(p => p.id === currentPlaylistId) || null;
 }
 document.getElementById('brand-home').addEventListener('click', (e)=>{ e.preventDefault(); switchView('library'); });
 document.getElementById('search-input').addEventListener('input', (e)=>{
@@ -1236,6 +1433,398 @@ tracksRef.orderBy('createdAt', 'desc').onSnapshot((snap)=>{
 }, (err)=>{
   console.error('Erreur de chargement de la musique :', err);
   showToast("Impossible de charger la musique pour le moment.");
+});
+
+/* =========================================================
+   PLAYLISTS (Firestore, collection "musicPlaylists")
+   Chaque utilisateur ne s'abonne qu'à SES propres playlists.
+   ========================================================= */
+function subscribeToPlaylists(uid){
+  if(playlistsUnsub) playlistsUnsub();
+  playlistsUnsub = playlistsRef.where('ownerId', '==', uid).onSnapshot((snap)=>{
+    allPlaylists = snap.docs.map(d=>{
+      const data = d.data();
+      return { id: d.id, ...data, createdAtMs: (data.createdAt && data.createdAt.toMillis) ? data.createdAt.toMillis() : 0 };
+    });
+    renderPlaylistsGrid();
+    if(currentView === 'playlist-detail') renderTracks();
+    if(document.getElementById('add-to-playlist-overlay').classList.contains('open')) renderAddToPlaylistList();
+    if(document.getElementById('add-tracks-overlay').classList.contains('open')){
+      renderAddTracksList(document.getElementById('add-tracks-search').value.trim().toLowerCase());
+    }
+  }, (err)=>{
+    console.error('Erreur de chargement des playlists :', err);
+    showToast("Impossible de charger tes playlists pour le moment.");
+  });
+}
+
+function renderPlaylistsGrid(){
+  if(currentView !== 'playlists') return;
+  const grid = document.getElementById('playlists-grid');
+  const empty = document.getElementById('playlists-empty');
+  const count = document.getElementById('playlists-count');
+  const list = [...allPlaylists].sort((a,b)=> (b.createdAtMs || 0) - (a.createdAtMs || 0));
+  count.textContent = list.length + (list.length > 1 ? ' playlists' : ' playlist');
+  if(!list.length){
+    grid.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  grid.innerHTML = list.map(pl=>{
+    const trackIds = Array.isArray(pl.trackIds) ? pl.trackIds : [];
+    const firstTrack = trackIds.map(id=> allTracks.find(t=>t.id===id)).find(Boolean);
+    const cover = pl.coverURL || (firstTrack && firstTrack.coverURL) || fallbackCoverSvg();
+    return `
+    <div class="card" data-playlist-id="${pl.id}">
+      <div class="card-cover">
+        <img src="${escapeHtml(cover)}" alt="">
+        <button class="card-play" data-play-playlist="${pl.id}" aria-label="Lire la playlist">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <div class="card-owner-actions">
+          <button class="icon-btn" data-delete-playlist="${pl.id}" aria-label="Supprimer la playlist">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+          </button>
+        </div>
+      </div>
+      <p class="card-title">${escapeHtml(pl.name || 'Playlist sans nom')}</p>
+      <p class="card-artist">${trackIds.length} ${trackIds.length > 1 ? 'titres' : 'titre'}</p>
+    </div>`;
+  }).join('');
+
+  grid.querySelectorAll('.card').forEach(card=>{
+    const id = card.dataset.playlistId;
+    card.querySelector('.card-cover').addEventListener('click', (e)=>{
+      if(e.target.closest('[data-play-playlist], [data-delete-playlist]')) return;
+      openPlaylistDetail(id);
+    });
+    card.querySelector('.card-title').addEventListener('click', ()=> openPlaylistDetail(id));
+  });
+  grid.querySelectorAll('[data-play-playlist]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); playPlaylistById(btn.dataset.playPlaylist); });
+  });
+  grid.querySelectorAll('[data-delete-playlist]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); deletePlaylist(btn.dataset.deletePlaylist); });
+  });
+}
+
+function playPlaylistById(id){
+  const pl = allPlaylists.find(p=>p.id===id);
+  if(!pl) return;
+  const ids = Array.isArray(pl.trackIds) ? pl.trackIds : [];
+  const list = ids.map(tid=> allTracks.find(t=>t.id===tid)).filter(Boolean);
+  if(!list.length){ showToast('Cette playlist est vide.'); return; }
+  currentQueue = list;
+  currentTrackIndex = 0;
+  playTrackById(list[0].id);
+}
+
+async function deletePlaylist(id){
+  const pl = allPlaylists.find(p=>p.id===id);
+  if(!pl) return;
+  if(!confirm(`Supprimer la playlist « ${pl.name || 'sans nom'} » définitivement ?`)) return;
+  try{
+    await playlistsRef.doc(id).delete();
+    showToast('Playlist supprimée.');
+    if(currentPlaylistId === id) switchView('playlists');
+  }catch(e){ console.error(e); showToast("Impossible de supprimer cette playlist."); }
+}
+
+function renderPlaylistDetailTracks(){
+  const pl = currentPlaylist();
+  if(!pl){ currentQueue = []; return; }
+  const orderedIds = Array.isArray(pl.trackIds) ? pl.trackIds : [];
+  let list = orderedIds.map(id => allTracks.find(t => t.id === id)).filter(Boolean);
+  if(searchTerm) list = list.filter(matchesSearch);
+  currentQueue = list;
+  paintPlaylistHeader(pl, list);
+  paintPlaylistRows(list);
+}
+
+function paintPlaylistHeader(pl, list){
+  document.getElementById('pl-detail-title').textContent = pl.name || 'Playlist sans nom';
+  const descEl = document.getElementById('pl-detail-desc');
+  descEl.textContent = pl.description || '';
+  descEl.style.display = pl.description ? '' : 'none';
+  document.getElementById('pl-detail-count').textContent = list.length + (list.length > 1 ? ' titres' : ' titre');
+  const cover = pl.coverURL || (list[0] && list[0].coverURL) || fallbackCoverSvg();
+  document.getElementById('pl-detail-cover').src = cover;
+}
+
+function paintPlaylistRows(list){
+  const wrap = document.getElementById('pl-track-list');
+  const empty = document.getElementById('pl-detail-empty');
+  if(!list.length){
+    wrap.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  wrap.innerHTML = list.map((t,i)=>{
+    const isPlaying = t.id === currentTrackId;
+    return `
+    <div class="pl-row ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
+      <span class="pl-row-num">${isPlaying ? '♪' : (i+1)}</span>
+      <div class="pl-row-cover"><img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt=""></div>
+      <div class="pl-row-meta">
+        <div class="pl-row-title">${escapeHtml(t.title || 'Sans titre')}</div>
+        <div class="pl-row-artist">${escapeHtml(t.artist || 'Artiste inconnu')}</div>
+      </div>
+      <span class="pl-row-duration">${formatTime(t.duration || 0)}</span>
+      <div class="pl-row-actions">
+        <button class="icon-btn" data-pl-up="${t.id}" aria-label="Monter" ${i===0 ? 'disabled' : ''}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg>
+        </button>
+        <button class="icon-btn" data-pl-down="${t.id}" aria-label="Descendre" ${i===list.length-1 ? 'disabled' : ''}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <button class="icon-btn" data-pl-remove="${t.id}" aria-label="Retirer de la playlist">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+
+  wrap.querySelectorAll('.pl-row').forEach(row=>{
+    row.addEventListener('click', (e)=>{
+      if(e.target.closest('button')) return;
+      playTrackById(row.dataset.trackId);
+    });
+  });
+  wrap.querySelectorAll('[data-pl-up]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); movePlaylistTrack(btn.dataset.plUp, -1); });
+  });
+  wrap.querySelectorAll('[data-pl-down]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); movePlaylistTrack(btn.dataset.plDown, 1); });
+  });
+  wrap.querySelectorAll('[data-pl-remove]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); removeTrackFromPlaylist(currentPlaylistId, btn.dataset.plRemove); });
+  });
+}
+
+async function movePlaylistTrack(trackId, delta){
+  const pl = currentPlaylist();
+  if(!pl) return;
+  const ids = Array.isArray(pl.trackIds) ? [...pl.trackIds] : [];
+  const idx = ids.indexOf(trackId);
+  const swapWith = idx + delta;
+  if(idx < 0 || swapWith < 0 || swapWith >= ids.length) return;
+  [ids[idx], ids[swapWith]] = [ids[swapWith], ids[idx]];
+  try{
+    await playlistsRef.doc(pl.id).update({ trackIds: ids, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+  }catch(e){ console.error(e); showToast("Impossible de réorganiser la playlist."); }
+}
+
+async function removeTrackFromPlaylist(playlistId, trackId){
+  try{
+    await playlistsRef.doc(playlistId).update({
+      trackIds: firebase.firestore.FieldValue.arrayRemove(trackId),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    showToast('Titre retiré de la playlist.');
+  }catch(e){ console.error(e); showToast("Impossible de retirer ce titre."); }
+}
+
+async function toggleTrackInPlaylist(playlistId, trackId, checked){
+  try{
+    await playlistsRef.doc(playlistId).update({
+      trackIds: checked ? firebase.firestore.FieldValue.arrayUnion(trackId) : firebase.firestore.FieldValue.arrayRemove(trackId),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    showToast(checked ? 'Ajouté à la playlist.' : 'Retiré de la playlist.');
+  }catch(e){ console.error(e); showToast("Action impossible pour le moment."); }
+}
+
+/* --- Modale : créer / modifier une playlist --- */
+function openPlaylistForm(playlistId){
+  if(!auth.currentUser){ clearAuthErrors(); openOverlay('account-overlay'); return; }
+  editingPlaylistId = playlistId || null;
+  const pl = editingPlaylistId ? allPlaylists.find(p=>p.id===editingPlaylistId) : null;
+  document.getElementById('playlist-form-error').style.display = 'none';
+  document.getElementById('playlist-form-title').textContent = pl ? 'Modifier la playlist' : 'Nouvelle playlist';
+  document.getElementById('playlist-form-submit').textContent = pl ? 'Enregistrer' : 'Créer la playlist';
+  document.getElementById('playlist-form-name').value = pl ? (pl.name || '') : '';
+  document.getElementById('playlist-form-desc').value = pl ? (pl.description || '') : '';
+  playlistFormCoverDataUrl = pl ? (pl.coverURL || null) : null;
+  const preview = document.getElementById('playlist-form-cover-preview');
+  if(playlistFormCoverDataUrl){
+    preview.style.background = 'transparent';
+    preview.innerHTML = `<img src="${playlistFormCoverDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+  }else{
+    preview.style.background = '';
+    preview.innerHTML = '🎵';
+  }
+  openOverlay('playlist-form-overlay');
+}
+function showPlaylistFormError(msg){
+  const el = document.getElementById('playlist-form-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+document.getElementById('create-playlist-btn').addEventListener('click', ()=> openPlaylistForm(null));
+document.getElementById('playlists-empty-create-btn').addEventListener('click', ()=> openPlaylistForm(null));
+document.getElementById('pl-detail-edit').addEventListener('click', ()=> openPlaylistForm(currentPlaylistId));
+document.getElementById('pl-detail-delete').addEventListener('click', ()=>{ if(currentPlaylistId) deletePlaylist(currentPlaylistId); });
+document.getElementById('pl-detail-play').addEventListener('click', ()=>{ if(currentPlaylistId) playPlaylistById(currentPlaylistId); });
+document.getElementById('playlist-form-cover-choose').addEventListener('click', ()=> document.getElementById('playlist-form-cover-input').click());
+document.getElementById('playlist-form-cover-input').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    playlistFormCoverDataUrl = await compressImageToDataURL(file, 400, 0.85);
+    const preview = document.getElementById('playlist-form-cover-preview');
+    preview.style.background = 'transparent';
+    preview.innerHTML = `<img src="${playlistFormCoverDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+  }catch(err){
+    showPlaylistFormError("Impossible de lire cette image.");
+  }
+});
+document.getElementById('playlist-form-cover-remove').addEventListener('click', ()=>{
+  playlistFormCoverDataUrl = null;
+  const preview = document.getElementById('playlist-form-cover-preview');
+  preview.innerHTML = '';
+  preview.textContent = '🎵';
+});
+document.getElementById('playlist-form-submit').addEventListener('click', async ()=>{
+  const user = auth.currentUser;
+  if(!user){ clearAuthErrors(); openOverlay('account-overlay'); return; }
+  const name = document.getElementById('playlist-form-name').value.trim();
+  const description = document.getElementById('playlist-form-desc').value.trim();
+  if(!name){ showPlaylistFormError("Merci de donner un nom à ta playlist."); return; }
+  const btn = document.getElementById('playlist-form-submit');
+  btn.disabled = true; btn.textContent = 'Enregistrement…';
+  try{
+    if(editingPlaylistId){
+      await playlistsRef.doc(editingPlaylistId).update({
+        name, description: description || null, coverURL: playlistFormCoverDataUrl || null,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      showToast('Playlist mise à jour.');
+    }else{
+      await playlistsRef.add({
+        name, description: description || null, coverURL: playlistFormCoverDataUrl || null,
+        trackIds: [],
+        ownerId: user.uid,
+        ownerName: (currentProfile && currentProfile.displayName) || user.displayName || (user.email ? user.email.split('@')[0] : 'Membre'),
+        ownerPhoto: (currentProfile && currentProfile.photoURL) || user.photoURL || null,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      showToast('Playlist créée 🎶');
+    }
+    closeOverlay('playlist-form-overlay');
+    editingPlaylistId = null;
+  }catch(err){
+    console.error(err);
+    showPlaylistFormError("Impossible d'enregistrer la playlist.");
+  }finally{
+    btn.disabled = false; btn.textContent = editingPlaylistId ? 'Enregistrer' : 'Créer la playlist';
+  }
+});
+
+/* --- Modale : ajouter le titre courant à une ou plusieurs playlists --- */
+function openAddToPlaylistModal(trackId){
+  if(!auth.currentUser){ clearAuthErrors(); openOverlay('account-overlay'); return; }
+  pickerTrackId = trackId;
+  document.getElementById('add-to-playlist-error').style.display = 'none';
+  document.getElementById('add-to-playlist-new-name').value = '';
+  renderAddToPlaylistList();
+  openOverlay('add-to-playlist-overlay');
+}
+function renderAddToPlaylistList(){
+  const wrap = document.getElementById('add-to-playlist-list');
+  if(!allPlaylists.length){
+    wrap.innerHTML = `<p style="color:var(--text-faint); font-size:13px; padding:8px 2px;">Tu n'as pas encore de playlist. Crée-en une ci-dessous.</p>`;
+    return;
+  }
+  wrap.innerHTML = allPlaylists.map(pl=>{
+    const inPlaylist = Array.isArray(pl.trackIds) && pl.trackIds.includes(pickerTrackId);
+    return `
+    <label class="picker-item">
+      <input type="checkbox" data-toggle-playlist="${pl.id}" ${inPlaylist ? 'checked' : ''}>
+      <span class="picker-item-name">${escapeHtml(pl.name || 'Playlist sans nom')}</span>
+      <span class="picker-item-count">${Array.isArray(pl.trackIds) ? pl.trackIds.length : 0}</span>
+    </label>`;
+  }).join('');
+  wrap.querySelectorAll('[data-toggle-playlist]').forEach(cb=>{
+    cb.addEventListener('change', ()=> toggleTrackInPlaylist(cb.dataset.togglePlaylist, pickerTrackId, cb.checked));
+  });
+}
+document.getElementById('add-to-playlist-new-btn').addEventListener('click', async ()=>{
+  const user = auth.currentUser;
+  if(!user || !pickerTrackId) return;
+  const name = document.getElementById('add-to-playlist-new-name').value.trim();
+  const errEl = document.getElementById('add-to-playlist-error');
+  if(!name){
+    errEl.textContent = "Merci de donner un nom à ta playlist.";
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  const btn = document.getElementById('add-to-playlist-new-btn');
+  btn.disabled = true;
+  try{
+    await playlistsRef.add({
+      name, description: null, coverURL: null,
+      trackIds: [pickerTrackId],
+      ownerId: user.uid,
+      ownerName: (currentProfile && currentProfile.displayName) || user.displayName || (user.email ? user.email.split('@')[0] : 'Membre'),
+      ownerPhoto: (currentProfile && currentProfile.photoURL) || user.photoURL || null,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('add-to-playlist-new-name').value = '';
+    showToast('Playlist créée et titre ajouté 🎶');
+  }catch(e){
+    console.error(e);
+    errEl.textContent = "Impossible de créer la playlist.";
+    errEl.style.display = 'block';
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+/* --- Modale : ajouter des titres à la playlist actuellement ouverte --- */
+document.getElementById('pl-detail-add-tracks').addEventListener('click', openAddTracksModal);
+document.getElementById('pl-detail-empty-add').addEventListener('click', openAddTracksModal);
+function openAddTracksModal(){
+  if(!currentPlaylistId) return;
+  document.getElementById('add-tracks-search').value = '';
+  renderAddTracksList('');
+  openOverlay('add-tracks-overlay');
+}
+document.getElementById('add-tracks-search').addEventListener('input', (e)=> renderAddTracksList(e.target.value.trim().toLowerCase()));
+function renderAddTracksList(filter){
+  const pl = currentPlaylist();
+  if(!pl) return;
+  const ids = Array.isArray(pl.trackIds) ? pl.trackIds : [];
+  const wrap = document.getElementById('add-tracks-list');
+  const filtered = allTracks.filter(t=>{
+    if(!filter) return true;
+    return (t.title||'').toLowerCase().includes(filter) || (t.artist||'').toLowerCase().includes(filter);
+  });
+  if(!filtered.length){
+    wrap.innerHTML = `<p style="color:var(--text-faint); font-size:13px; padding:8px 2px;">Aucun titre trouvé.</p>`;
+    return;
+  }
+  wrap.innerHTML = filtered.map(t=>{
+    const inPlaylist = ids.includes(t.id);
+    return `
+    <label class="picker-item">
+      <input type="checkbox" data-toggle-track="${t.id}" ${inPlaylist ? 'checked' : ''}>
+      <div class="picker-item-cover"><img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt=""></div>
+      <span class="picker-item-name">${escapeHtml(t.title || 'Sans titre')}<span class="picker-item-sub">${escapeHtml(t.artist || 'Artiste inconnu')}</span></span>
+    </label>`;
+  }).join('');
+  wrap.querySelectorAll('[data-toggle-track]').forEach(cb=>{
+    cb.addEventListener('change', ()=> toggleTrackInPlaylist(currentPlaylistId, cb.dataset.toggleTrack, cb.checked));
+  });
+}
+
+document.getElementById('np-menu-addpl-btn').addEventListener('click', ()=>{
+  closeNpMenu();
+  if(currentTrackId) openAddToPlaylistModal(currentTrackId);
 });
 
 function renderHero(){
@@ -1268,13 +1857,15 @@ function renderTracks(){
       emptyTitle: searchTerm ? 'Aucun résultat' : "Aucun titre pour l'instant",
       emptyText: searchTerm ? "Essaie un autre mot-clé." : "Sois le premier à ajouter un morceau à RIJOUL MUSIC."
     });
-  }else{
+  }else if(currentView === 'mine'){
     const list = allTracks.filter(t => uid && t.uploaderId === uid).filter(matchesSearch);
     currentQueue = list;
     paintGrid('mine-grid', 'mine-empty', 'mine-count', list, {
       emptyTitle: "Tu n'as encore rien ajouté",
       emptyText: "Ajoute ton premier titre pour le voir apparaître ici."
     });
+  }else if(currentView === 'playlist-detail'){
+    renderPlaylistDetailTracks(); // gère elle-même currentQueue, dans l'ordre de la playlist
   }
   // Garde les pochettes précédente/suivante du grand lecteur à jour si la
   // liste affichée change (recherche, ajout/suppression d'un titre…),
@@ -1323,10 +1914,16 @@ function paintGrid(gridId, emptyId, countId, list, texts){
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.6-10-9.1C.5 8.6 2 5 5.6 5c2 0 3.4 1 4.9 3 1.5-2 2.9-3 4.9-3 3.6 0 5.1 3.6 3.6 6.9C19.5 16.4 12 21 12 21z"/></svg>
           ${(Array.isArray(t.likes) ? t.likes.length : 0)}
         </button>
+        <button class="like-btn addpl-btn" data-add-to-playlist="${t.id}" aria-label="Ajouter à une playlist">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
       </div>
     </div>`;
   }).join('');
 
+  grid.querySelectorAll('[data-add-to-playlist]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); openAddToPlaylistModal(btn.dataset.addToPlaylist); });
+  });
   grid.querySelectorAll('[data-play]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); playTrackById(btn.dataset.play); });
   });
