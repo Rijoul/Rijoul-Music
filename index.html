@@ -131,16 +131,12 @@ input,textarea{ font-family:inherit; }
 .user-chip-name{ font-size:13.5px; font-weight:600; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .chip-caret{ opacity:.6; transition:.15s; }
 .user-chip.open .chip-caret{ transform:rotate(180deg); }
-.user-dd{ position:absolute; top:calc(100% + 10px); right:0; width:224px; background:rgba(28,28,30,0.75); backdrop-filter:var(--glass-blur); -webkit-backdrop-filter:var(--glass-blur); border:1px solid var(--glass-border-strong); border-radius:18px; box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,0.1); padding:6px; display:none; z-index:500; }
-.user-chip.open .user-dd, .user-dd.open{ display:block; }
+.user-dd{ position:absolute; top:calc(100% + 10px); right:0; width:224px; background:rgba(28,28,30,0.75); backdrop-filter:var(--glass-blur); -webkit-backdrop-filter:var(--glass-blur); border:1px solid var(--glass-border-strong); border-radius:18px; box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,0.1); padding:6px; display:none; z-index:50; }
+.user-chip.open .user-dd{ display:block; }
 /* Sur mobile, .topnav passe en overflow:hidden pour contenir ses lignes
-   empilées, et comme .topnav a un backdrop-filter, il devient lui-même le
-   "containing block" de tout descendant en position:fixed : un simple
-   position:fixed sur le menu NE SUFFIT DONC PAS à s'en échapper, il reste
-   coupé par cet overflow:hidden. La seule façon fiable de le garder visible
-   est de sortir le menu du DOM de la nav (déplacé directement dans <body>
-   au clic, voir positionUserDropdown en JS) : ainsi plus aucun ancêtre ne
-   peut jamais le rogner, quel que soit l'écran. */
+   empilées : ça coupait ce menu (le bouton "Se déconnecter" devenait
+   inaccessible). En position "fixed", calculée en JS à l'ouverture, le menu
+   sort de ce conteneur et reste toujours entièrement visible et cliquable. */
 .user-dd.fixed-pos{ position:fixed; top:var(--dd-top,60px); right:var(--dd-right,12px); left:auto; }
 .dd-item{ display:flex; align-items:center; gap:9px; width:100%; text-align:left; background:transparent; border:0; color:var(--text); padding:10px 11px; border-radius:12px; font-size:13.5px; font-weight:500; }
 .dd-item:hover{ background:rgba(255,255,255,0.09); }
@@ -424,16 +420,14 @@ input,textarea{ font-family:inherit; }
      autour de la carte et à travers son fond translucide. */
   position:absolute; inset:0; overflow:hidden; pointer-events:none;
   opacity:0; transition:opacity .6s ease; mix-blend-mode:screen;
-  /* Pas de rotation de teinte continue ici : les couleurs des faisceaux
-     doivent rester fixes (calquées sur la pochette) pendant toute la
-     lecture, et ne changer qu'au moment où l'image du morceau change
-     (voir applyConcertBeamColors en JS). */
+  animation:npConcertHue 16s linear infinite; animation-play-state:paused;
   /* contain isole le repaint de la zone (faisceaux + flash) du reste de la
      page : sur mobile, ça évite de faire recalculer/repeindre le layout
      environnant à chaque frame animée, ce qui coûte cher sur ces appareils. */
   contain:strict;
 }
-.np-concert-lights.active{ opacity:1; }
+.np-concert-lights.active{ opacity:1; animation-play-state:running; }
+@keyframes npConcertHue{ from{ filter:hue-rotate(0deg); } to{ filter:hue-rotate(360deg); } }
 .np-beam{
   position:absolute; top:-25%; left:50%; width:42%; height:150%;
   background:linear-gradient(180deg, var(--beam-color, rgba(255,176,32,.9)) 0%, transparent 75%);
@@ -459,45 +453,6 @@ input,textarea{ font-family:inherit; }
 .np-strobe{
   position:absolute; inset:0; opacity:0; pointer-events:none;
   background:radial-gradient(circle at 50% 28%, rgba(255,255,255,0.95), transparent 62%);
-}
-/* Affichage mobile du mode concert : au lieu de faisceaux balayants
-   (bureau) ou d'une simple lueur rectangulaire, la pochette est entourée
-   d'un halo ROND (.np-concert-glow, forme circulaire via border-radius:50%
-   + dégradé radial centré) et d'ondes circulaires qui se diffusent vers
-   l'extérieur en boucle (.np-concert-wave) — comme des ronds dans l'eau
-   partant de l'image. Postés dans .np-art-wrap (position:relative),
-   directement derrière la pochette (z-index négatif : passent donc
-   derrière .np-art-track qui n'est pas positionné) plutôt que derrière
-   toute la carte du lecteur. Masqués par défaut (bureau) ; activés
-   uniquement dans le media query mobile ci-dessous. */
-.np-concert-glow{
-  position:absolute; top:50%; left:50%; z-index:-1; display:none; opacity:0; pointer-events:none;
-  width:min(92vw,420px); height:min(92vw,420px);
-  transform:translate(-50%,-50%);
-  border-radius:50%;
-  background:radial-gradient(circle, rgba(255,153,72,.55) 0%, rgba(255,90,200,.4) 42%, rgba(120,190,255,.28) 66%, transparent 78%);
-  filter:blur(28px);
-}
-/* Ondes rondes qui se diffusent en continu autour de la pochette : simple
-   anneau qui grossit en s'estompant, rejoué en boucle avec un léger
-   décalage entre les deux (np-wave-2) pour un effet d'ondes successives,
-   façon rond dans l'eau. Pas d'animation tant que le mode concert n'est
-   pas actif (classe .active ajoutée/retirée en JS), pour ne rien
-   consommer inutilement quand c'est éteint. */
-.np-concert-wave{
-  position:absolute; top:50%; left:50%; z-index:-1; display:none; pointer-events:none;
-  width:min(50vw,240px); height:min(50vw,240px); border-radius:50%;
-  transform:translate(-50%,-50%) scale(.85);
-  border:2px solid rgba(255,176,64,.65);
-  opacity:0;
-}
-.np-concert-wave.active{ animation:npConcertWave 2.4s ease-out infinite; }
-.np-concert-wave.np-wave-2{ border-color:rgba(120,190,255,.6); }
-.np-concert-wave.np-wave-2.active{ animation-delay:1.2s; }
-@keyframes npConcertWave{
-  0%{ transform:translate(-50%,-50%) scale(.82); opacity:0; }
-  16%{ opacity:.55; }
-  100%{ transform:translate(-50%,-50%) scale(2.15); opacity:0; }
 }
 .np-content{ position:relative; z-index:2; height:100%; display:flex; flex-direction:column; padding:calc(env(safe-area-inset-top,0px) + 16px) 26px calc(env(safe-area-inset-bottom,0px) + 26px); }
 .np-topbar{ display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
@@ -528,7 +483,7 @@ input,textarea{ font-family:inherit; }
 .np-toggle-input:focus-visible + .np-toggle-switch{ outline:2px solid var(--copper-bright); outline-offset:2px; }
 .np-art-wrap{ position:relative; flex:1; display:flex; align-items:center; justify-content:center; min-height:0; padding:20px 0; overflow:hidden; }
 .np-art-track{ display:flex; align-items:center; justify-content:center; gap:12px; width:100%; }
-.np-art{ width:min(56vw,260px); height:min(56vw,260px); max-width:100%; max-height:100%; object-fit:cover; border-radius:22px; box-shadow:0 30px 70px -20px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.08); flex-shrink:0; will-change:transform; transition:transform .09s linear; }
+.np-art{ width:min(56vw,260px); height:min(56vw,260px); max-width:100%; max-height:100%; object-fit:cover; border-radius:22px; box-shadow:0 30px 70px -20px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.08); flex-shrink:0; will-change:transform; }
 .np-art-side{
   flex-shrink:0; width:min(20vw,110px); height:min(20vw,110px);
   object-fit:cover; border-radius:16px; cursor:pointer;
@@ -588,14 +543,15 @@ input,textarea{ font-family:inherit; }
   .np-art{ width:min(50vw,240px); height:min(50vw,240px); }
   .np-art-side{ width:min(17vw,90px); height:min(17vw,90px); }
   .np-art-track{ gap:8px; }
-  /* Mode concert optimisé mobile : on remplace entièrement les 5 faisceaux
-     balayants par un halo rond + des ondes circulaires (.np-concert-glow /
-     .np-concert-wave définis plus haut) — beaucoup plus léger à repeindre
-     par frame que 5 faisceaux en rotation, et mieux adapté aux petits
-     écrans et aux appareils moins puissants. */
-  .np-beam{ display:none; }
-  .np-concert-glow{ display:block; }
-  .np-concert-wave{ display:block; }
+  /* Mode concert optimisé mobile : faisceaux plus fins et moins flous
+     (moins de pixels à recalculer/repeindre à chaque frame), pour rester
+     fluide sur des appareils moins puissants. */
+  .np-beam{ width:34%; filter:blur(2px); }
+  .np-beam-1{ left:-7%; }
+  .np-beam-2{ left:13%; }
+  .np-beam-3{ left:33%; }
+  .np-beam-4{ left:53%; }
+  .np-beam-5{ left:73%; }
 }
 
 /* =========================================================
@@ -1078,13 +1034,6 @@ input,textarea{ font-family:inherit; }
       </div>
 
       <div class="np-art-wrap">
-        <!-- Mode concert (mobile uniquement) : halo rond + ondes circulaires
-             posés derrière la pochette elle-même (au lieu de derrière toute
-             la carte du lecteur), donc bien visibles juste autour/derrière
-             la photo, sous forme de ronds qui se diffusent (pas un carré). -->
-        <span class="np-concert-glow" id="np-concert-glow" aria-hidden="true"></span>
-        <span class="np-concert-wave np-wave-1" id="np-concert-wave-1" aria-hidden="true"></span>
-        <span class="np-concert-wave np-wave-2" id="np-concert-wave-2" aria-hidden="true"></span>
         <div class="np-art-track" id="np-art-track">
           <img class="np-art-side" id="np-art-prev" alt="" aria-hidden="true">
           <img class="np-art" id="np-cover" alt="">
@@ -1580,13 +1529,9 @@ const userNameLabel = document.getElementById('user-name-label');
 accountBtn.addEventListener('click', ()=>{ clearAuthErrors(); openOverlay('account-overlay'); });
 const userDropdown = userChip.querySelector('.user-dd');
 // Repositionne le menu (dont "Se déconnecter") en position fixe, calculée
-// depuis la position réelle du bouton compte. Sur mobile, .topnav a un
-// backdrop-filter qui en fait le "containing block" de tout position:fixed
-// interne : un simple position:fixed sur place ne suffit pas à échapper à
-// son overflow:hidden. On déplace donc réellement le noeud du menu dans
-// <body> (une seule fois, on le mémorise) pour qu'aucun ancêtre ne puisse
-// plus jamais le rogner ni le cacher, quel que soit l'écran.
-if(userDropdown.parentElement !== document.body) document.body.appendChild(userDropdown);
+// depuis la position réelle du bouton compte. Ça évite qu'il soit coupé par
+// le `overflow:hidden` de la barre de nav sur mobile, et le garde toujours
+// visible et accessible au doigt.
 function positionUserDropdown(){
   const r = userChip.getBoundingClientRect();
   userDropdown.classList.add('fixed-pos');
@@ -1597,20 +1542,11 @@ userChip.addEventListener('click', (e)=>{
   if(e.target.closest('#dd-logout') || e.target.closest('#dd-edit-profile') || e.target.closest('#dd-my-uploads')) return;
   const willOpen = !userChip.classList.contains('open');
   userChip.classList.toggle('open', willOpen);
-  // Le menu vit maintenant hors de .user-chip (déplacé dans <body>), donc le
-  // sélecteur CSS ".user-chip.open .user-dd" ne le vise plus : on pilote son
-  // affichage directement avec sa propre classe .open.
-  userDropdown.classList.toggle('open', willOpen);
   if(willOpen) positionUserDropdown();
 });
 window.addEventListener('resize', ()=>{ if(userChip.classList.contains('open')) positionUserDropdown(); });
 window.addEventListener('scroll', ()=>{ if(userChip.classList.contains('open')) positionUserDropdown(); }, true);
-document.addEventListener('click', (e)=>{
-  if(!userChip.contains(e.target) && !userDropdown.contains(e.target)){
-    userChip.classList.remove('open');
-    userDropdown.classList.remove('open');
-  }
-});
+document.addEventListener('click', (e)=>{ if(!userChip.contains(e.target)) userChip.classList.remove('open'); });
 
 document.getElementById('dd-logout').addEventListener('click', async ()=>{
   await auth.signOut();
@@ -1754,11 +1690,6 @@ function subscribeToProfile(uid){
       typeof data.eqMid === 'number' ? data.eqMid : 0,
       typeof data.eqTreble === 'number' ? data.eqTreble : 0
     );
-    // Mode concert : réglage synchronisé avec le compte (Firestore), pour
-    // retrouver le même état à la réouverture de la page et sur les autres
-    // appareils. `save:false` car on applique ici ce qui vient déjà du
-    // compte — on ne doit pas le réécrire immédiatement dessus.
-    if(typeof setConcertMode === 'function') setConcertMode(data.concertMode === true, { save:false });
   });
 }
 function updateProfilePreview(label, photoURL){
@@ -1842,7 +1773,6 @@ auth.onAuthStateChanged(async (user)=>{
     if(profileUnsub){ profileUnsub(); profileUnsub = null; }
     currentProfile = null;
     applyEqSettings(0, 0, 0);
-    if(typeof setConcertMode === 'function') setConcertMode(false, { save:false });
     if(playlistsUnsub){ playlistsUnsub(); playlistsUnsub = null; }
     allPlaylists = [];
     if(currentView === 'playlists' || currentView === 'playlist-detail'){ switchView('library'); }
@@ -3282,9 +3212,6 @@ function syncNowPlayingUI(){
   document.getElementById('np-time-current').textContent = document.getElementById('p-time-current').textContent;
   document.getElementById('np-time-total').textContent = document.getElementById('p-time-total').textContent;
   document.getElementById('np-bar-fill').style.width = document.getElementById('p-bar-fill').style.width;
-  // Nouvelle pochette : si le mode concert est actif, on recalcule les
-  // couleurs des faisceaux (aigus/médiums) sur cette nouvelle image.
-  if(typeof concertModeOn !== 'undefined' && concertModeOn && typeof applyConcertBeamColors === 'function') applyConcertBeamColors();
 }
 function openNowPlaying(){
   if(!currentTrackId) return;
@@ -3931,16 +3858,13 @@ document.addEventListener('click', (e)=>{ if(!npMenuBtn.contains(e.target) && !n
 let concertModeOn = false;
 const npConcertLightsEl = document.getElementById('np-concert-lights');
 const concertBeams = Array.from(document.querySelectorAll('.np-beam'));
-const concertGlow = document.getElementById('np-concert-glow');
-const concertWaves = Array.from(document.querySelectorAll('.np-concert-wave'));
 const concertStrobe = document.getElementById('np-strobe');
 const npCoverEl = document.getElementById('np-cover');
 // Sur mobile/tactile, on allège le travail du mode concert (une frame sur
 // deux) : moins de calculs de bandes de fréquences et moins de repaint des
 // faisceaux/flash par seconde, pour rester fluide sur des appareils moins
 // puissants. L'effet reste perçu comme fluide car l'oeil lisse ~30fps.
-const concertMobileMQ = window.matchMedia('(max-width:760px)');
-const concertLitePerf = concertMobileMQ.matches || ('ontouchstart' in window);
+const concertLitePerf = window.matchMedia('(max-width:760px)').matches || ('ontouchstart' in window);
 let concertFrameCounter = 0;
 // Historique court de la basse (pour détecter un vrai "coup" plutôt qu'un
 // niveau de basse simplement élevé) + anti-rebond pour ne pas re-flasher
@@ -3956,18 +3880,8 @@ let concertTrebleOn = false;
 // Amplitude courante du tremblement de la pochette (suit la basse, avec
 // une petite rémanence pour un mouvement plus organique qu'un pur bruit).
 let concertShakeMag = 0;
-// Position/rotation "lissées" du tremblement de la pochette : au lieu de
-// sauter directement sur une nouvelle valeur aléatoire à chaque frame, on
-// avance progressivement (lerp) vers une cible aléatoire. Le mouvement
-// reste réactif à la musique mais devient beaucoup plus doux/organique,
-// sans à-coups.
-let concertShakeDx = 0;
-let concertShakeDy = 0;
-let concertShakeRot = 0;
 function resetConcertLights(){
   concertBeams.forEach(b=> b.style.opacity = 0);
-  if(concertGlow) concertGlow.style.opacity = 0;
-  concertWaves.forEach(w=> w.classList.remove('active'));
   if(concertStrobe) concertStrobe.style.opacity = 0;
   if(npCoverEl) npCoverEl.style.transform = '';
   concertBassHistory = [];
@@ -3976,71 +3890,7 @@ function resetConcertLights(){
   concertMidOn = false;
   concertTrebleOn = false;
   concertShakeMag = 0;
-  concertShakeDx = 0;
-  concertShakeDy = 0;
-  concertShakeRot = 0;
   concertFrameCounter = 0;
-}
-// Couleur des faisceaux (bureau) calquée sur la pochette en cours de
-// lecture : on échantillonne l'image sur un petit canevas, on regroupe les
-// pixels par teinte proche (quantification) et on compte leur fréquence.
-// - "Aigus" (np-beam-1/3/5) => la couleur CLAIRE la plus présente sur
-//   l'image (luminance élevée).
-// - "Médiums" (np-beam-2/4) => la 2e couleur la plus présente sur l'image
-//   (peu importe sa clarté), suffisamment différente de la première pour
-//   qu'on distingue bien les deux familles de faisceaux.
-function quantizeChannel(v){ return Math.round(v / 24) * 24; }
-function extractConcertBeamColors(imgEl){
-  try{
-    if(!imgEl || !imgEl.complete || !imgEl.naturalWidth) return null;
-    const size = 32;
-    const canvas = document.createElement('canvas');
-    canvas.width = size; canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(imgEl, 0, 0, size, size);
-    const data = ctx.getImageData(0, 0, size, size).data; // lève une erreur si l'image est cross-origin sans CORS (canvas "taint")
-    const buckets = new Map();
-    for(let i = 0; i < data.length; i += 4){
-      if(data[i + 3] < 128) continue; // pixels transparents ignorés
-      const r = quantizeChannel(data[i]), g = quantizeChannel(data[i + 1]), b = quantizeChannel(data[i + 2]);
-      const key = r + ',' + g + ',' + b;
-      const entry = buckets.get(key);
-      if(entry) entry.count++;
-      else buckets.set(key, { r, g, b, count: 1 });
-    }
-    const sorted = Array.from(buckets.values()).sort((a, b) => b.count - a.count);
-    if(!sorted.length) return null;
-    const luminance = c => 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
-    const dist = (a, b) => Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b);
-    let light = sorted.find(c => luminance(c) >= 170) || sorted.find(c => luminance(c) >= 130) || sorted[0];
-    let secondary = sorted.find(c => c !== light && dist(c, light) > 70) || sorted.find(c => c !== light) || light;
-    // Le noir (ou une teinte trop proche du noir) est quasi invisible une
-    // fois projeté en faisceau : on le remplace par un gris clair, bien
-    // plus visible à l'écran, plutôt que de garder une couleur trop sombre.
-    const DARK_THRESHOLD = 45;
-    if(luminance(light) < DARK_THRESHOLD) light = { r:190, g:190, b:190, count: light.count };
-    if(luminance(secondary) < DARK_THRESHOLD) secondary = { r:150, g:150, b:150, count: secondary.count };
-    return { light, secondary };
-  }catch(err){
-    return null; // image cross-origin non autorisée pour le canevas : on garde les couleurs par défaut
-  }
-}
-function applyConcertBeamColors(){
-  if(!npCoverEl || !concertBeams.length) return;
-  const run = () => {
-    const colors = extractConcertBeamColors(npCoverEl);
-    const lightColor = colors ? `rgba(${colors.light.r},${colors.light.g},${colors.light.b},.95)` : null;
-    const secondaryColor = colors ? `rgba(${colors.secondary.r},${colors.secondary.g},${colors.secondary.b},.88)` : null;
-    concertBeams.forEach((beam, i) => {
-      // Faisceaux 0/2/4 (np-beam-1/3/5) = aigus ; 1/3 (np-beam-2/4) = médiums.
-      const isTreble = (i % 2 === 0);
-      const color = isTreble ? lightColor : secondaryColor;
-      if(color) beam.style.setProperty('--beam-color', color);
-      else beam.style.removeProperty('--beam-color'); // retombe sur les couleurs par défaut du CSS
-    });
-  };
-  if(npCoverEl.complete && npCoverEl.naturalWidth) run();
-  else npCoverEl.addEventListener('load', run, { once: true });
 }
 function updateConcertLights(data){
   if(!concertModeOn || !concertBeams.length) return;
@@ -4059,30 +3909,22 @@ function updateConcertLights(data){
     bass = 0.3 + Math.random()*0.4; mid = 0.3 + Math.random()*0.4; treble = 0.3 + Math.random()*0.4;
   }
 
-  // Faisceaux (bureau) / lueur ambiante (mobile) : apparaissent/varient
-  // selon les médiums et les aigus (pas la basse, réservée au flash
-  // ci-dessous). Hystérésis (seuil plus haut pour s'allumer que pour
-  // s'éteindre) pour éviter un clignotement frame par frame quand le
-  // niveau oscille juste autour du seuil.
+  // Faisceaux : apparaissent/disparaissent selon les médiums et les aigus
+  // (pas la basse, réservée au flash ci-dessous). Hystérésis (seuil plus
+  // haut pour s'allumer que pour s'éteindre) pour éviter un clignotement
+  // frame par frame quand le niveau oscille juste autour du seuil.
   const onT = 0.4, offT = 0.28;
   concertMidOn = concertMidOn ? (mid > offT) : (mid > onT);
   concertTrebleOn = concertTrebleOn ? (treble > offT) : (treble > onT);
   const midOpacity = concertMidOn ? clamp(0.16 + mid * 0.85) : 0;
   const trebleOpacity = concertTrebleOn ? clamp(0.14 + treble * 0.85) : 0;
-  if(concertMobileMQ.matches){
-    // Mobile : un seul élément (la lueur ambiante) à mettre à jour au lieu
-    // des 5 faisceaux, moins coûteux à repeindre à chaque frame.
-    if(concertGlow) concertGlow.style.opacity = Math.max(midOpacity, trebleOpacity * 0.9);
-  }else{
-    if(concertGlow) concertGlow.style.opacity = 0;
-    // Faisceaux 1/3/5 (gauche / centre / droite) = aigus.
-    // Faisceaux 2/4 (entre gauche-centre et centre-droite) = médiums.
-    if(concertBeams[0]) concertBeams[0].style.opacity = trebleOpacity; // gauche
-    if(concertBeams[1]) concertBeams[1].style.opacity = midOpacity;    // entre gauche et centre
-    if(concertBeams[2]) concertBeams[2].style.opacity = trebleOpacity; // centre
-    if(concertBeams[3]) concertBeams[3].style.opacity = midOpacity;    // entre centre et droite
-    if(concertBeams[4]) concertBeams[4].style.opacity = trebleOpacity; // droite
-  }
+  // Faisceaux 1/3/5 (gauche / centre / droite) = aigus.
+  // Faisceaux 2/4 (entre gauche-centre et centre-droite) = médiums.
+  if(concertBeams[0]) concertBeams[0].style.opacity = trebleOpacity; // gauche
+  if(concertBeams[1]) concertBeams[1].style.opacity = midOpacity;    // entre gauche et centre
+  if(concertBeams[2]) concertBeams[2].style.opacity = trebleOpacity; // centre
+  if(concertBeams[3]) concertBeams[3].style.opacity = midOpacity;    // entre centre et droite
+  if(concertBeams[4]) concertBeams[4].style.opacity = trebleOpacity; // droite
 
   // Flash blanc : ne se déclenche plus dès que la basse est "haute" en
   // continu, mais seulement sur un vrai coup, c'est-à-dire un pic net
@@ -4110,67 +3952,24 @@ function updateConcertLights(data){
   if(npCoverEl){
     const amt = clamp(concertShakeMag);
     if(amt > 0.05){
-      // On ne saute plus directement sur une nouvelle position aléatoire :
-      // on tire une cible, puis on avance seulement d'une fraction
-      // (smoothing) vers elle à chaque frame. Résultat : un tremblement
-      // beaucoup plus lissé/fluide au lieu de sautiller brutalement d'une
-      // frame à l'autre, tout en restant vivant et réactif à la musique.
-      // Amplitude max également réduite (9 -> 5.5px, 2.2 -> 1.4deg) pour
-      // un mouvement plus discret dans l'ensemble.
-      const maxPx = 5.5;
-      const smoothing = 0.22;
-      const targetDx = (Math.random() * 2 - 1) * maxPx * amt;
-      const targetDy = (Math.random() * 2 - 1) * maxPx * amt * 0.7;
-      const targetRot = (Math.random() * 2 - 1) * 1.4 * amt;
-      concertShakeDx += (targetDx - concertShakeDx) * smoothing;
-      concertShakeDy += (targetDy - concertShakeDy) * smoothing;
-      concertShakeRot += (targetRot - concertShakeRot) * smoothing;
-      npCoverEl.style.transform = `translate(${concertShakeDx.toFixed(1)}px, ${concertShakeDy.toFixed(1)}px) rotate(${concertShakeRot.toFixed(2)}deg)`;
+      const maxPx = 9;
+      const dx = (Math.random() * 2 - 1) * maxPx * amt;
+      const dy = (Math.random() * 2 - 1) * maxPx * amt * 0.7;
+      const rot = (Math.random() * 2 - 1) * 2.2 * amt;
+      npCoverEl.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) rotate(${rot.toFixed(2)}deg)`;
     }else{
-      // Retour au repos également lissé (amortissement) plutôt qu'un
-      // effacement net, pour éviter un petit à-coup final.
-      concertShakeDx *= 0.6; concertShakeDy *= 0.6; concertShakeRot *= 0.6;
-      const settled = Math.abs(concertShakeDx) + Math.abs(concertShakeDy) + Math.abs(concertShakeRot) < 0.08;
-      npCoverEl.style.transform = settled ? '' : `translate(${concertShakeDx.toFixed(1)}px, ${concertShakeDy.toFixed(1)}px) rotate(${concertShakeRot.toFixed(2)}deg)`;
+      npCoverEl.style.transform = '';
     }
   }
 }
-// Active/désactive le mode concert (checkbox + variable d'état + effets
-// visuels) et, en option, enregistre le réglage sur le profil du compte
-// connecté afin qu'il se retrouve identique sur les autres appareils et à
-// la réouverture de la page (comme l'égaliseur, voir scheduleEqSave).
-// `save:false` est utilisé quand on ne fait qu'appliquer une valeur reçue
-// du compte (snapshot Firestore) ou une réinitialisation locale (déconnexion),
-// pour ne pas réécrire immédiatement ce qu'on vient de lire.
-function setConcertMode(enabled, opts){
-  const save = !opts || opts.save !== false;
-  concertModeOn = !!enabled;
-  const toggleEl = document.getElementById('np-menu-concert-toggle');
-  if(toggleEl) toggleEl.checked = concertModeOn;
+document.getElementById('np-menu-concert-toggle').addEventListener('change', function(){
+  concertModeOn = this.checked;
   if(npConcertLightsEl) npConcertLightsEl.classList.toggle('active', concertModeOn);
   resetConcertLights();
   if(concertModeOn){
     ensureAnalyser();
     if(!eqRAF && !audioEl.paused) animateEq();
-    applyConcertBeamColors();
-    // Ondes rondes (mobile) : boucle continue tant que le mode concert est
-    // actif, indépendamment de l'analyse audio par frame.
-    concertWaves.forEach(w=> w.classList.add('active'));
   }
-  if(save) saveConcertModeSetting(concertModeOn);
-}
-// Sauvegarde le réglage du mode concert sur le profil du compte connecté
-// (aucun effet si personne n'est connecté, ex. session anonyme).
-function saveConcertModeSetting(enabled){
-  const uid = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser.uid : null;
-  if(!uid) return;
-  usersRef.doc(uid).set({
-    concertMode: enabled,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  }, { merge:true }).catch(err=> console.error("Impossible d'enregistrer le mode concert :", err));
-}
-document.getElementById('np-menu-concert-toggle').addEventListener('change', function(){
-  setConcertMode(this.checked);
 });
 
 function openEqPanel(){
