@@ -152,19 +152,27 @@ input,textarea{ font-family:inherit; }
    ========================================================= */
 .wrap{ max-width:1180px; margin:0 auto; padding:28px 24px 10px; }
 .hero{
+  --hero-rgb: 255,176,32;        /* accent principal (RGB), remplacé dynamiquement selon le thème détecté */
+  --hero-rgb-bright: 255,211,122; /* variante claire de l'accent */
   display:grid; grid-template-columns:220px 1fr; gap:36px; align-items:center;
   padding:34px; border-radius:32px; margin-bottom:38px;
   background:
-    linear-gradient(150deg, rgba(255,176,32,0.16) 0%, rgba(255,255,255,0.04) 45%, rgba(255,255,255,0.02) 100%);
+    linear-gradient(150deg, rgba(var(--hero-rgb),0.16) 0%, rgba(255,255,255,0.04) 45%, rgba(255,255,255,0.02) 100%);
   border:1px solid var(--glass-border);
   backdrop-filter:var(--glass-blur); -webkit-backdrop-filter:var(--glass-blur);
   position:relative; overflow:hidden;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), var(--shadow);
+  transition: background .5s ease;
 }
-.hero::before{ content:''; position:absolute; inset:0; background:radial-gradient(460px 280px at 88% 10%, rgba(255,176,32,0.22), transparent 70%); pointer-events:none; }
-.hero-eyebrow{ font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--copper-bright); margin:0 0 8px; font-weight:600; }
+.hero::before{ content:''; position:absolute; inset:0; background:radial-gradient(460px 280px at 88% 10%, rgba(var(--hero-rgb),0.22), transparent 70%); pointer-events:none; transition: background .5s ease; }
+.hero-theme-icon{
+  position:absolute; top:-10px; right:6px; font-size:120px; line-height:1;
+  opacity:.14; pointer-events:none; user-select:none; filter:blur(.3px);
+  transform:rotate(-8deg); transition: opacity .4s ease, transform .4s ease;
+}
+.hero-eyebrow{ font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:rgb(var(--hero-rgb-bright)); margin:0 0 8px; font-weight:600; display:flex; align-items:center; gap:6px; transition: color .5s ease; }
 .hero-title{ font-family:var(--display); font-size:clamp(28px,3.6vw,44px); font-weight:900; margin:0 0 6px; line-height:1.05; letter-spacing:-0.03em; }
-.hero-title em{ font-style:normal; font-weight:900; color:var(--copper-bright); }
+.hero-title em{ font-style:normal; font-weight:900; color:rgb(var(--hero-rgb-bright)); transition: color .5s ease; }
 .hero-artist{ color:var(--text-dim); font-size:15px; margin:0 0 20px; font-weight:500; }
 .hero-actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 .hero-uploader{ display:flex; align-items:center; gap:8px; margin-left:4px; color:var(--text-faint); font-size:12.5px; }
@@ -894,8 +902,9 @@ input,textarea{ font-family:inherit; }
 
 <div class="wrap">
 
-  <!-- HERO : dernier titre ajouté -->
+  <!-- HERO : dernier titre ajouté / musique de l'événement, thème visuel adapté au contenu -->
   <section class="hero" id="hero" style="display:none;">
+    <div class="hero-theme-icon" id="hero-theme-icon" aria-hidden="true"></div>
     <div class="turntable" id="hero-turntable">
       <div class="tonearm">
         <svg width="130" height="130" viewBox="0 0 130 130"><line x1="118" y1="12" x2="40" y2="70" stroke="#FFB020" stroke-width="4" stroke-linecap="round"/><circle cx="118" cy="12" r="9" fill="#121214" stroke="#FFB020" stroke-width="2"/><circle cx="40" cy="70" r="4" fill="#FFD37A"/></svg>
@@ -2870,6 +2879,52 @@ document.getElementById('np-menu-addpl-btn').addEventListener('click', ()=>{
   if(currentTrackId) openAddToPlaylistModal(currentTrackId);
 });
 
+/* =========================================================
+   THÈME VISUEL DU BANDEAU — s'adapte au contenu du titre/artiste
+   (ex: "Batman", "Spider-Man"...) en changeant la couleur d'accent,
+   le petit label et un pictogramme en filigrane dans le hero.
+   Liste volontairement extensible : ajouter une entrée suffit.
+   ========================================================= */
+const HERO_THEMES = [
+  { test:/batman|dark knight|gotham/,            rgb:'60,90,140',   rgbBright:'120,170,230', icon:'🦇', label:'Ambiance Batman' },
+  { test:/spider[-\s]?man|spiderman|araignee|araignée/, rgb:'190,20,30', rgbBright:'255,70,70',  icon:'🕷️', label:'Ambiance Spider-Man' },
+  { test:/superman|man of steel/,                rgb:'30,80,190',   rgbBright:'90,140,255',   icon:'🦸', label:'Ambiance Superman' },
+  { test:/iron\s?man|tony stark/,                rgb:'190,40,20',   rgbBright:'255,140,40',   icon:'🤖', label:'Ambiance Iron Man' },
+  { test:/hulk/,                                 rgb:'40,140,60',   rgbBright:'110,220,120',  icon:'💚', label:'Ambiance Hulk' },
+  { test:/thor|mjolnir|asgard/,                  rgb:'60,90,190',   rgbBright:'150,190,255',  icon:'⚡', label:'Ambiance Thor' },
+  { test:/captain america|cap'?tain america/,    rgb:'40,70,160',   rgbBright:'140,170,255',  icon:'🛡️', label:'Ambiance Captain America' },
+  { test:/wonder\s?woman/,                       rgb:'170,30,50',   rgbBright:'255,110,120',  icon:'⭐', label:'Ambiance Wonder Woman' },
+  { test:/joker/,                                rgb:'100,30,140',  rgbBright:'190,110,255',  icon:'🃏', label:'Ambiance Joker' },
+  { test:/venom/,                                rgb:'20,20,30',    rgbBright:'110,110,140',  icon:'🖤', label:'Ambiance Venom' },
+  { test:/flash/,                                rgb:'190,40,20',   rgbBright:'255,150,60',   icon:'⚡', label:'Ambiance Flash' },
+  { test:/deadpool/,                             rgb:'150,20,30',   rgbBright:'255,90,90',    icon:'🗡️', label:'Ambiance Deadpool' },
+  { test:/black\s?panther|wakanda/,              rgb:'40,30,60',    rgbBright:'170,130,255',  icon:'🐾', label:'Ambiance Black Panther' },
+  { test:/star\s?wars|jedi|dark\s?vador|sabre laser/, rgb:'30,50,90', rgbBright:'110,180,255', icon:'✨', label:'Ambiance Star Wars' },
+  { test:/noel|noël|christmas/,                  rgb:'160,30,40',   rgbBright:'255,110,110',  icon:'🎄', label:'Ambiance Noël' },
+  { test:/halloween|citrouille/,                 rgb:'190,90,10',   rgbBright:'255,160,50',   icon:'🎃', label:'Ambiance Halloween' },
+  { test:/amour|love|coeur|cœur/,                rgb:'190,30,80',   rgbBright:'255,110,160',  icon:'❤️', label:'Ambiance Amour' },
+];
+function normalizeForTheme(str){
+  return (str||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+function detectHeroTheme(track){
+  const haystack = normalizeForTheme((track.title||'') + ' ' + (track.artist||''));
+  return HERO_THEMES.find(theme => theme.test.test(haystack)) || null;
+}
+function applyHeroTheme(theme){
+  const hero = document.getElementById('hero');
+  const iconEl = document.getElementById('hero-theme-icon');
+  if(!hero) return;
+  if(theme){
+    hero.style.setProperty('--hero-rgb', theme.rgb);
+    hero.style.setProperty('--hero-rgb-bright', theme.rgbBright);
+    if(iconEl){ iconEl.textContent = theme.icon; iconEl.style.opacity = '.14'; }
+  }else{
+    hero.style.removeProperty('--hero-rgb');
+    hero.style.removeProperty('--hero-rgb-bright');
+    if(iconEl){ iconEl.textContent = ''; iconEl.style.opacity = '0'; }
+  }
+}
 function renderHero(){
   const hero = document.getElementById('hero');
   if(!allTracks.length){ hero.style.display = 'none'; return; }
@@ -2878,8 +2933,13 @@ function renderHero(){
   const featured = allTracks.find(tr => tr.eventFeatured);
   const t = featured || allTracks[0];
   hero.style.display = '';
+  const theme = detectHeroTheme(t);
+  applyHeroTheme(theme);
   const eyebrow = document.getElementById('hero-eyebrow');
-  if(eyebrow) eyebrow.textContent = featured ? "🎉 Musique de l'événement" : 'Dernier ajout';
+  if(eyebrow){
+    if(theme) eyebrow.textContent = `${theme.icon} ${theme.label}`;
+    else eyebrow.textContent = featured ? "🎉 Musique de l'événement" : 'Dernier ajout';
+  }
   document.getElementById('hero-title').textContent = t.title || 'Sans titre';
   document.getElementById('hero-artist').textContent = t.artist || 'Artiste inconnu';
   document.getElementById('hero-cover').src = t.coverURL || fallbackCoverSvg();
