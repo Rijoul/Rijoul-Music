@@ -275,6 +275,13 @@ input,textarea{ font-family:inherit; }
   color:var(--copper-bright, #ffce6a);
 }
 .edit-concert-toggle:disabled{ opacity:.6; pointer-events:none; }
+/* Aperçu sonore du réglage de volume (modal "Modifier le titre") : petit
+   bouton lecture rond + courbes de son réutilisant le style de .wave-eq. */
+.edit-vol-preview{ display:flex; align-items:center; gap:10px; margin:10px 0 4px; }
+.edit-vol-play-btn{ width:32px; height:32px; min-width:32px; border-radius:50%; background:var(--copper); color:#000; display:flex; align-items:center; justify-content:center; border:0; cursor:pointer; transition:.15s; }
+.edit-vol-play-btn:hover{ filter:brightness(1.08); }
+.edit-vol-play-btn:disabled{ opacity:.5; cursor:not-allowed; }
+#edit-concert-wave-eq{ flex:1; height:24px; }
 
 /* =========================================================
    EXTRAITS — section page d'accueil + cartes de passages courts
@@ -1337,6 +1344,17 @@ input,textarea{ font-family:inherit; }
     <div class="field" id="edit-concert-volume-field" style="margin-top:14px; display:none;">
       <label>Volume du mode concert — <span id="edit-concert-volume-value">80%</span></label>
       <input type="range" id="edit-concert-volume" min="0" max="100" value="80" style="width:100%;">
+      <!-- Aperçu sonore : lecture indépendante du titre en cours d'édition
+           avec ses courbes de son (barres d'égaliseur en direct), pour que
+           l'admin puisse juger le rendu à l'oreille ET visuellement pendant
+           qu'il ajuste le curseur ci-dessus. N'interfère pas avec le
+           lecteur principal du site. -->
+      <div class="edit-vol-preview">
+        <button type="button" class="edit-vol-play-btn" id="edit-concert-preview-play" aria-label="Écouter ce titre pour régler le volume" title="Écouter ce titre pour régler le volume">
+          <svg id="edit-concert-preview-play-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <div class="wave-eq" id="edit-concert-wave-eq"></div>
+      </div>
       <p id="edit-concert-volume-status" style="margin:6px 0 0; font-size:11px; color:var(--text-faint); line-height:1.4;"></p>
       <div style="display:flex; gap:8px; margin-top:8px;">
         <button type="button" class="btn btn-gold btn-sm" id="edit-concert-volume-lock" style="flex:1;">🔒 Verrouiller ce volume</button>
@@ -1593,6 +1611,9 @@ function closeOverlay(id){
     document.getElementById('np-eq').classList.remove('open');
     document.getElementById('np-eq-backdrop').classList.remove('open');
   }
+  // Coupe l'aperçu sonore du réglage de volume si l'admin ferme le modal
+  // d'édition sans l'avoir arrêté lui-même.
+  if(id === 'edit-overlay' && typeof stopEditPreview === 'function') stopEditPreview();
 }
 document.querySelectorAll('[data-close]').forEach(btn=>{
   btn.addEventListener('click', ()=> closeOverlay(btn.dataset.close));
@@ -3109,6 +3130,7 @@ function openEditModal(trackId){
   if(!isAdmin){ showToast("Seul l'admin peut modifier les infos d'un titre."); return; }
   const track = allTracks.find(t => t.id === trackId);
   if(!track) return;
+  if(typeof stopEditPreview === 'function') stopEditPreview(); // au cas où un autre titre était en cours d'aperçu
   editingTrackId = trackId;
   editCoverDataUrl = track.coverURL || null;
   editConcertCertified = !!track.concertCertified;
@@ -3182,6 +3204,7 @@ document.getElementById('edit-concert-toggle').addEventListener('click', async (
 document.getElementById('edit-concert-volume').addEventListener('input', (e)=>{
   editConcertVolume = Number(e.target.value);
   document.getElementById('edit-concert-volume-value').textContent = editConcertVolume + '%';
+  updateEditPreviewGain(); // applique le nouveau volume en direct si l'aperçu joue déjà
 });
 // Verrouille (ou met à jour le verrouillage déjà actif) sur la valeur
 // actuelle du curseur : c'est cette action explicite, et elle seule, qui
@@ -3221,6 +3244,111 @@ document.getElementById('edit-concert-volume-unlock').addEventListener('click', 
     btn.disabled = false;
   }
 });
+/* =========================================================
+   APERÇU SONORE POUR LE RÉGLAGE DU VOLUME (modal d'édition)
+   Lecture indépendante du titre en cours d'édition, avec ses
+   propres courbes de son (barres d'égaliseur en direct) et son
+   propre gain, piloté par le curseur de volume ci-dessus — pour
+   aider l'admin à juger le rendu à l'oreille ET visuellement en
+   le réglant. N'a aucun effet sur le lecteur principal du site
+   (audio et Web Audio API totalement séparés).
+   ========================================================= */
+let editPreviewAudio = null;
+let editPreviewCtx = null, editPreviewSource = null, editPreviewGain = null, editPreviewAnalyser = null;
+let editPreviewBars = [];
+let editPreviewRAF = null;
+let editPreviewTrackId = null; // titre actuellement chargé dans l'aperçu (évite de retélécharger inutilement)
+const editPreviewWrapEl = document.getElementById('edit-concert-wave-eq');
+if(editPreviewWrapEl){
+  for(let i=0;i<20;i++){ const s=document.createElement('span'); editPreviewWrapEl.appendChild(s); editPreviewBars.push(s); }
+}
+function setEditPreviewPlayIcon(playing){
+  const icon = document.getElementById('edit-concert-preview-play-icon');
+  if(!icon) return;
+  icon.outerHTML = playing
+    ? '<svg id="edit-concert-preview-play-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
+    : '<svg id="edit-concert-preview-play-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+}
+function ensureEditPreviewAudio(){
+  if(editPreviewAudio) return;
+  editPreviewAudio = new Audio();
+  editPreviewAudio.crossOrigin = 'anonymous';
+  editPreviewAudio.addEventListener('play', ()=>{ setEditPreviewPlayIcon(true); animateEditPreviewEq(); });
+  editPreviewAudio.addEventListener('pause', ()=>{ setEditPreviewPlayIcon(false); stopEditPreviewEq(); });
+  editPreviewAudio.addEventListener('ended', ()=>{ setEditPreviewPlayIcon(false); stopEditPreviewEq(); });
+}
+function ensureEditPreviewAnalyser(){
+  if(editPreviewCtx) return;
+  try{
+    editPreviewCtx = new (window.AudioContext || window.webkitAudioContext)();
+    editPreviewSource = editPreviewCtx.createMediaElementSource(editPreviewAudio);
+    editPreviewGain = editPreviewCtx.createGain();
+    editPreviewAnalyser = editPreviewCtx.createAnalyser();
+    editPreviewAnalyser.fftSize = 64;
+    editPreviewSource.connect(editPreviewGain);
+    editPreviewGain.connect(editPreviewAnalyser);
+    editPreviewAnalyser.connect(editPreviewCtx.destination);
+    editPreviewAudio.volume = 1; // le volume réel passe par editPreviewGain
+    updateEditPreviewGain();
+  }catch(e){
+    console.warn('Analyseur indisponible pour l’aperçu de volume, repli sur le volume natif.', e);
+    editPreviewAnalyser = null; editPreviewGain = null;
+    editPreviewAudio.volume = Math.max(0, Math.min(1, editConcertVolume/100));
+  }
+}
+// Applique en direct la valeur du curseur au son déjà en train de jouer.
+function updateEditPreviewGain(){
+  const v = perceptualGain(Math.max(0, Math.min(100, editConcertVolume))/100);
+  if(editPreviewGain) editPreviewGain.gain.value = v;
+  else if(editPreviewAudio) editPreviewAudio.volume = Math.max(0, Math.min(1, editConcertVolume/100));
+}
+function animateEditPreviewEq(){
+  editPreviewRAF = requestAnimationFrame(animateEditPreviewEq);
+  if(editPreviewAnalyser){
+    const data = new Uint8Array(editPreviewAnalyser.frequencyBinCount);
+    editPreviewAnalyser.getByteFrequencyData(data);
+    for(let i=0;i<editPreviewBars.length;i++){
+      const v = data[i % data.length] || 0;
+      editPreviewBars[i].style.height = Math.max(4, (v/255)*22) + 'px';
+    }
+  }
+}
+function stopEditPreviewEq(){
+  if(editPreviewRAF){ cancelAnimationFrame(editPreviewRAF); editPreviewRAF = null; }
+  editPreviewBars.forEach(b=> b.style.height = '4px');
+}
+// Coupe l'aperçu (utilisé aussi à la fermeture du modal, pour ne pas laisser
+// le morceau continuer à jouer en fond une fois l'admin reparti).
+function stopEditPreview(){
+  if(editPreviewAudio && !editPreviewAudio.paused) editPreviewAudio.pause();
+}
+async function toggleEditPreview(){
+  if(!isAdmin || !editingTrackId) return;
+  const track = allTracks.find(t => t.id === editingTrackId);
+  if(!track) return;
+  ensureEditPreviewAudio();
+  if(!editPreviewAudio.paused){ editPreviewAudio.pause(); return; }
+  const btn = document.getElementById('edit-concert-preview-play');
+  try{
+    if(editPreviewTrackId !== editingTrackId || !editPreviewAudio.src){
+      btn.disabled = true;
+      const blobUrl = await getTrackAudioBlobUrl(track);
+      if(editingTrackId !== track.id) return; // l'admin a changé de titre entre-temps
+      editPreviewAudio.src = blobUrl;
+      editPreviewTrackId = editingTrackId;
+    }
+    ensureEditPreviewAnalyser();
+    if(editPreviewCtx && editPreviewCtx.state === 'suspended') await editPreviewCtx.resume();
+    updateEditPreviewGain();
+    await editPreviewAudio.play();
+  }catch(err){
+    console.error(err);
+    showToast("Impossible de lire ce titre pour l'aperçu.");
+  }finally{
+    btn.disabled = false;
+  }
+}
+document.getElementById('edit-concert-preview-play').addEventListener('click', toggleEditPreview);
 document.getElementById('edit-submit').addEventListener('click', async ()=>{
   if(!isAdmin){ showToast("Seul l'admin peut modifier les infos d'un titre."); return; }
   if(!editingTrackId) return;
