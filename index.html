@@ -251,6 +251,26 @@ input,textarea{ font-family:inherit; }
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 24px 60px -16px rgba(0,0,0,0.9);
 }
 .player.visible{ transform:translateY(0); }
+/* Permet de masquer manuellement la barre de lecture (ex. sur l'accueil)
+   sans arrêter la musique : elle reste "visible" côté lecture, seule sa
+   présence à l'écran est cachée jusqu'à ce qu'on la fasse réapparaître. */
+.player.visible.user-hidden{ transform:translateY(140%); }
+.p-hide-btn{
+  position:absolute; top:-15px; left:50%; transform:translateX(-50%);
+  width:34px; height:15px; border-radius:9px 9px 0 0;
+  background:rgba(255,255,255,0.10); border:1px solid var(--glass-border-strong); border-bottom:0;
+  color:var(--text-dim); display:flex; align-items:center; justify-content:center;
+}
+.p-hide-btn:hover{ color:var(--text); background:rgba(255,255,255,0.16); }
+.player-reveal-btn{
+  position:fixed; left:50%; bottom:14px; transform:translateX(-50%); display:none;
+  z-index:59; width:44px; height:22px; border-radius:14px 14px 4px 4px;
+  background:rgba(24,24,26,0.85); border:1px solid var(--glass-border-strong);
+  color:var(--text-dim); align-items:center; justify-content:center;
+  backdrop-filter:var(--glass-blur); -webkit-backdrop-filter:var(--glass-blur);
+  box-shadow:0 10px 24px -10px rgba(0,0,0,0.7);
+}
+.player-reveal-btn:hover{ color:var(--text); }
 .p-track{ display:flex; align-items:center; gap:11px; min-width:0; }
 .p-cover{ width:54px; height:54px; border-radius:12px; overflow:hidden; background:var(--panel-solid); flex-shrink:0; }
 .p-cover img{ width:100%; height:100%; object-fit:cover; }
@@ -668,6 +688,9 @@ input,textarea{ font-family:inherit; }
      PLAYER BAR
      ========================================================= -->
 <div class="player" id="player">
+  <button class="p-hide-btn" id="p-hide-btn" aria-label="Masquer la barre de lecture" title="Masquer la barre de lecture">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
   <div class="p-track">
     <div class="p-cover"><img id="p-cover" alt=""></div>
     <div class="p-meta">
@@ -702,6 +725,9 @@ input,textarea{ font-family:inherit; }
     </div>
   </div>
 </div>
+<button class="player-reveal-btn" id="player-reveal-btn" aria-label="Afficher la barre de lecture" title="Afficher la barre de lecture">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+</button>
 <audio id="audio-el" preload="metadata" crossorigin="anonymous"></audio>
 
 <!-- =========================================================
@@ -2356,6 +2382,19 @@ async function getTrackAudioBlobUrl(track){
   audioBlobCache.set(track.id, url);
   return url;
 }
+// Récupère en arrière-plan les morceaux audio du titre suivant dans la file
+// (sans le jouer) pour qu'il soit déjà en cache et démarre instantanément
+// une fois son tour venu. N'échoue jamais bruyamment : un titre suivant qui
+// ne se précharge pas correctement sera simplement chargé normalement le
+// moment venu, comme avant.
+function prefetchNextTrack(){
+  if(currentQueue.length < 2 || currentTrackIndex < 0) return;
+  let idx = currentTrackIndex + 1;
+  if(idx >= currentQueue.length) idx = 0;
+  const next = currentQueue[idx];
+  if(!next || audioBlobCache.has(next.id)) return;
+  getTrackAudioBlobUrl(next).catch(err=> console.error("Préchargement du titre suivant impossible :", err));
+}
 
 document.getElementById('upload-submit').addEventListener('click', async ()=>{
   const user = auth.currentUser;
@@ -2412,6 +2451,18 @@ document.getElementById('upload-submit').addEventListener('click', async ()=>{
 const audioEl = document.getElementById('audio-el');
 const playerBar = document.getElementById('player');
 
+/* Masquer/afficher manuellement la barre de lecture du bas (ex. sur
+   l'accueil, pour libérer de la place) sans arrêter la musique. */
+document.getElementById('p-hide-btn').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  playerBar.classList.add('user-hidden');
+  document.getElementById('player-reveal-btn').style.display = 'flex';
+});
+document.getElementById('player-reveal-btn').addEventListener('click', ()=>{
+  playerBar.classList.remove('user-hidden');
+  document.getElementById('player-reveal-btn').style.display = 'none';
+});
+
 /* =========================================================
    LECTURE PLEIN ÉCRAN ("Now Playing")
    ========================================================= */
@@ -2457,6 +2508,7 @@ const FADE_MS = 220; // durée des fondus courts (lecture/pause)
 const CROSSFADE_MS = 3000; // durée du fondu enchaîné entre deux morceaux, façon Apple Music
 let crossfadeEchoes = []; // lecteurs "fantômes" qui terminent le morceau précédent en fondu
 let crossfadeTriggered = false; // évite de déclencher deux fois le fondu enchaîné sur un même morceau
+let nextTrackPrefetchTriggered = false; // évite de relancer le préchargement du titre suivant plusieurs fois
 
 // Convertit un volume linéaire (0..1, ce que montre le curseur) en gain perçu
 // plus naturel à l'oreille (courbe quasi-logarithmique) pour un rendu plus doux
@@ -2659,6 +2711,7 @@ async function playTrackById(trackId, direction){
 
   currentTrackId = trackId;
   crossfadeTriggered = false;
+  nextTrackPrefetchTriggered = false;
   document.getElementById('p-cover').src = track.coverURL || fallbackCoverSvg();
   document.getElementById('p-title').textContent = track.title || 'Sans titre';
   document.getElementById('p-artist').textContent = (track.artist || 'Artiste inconnu') + ' · chargement…';
@@ -2879,6 +2932,13 @@ audioEl.addEventListener('timeupdate', ()=>{
   document.getElementById('p-bar-fill').style.width = pct + '%';
   document.getElementById('np-time-current').textContent = formatTime(audioEl.currentTime);
   document.getElementById('np-bar-fill').style.width = pct + '%';
+  // Précharge le titre suivant (récupère ses morceaux audio en arrière-plan,
+  // sans le lancer) une fois 30% du titre en cours écouté, pour qu'il
+  // démarre instantanément le moment venu.
+  if(!nextTrackPrefetchTriggered && pct >= 30){
+    nextTrackPrefetchTriggered = true;
+    prefetchNextTrack();
+  }
   // Déclenche le fondu enchaîné un peu avant la fin, comme Apple Music,
   // au lieu d'attendre la fin nette du morceau ("ended").
   if(!crossfadeTriggered && currentQueue.length > 1 && audioEl.duration
