@@ -879,6 +879,10 @@ input,textarea{ font-family:inherit; }
     <input id="search-input" type="search" placeholder="Chercher un titre, un artiste…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="rijoul-search-q" role="searchbox" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onmousedown="this.removeAttribute('readonly')" onclick="this.removeAttribute('readonly')" ontouchstart="this.removeAttribute('readonly')">
   </div>
   <div class="nav-right">
+    <button class="btn btn-ghost nav-action-btn" id="install-app-btn" style="display:none;" title="Installer RIJOUL MUSIC sur cet appareil">
+      <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13m0 0l-4.5-4.5M12 16l4.5-4.5"/><path d="M4 17v2.4A1.6 1.6 0 005.6 21h12.8a1.6 1.6 0 001.6-1.6V17"/></svg>
+      <span class="btn-label">Installer l'app</span>
+    </button>
     <button class="btn btn-gold nav-action-btn" id="upload-open-btn">
       <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       <span class="btn-label">Ajouter un titre</span>
@@ -2189,6 +2193,96 @@ function currentPlaylist(){
   return allPlaylists.find(p => p.id === currentPlaylistId) || sharedPlaylistCache[currentPlaylistId] || null;
 }
 document.getElementById('brand-home').addEventListener('click', (e)=>{ e.preventDefault(); switchView('library'); });
+
+/* =========================================================
+   INSTALLATION SUR L'ÉCRAN D'ACCUEIL (PWA)
+   Construit un manifeste dynamiquement (réutilise le logo déjà
+   embarqué en base64 dans la page) pour rendre l'app installable,
+   puis gère le bouton "Installer l'app" : sur Chrome/Edge/Android on
+   déclenche le vrai prompt d'installation ; sur iOS/Safari (qui ne
+   supporte pas ce prompt), on affiche les étapes manuelles.
+   ========================================================= */
+(function setupInstallableApp(){
+  try{
+    const logoImg = document.querySelector('.brand-mark img');
+    const iconSrc = logoImg ? logoImg.src : '';
+    const manifest = {
+      name: 'RIJOUL MUSIC',
+      short_name: 'RIJOUL',
+      description: "L'app de streaming musical de Groupe NovaLink Production",
+      start_url: location.pathname + location.search,
+      scope: location.pathname.replace(/[^/]*$/, ''),
+      display: 'standalone',
+      background_color: '#0b0b0d',
+      theme_color: '#0b0b0d',
+      icons: iconSrc ? [
+        { src: iconSrc, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+        { src: iconSrc, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+      ] : []
+    };
+    const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+    const link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = URL.createObjectURL(manifestBlob);
+    document.head.appendChild(link);
+    if(iconSrc){
+      const appleIcon = document.createElement('link');
+      appleIcon.rel = 'apple-touch-icon';
+      appleIcon.href = iconSrc;
+      document.head.appendChild(appleIcon);
+    }
+    const themeMeta = document.createElement('meta');
+    themeMeta.name = 'theme-color';
+    themeMeta.content = '#0b0b0d';
+    document.head.appendChild(themeMeta);
+  }catch(err){
+    console.warn("Impossible de générer le manifeste d'installation :", err);
+  }
+})();
+let deferredInstallPrompt = null;
+const installAppBtn = document.getElementById('install-app-btn');
+function appIsAlreadyInstalled(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+function updateInstallButtonVisibility(){
+  if(!installAppBtn) return;
+  installAppBtn.style.display = appIsAlreadyInstalled() ? 'none' : '';
+}
+updateInstallButtonVisibility();
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  updateInstallButtonVisibility();
+});
+window.addEventListener('appinstalled', ()=>{
+  deferredInstallPrompt = null;
+  showToast('RIJOUL MUSIC est installé sur cet appareil. 🎉');
+  updateInstallButtonVisibility();
+});
+if(installAppBtn){
+  installAppBtn.addEventListener('click', async ()=>{
+    if(deferredInstallPrompt){
+      deferredInstallPrompt.prompt();
+      try{
+        const choice = await deferredInstallPrompt.userChoice;
+        if(choice && choice.outcome === 'accepted') showToast('Installation en cours…');
+      }catch(err){ console.warn(err); }
+      deferredInstallPrompt = null;
+      updateInstallButtonVisibility();
+      return;
+    }
+    // Pas de prompt natif disponible (iOS/Safari, ou navigateur qui ne
+    // supporte pas encore l'installation) : on guide l'utilisateur.
+    const ua = navigator.userAgent || '';
+    const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if(isIOS){
+      showToast("Sur iPhone/iPad : appuie sur le bouton Partager 􀈂 puis « Sur l'écran d'accueil ». 📲");
+    }else{
+      showToast("L'installation n'est pas encore proposée par ce navigateur sur cet appareil.");
+    }
+  });
+}
+
 document.getElementById('search-input').addEventListener('input', (e)=>{
   searchTerm = e.target.value.trim().toLowerCase();
   renderTracks();
