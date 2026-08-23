@@ -587,13 +587,45 @@ input,textarea{ font-family:inherit; }
 }
 
 @media (max-width: 760px){
-  .topnav{ flex-wrap:wrap; padding:12px 16px; gap:10px; margin:10px 10px 0; border-radius:24px; }
-  .tabs{ order:1; }
-  .search-wrap{ order:2; max-width:none; flex:1 1 120px; min-width:0; }
-  .nav-right{ order:3; flex-wrap:nowrap; gap:8px; }
-  .nav-right .nav-action-btn{ width:38px; height:38px; padding:0; border-radius:50%; justify-content:center; }
+  .topnav{
+    flex-wrap:wrap;
+    padding:10px 12px;
+    gap:8px;
+    margin:10px 10px 0;
+    border-radius:22px;
+    max-width:100%;
+    overflow:hidden;
+  }
+  /* Ligne 1 : logo + boutons d'action (compacts, toujours visibles) */
+  .brand{ order:1; min-width:0; }
+  .brand-word{ font-size:15px; }
+  .nav-right{ order:2; flex-wrap:nowrap; gap:6px; margin-left:auto; flex-shrink:0; }
+  .nav-right .nav-action-btn{ width:36px; height:36px; padding:0; border-radius:50%; justify-content:center; }
   .nav-right .nav-action-btn .btn-label{ display:none; }
-  .nav-right .nav-action-btn .btn-icon{ width:16px; height:16px; }
+  .nav-right .nav-action-btn .btn-icon{ width:15px; height:15px; }
+  .user-chip{ padding:4px 8px 4px 4px; }
+  .user-chip-name{ display:none; }
+  .chip-caret{ display:none; }
+  .user-avatar{ width:30px; height:30px; }
+
+  /* Ligne 2 : barre de recherche pleine largeur */
+  .search-wrap{ order:3; flex:1 1 100%; max-width:none; min-width:0; }
+
+  /* Ligne 3 : onglets, défilement horizontal tactile pour ne jamais déborder de l'écran */
+  .tabs{
+    order:4;
+    flex:1 1 100%;
+    max-width:100%;
+    overflow-x:auto;
+    overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    -ms-overflow-style:none;
+    scroll-snap-type:x proximity;
+  }
+  .tabs::-webkit-scrollbar{ display:none; }
+  .tab-btn{ padding:7px 12px; font-size:12.5px; white-space:nowrap; flex-shrink:0; scroll-snap-align:start; }
+
   .hero{ grid-template-columns:1fr; text-align:center; padding:26px 20px; border-radius:26px; }
   .turntable{ margin:0 auto; width:170px; height:170px; }
   .vinyl-disc{ width:170px; height:170px; }
