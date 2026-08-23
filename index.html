@@ -322,6 +322,16 @@ input,textarea{ font-family:inherit; }
 .np-side-btn:hover{ transform:scale(1.08); }
 .np-play{ width:70px; height:70px; border-radius:50%; background:var(--text); color:#000; display:flex; align-items:center; justify-content:center; box-shadow:0 14px 30px -10px rgba(0,0,0,0.6); transition:.15s; }
 .np-play:hover{ transform:scale(1.05); color:#000; }
+.np-eq{ margin-top:22px; padding-top:18px; border-top:1px solid var(--glass-border); flex-shrink:0; }
+.np-eq-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.np-eq-title{ font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-dim); font-weight:600; }
+.np-eq-reset{ background:transparent; border:0; color:var(--text-faint); font-size:11.5px; font-weight:600; padding:2px 4px; }
+.np-eq-reset:hover{ color:var(--copper); }
+.np-eq-rows{ display:flex; flex-direction:column; gap:10px; }
+.np-eq-row{ display:flex; align-items:center; gap:12px; }
+.np-eq-label{ width:56px; flex-shrink:0; font-size:12.5px; color:var(--text-dim); }
+.np-eq-slider{ flex:1; accent-color:var(--copper); }
+.np-eq-val{ width:26px; flex-shrink:0; text-align:right; font-family:var(--mono); font-size:11px; color:var(--text-faint); }
 @media (max-width:760px){
   .nowplaying-overlay{ padding:8px; }
   .np-sheet{ border-radius:24px; height:min(94vh,760px); }
@@ -586,6 +596,30 @@ input,textarea{ font-family:inherit; }
           <svg id="np-play-icon" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         </button>
         <button class="np-side-btn" id="np-next" aria-label="Suivant"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM4 6l11 6-11 6z"/></svg></button>
+      </div>
+
+      <div class="np-eq" id="np-eq">
+        <div class="np-eq-head">
+          <span class="np-eq-title">Égaliseur</span>
+          <button class="np-eq-reset" id="np-eq-reset" type="button">Réinitialiser</button>
+        </div>
+        <div class="np-eq-rows">
+          <div class="np-eq-row">
+            <span class="np-eq-label">Basses</span>
+            <input type="range" class="np-eq-slider" id="eq-bass" min="-12" max="12" step="1" value="0">
+            <span class="np-eq-val" id="eq-bass-val">0</span>
+          </div>
+          <div class="np-eq-row">
+            <span class="np-eq-label">Médiums</span>
+            <input type="range" class="np-eq-slider" id="eq-mid" min="-12" max="12" step="1" value="0">
+            <span class="np-eq-val" id="eq-mid-val">0</span>
+          </div>
+          <div class="np-eq-row">
+            <span class="np-eq-label">Aigus</span>
+            <input type="range" class="np-eq-slider" id="eq-treble" min="-12" max="12" step="1" value="0">
+            <span class="np-eq-val" id="eq-treble-val">0</span>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -1435,6 +1469,14 @@ document.addEventListener('keydown', (e)=>{
 });
 
 let audioCtx = null, analyser = null, analyserSource = null, eqBars = [], eqRAF = null;
+let eqLow = null, eqMid = null, eqHigh = null, masterGain = null;
+let targetVolume = 0.8; // volume "voulu" par l'utilisateur (0..1), indépendant du fondu en cours
+const FADE_MS = 220; // durée des fondus enchaînés (lecture/pause/changement de titre)
+
+// Convertit un volume linéaire (0..1, ce que montre le curseur) en gain perçu
+// plus naturel à l'oreille (courbe quasi-logarithmique) pour un rendu plus doux
+// qu'un simple volume linéaire, surtout dans le bas de l'échelle.
+function perceptualGain(v){ return Math.pow(Math.max(0, Math.min(1, v)), 1.6); }
 
 // Équaliseur : 20 barres animées en direct via l'AnalyserNode quand
 // disponible (dépend des règles CORS du bucket de stockage) ; sinon on
@@ -1447,11 +1489,57 @@ function ensureAnalyser(){
   try{
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     analyserSource = audioCtx.createMediaElementSource(audioEl);
+
+    // Chaîne : source -> EQ 3 bandes (basses/médiums/aigus) -> gain maître
+    // (contrôle du volume + fondus enchaînés) -> analyseur -> sortie.
+    eqLow = audioCtx.createBiquadFilter();
+    eqLow.type = 'lowshelf'; eqLow.frequency.value = 200; eqLow.gain.value = 0;
+
+    eqMid = audioCtx.createBiquadFilter();
+    eqMid.type = 'peaking'; eqMid.frequency.value = 1000; eqMid.Q.value = 0.9; eqMid.gain.value = 0;
+
+    eqHigh = audioCtx.createBiquadFilter();
+    eqHigh.type = 'highshelf'; eqHigh.frequency.value = 3500; eqHigh.gain.value = 0;
+
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = perceptualGain(targetVolume);
+
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 64;
-    analyserSource.connect(analyser);
+
+    analyserSource.connect(eqLow);
+    eqLow.connect(eqMid);
+    eqMid.connect(eqHigh);
+    eqHigh.connect(masterGain);
+    masterGain.connect(analyser);
     analyser.connect(audioCtx.destination);
-  }catch(e){ console.warn('Analyseur audio indisponible, repli sur une animation simple.', e); analyser = null; }
+
+    // Le volume réel est désormais géré par le noeud de gain ; l'élément
+    // <audio> reste à 1 pour laisser le Web Audio API tout contrôler.
+    audioEl.volume = 1;
+  }catch(e){ console.warn('Analyseur audio indisponible, repli sur le volume natif du lecteur.', e); analyser = null; masterGain = null; audioEl.volume = targetVolume; }
+}
+
+// Fondu doux du volume vers une valeur cible (0..1 linéaire), en douceur
+// pour éviter les "clics" audibles au démarrage/à l'arrêt/au changement de titre.
+function fadeGainTo(v, ms = FADE_MS){
+  const g = perceptualGain(v);
+  if(masterGain){
+    const now = audioCtx.currentTime;
+    masterGain.gain.cancelScheduledValues(now);
+    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+    masterGain.gain.linearRampToValueAtTime(g, now + ms/1000);
+  }else{
+    // Repli sans Web Audio API : on anime audioEl.volume à la main.
+    const start = audioEl.volume, steps = 10, stepMs = ms/steps;
+    let i = 0;
+    clearInterval(fadeGainTo._t);
+    fadeGainTo._t = setInterval(()=>{
+      i++;
+      audioEl.volume = start + (g - start) * (i/steps);
+      if(i >= steps) clearInterval(fadeGainTo._t);
+    }, stepMs);
+  }
 }
 function animateEq(){
   eqRAF = requestAnimationFrame(animateEq);
@@ -1498,7 +1586,9 @@ async function playTrackById(trackId){
     document.getElementById('p-artist').textContent = track.artist || 'Artiste inconnu';
     ensureAnalyser();
     if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-    audioEl.play().catch(()=>{});
+    if(masterGain) masterGain.gain.setValueAtTime(0.0001, audioCtx.currentTime); // silence net avant le fondu d'entrée
+    else audioEl.volume = 0;
+    audioEl.play().then(()=> fadeGainTo(targetVolume)).catch(()=>{});
     syncNowPlayingUI();
   }catch(e){
     console.error(e);
@@ -1510,9 +1600,10 @@ function togglePlayPause(){
   if(!audioEl.src) return;
   if(audioEl.paused){
     if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-    audioEl.play().catch(()=>{});
+    audioEl.play().then(()=> fadeGainTo(targetVolume)).catch(()=>{});
   }else{
-    audioEl.pause();
+    fadeGainTo(0, 140);
+    setTimeout(()=>{ if(audioEl && !audioEl.ended) audioEl.pause(); }, 150);
   }
 }
 function stopPlayback(){
@@ -1592,9 +1683,43 @@ document.getElementById('p-bar').addEventListener('click', (e)=>{
   audioEl.currentTime = ratio * audioEl.duration;
 });
 document.getElementById('vol-range').addEventListener('input', (e)=>{
-  audioEl.volume = Number(e.target.value) / 100;
+  targetVolume = Number(e.target.value) / 100;
+  if(masterGain){
+    const now = audioCtx.currentTime;
+    masterGain.gain.cancelScheduledValues(now);
+    masterGain.gain.setTargetAtTime(perceptualGain(targetVolume), now, 0.02); // transition douce, sans à-coup
+  }else{
+    audioEl.volume = targetVolume;
+  }
 });
 audioEl.volume = 0.8;
+
+/* Égaliseur 3 bandes (basses / médiums / aigus) — agit directement sur les
+   filtres Web Audio créés dans ensureAnalyser(). Sans contexte Web Audio
+   disponible (ex. restrictions CORS), les curseurs restent inertes plutôt
+   que de casser la lecture. */
+function wireEqSlider(sliderId, valId, getFilter){
+  const slider = document.getElementById(sliderId);
+  const val = document.getElementById(valId);
+  slider.addEventListener('input', (e)=>{
+    const db = Number(e.target.value);
+    val.textContent = (db > 0 ? '+' : '') + db;
+    const filter = getFilter();
+    if(filter) filter.gain.setTargetAtTime(db, audioCtx.currentTime, 0.02);
+  });
+}
+wireEqSlider('eq-bass', 'eq-bass-val', ()=> eqLow);
+wireEqSlider('eq-mid', 'eq-mid-val', ()=> eqMid);
+wireEqSlider('eq-treble', 'eq-treble-val', ()=> eqHigh);
+document.getElementById('np-eq-reset').addEventListener('click', ()=>{
+  [['eq-bass','eq-bass-val'],['eq-mid','eq-mid-val'],['eq-treble','eq-treble-val']].forEach(([sId,vId])=>{
+    document.getElementById(sId).value = 0;
+    document.getElementById(vId).textContent = '0';
+  });
+  if(eqLow) eqLow.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
+  if(eqMid) eqMid.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
+  if(eqHigh) eqHigh.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
+});
 
 /* Reflète les changements de "likes" en direct sur le lecteur */
 tracksRef.onSnapshot(()=>{
