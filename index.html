@@ -421,6 +421,10 @@ input,textarea{ font-family:inherit; }
   position:absolute; inset:0; overflow:hidden; pointer-events:none;
   opacity:0; transition:opacity .6s ease; mix-blend-mode:screen;
   animation:npConcertHue 16s linear infinite; animation-play-state:paused;
+  /* contain isole le repaint de la zone (faisceaux + flash) du reste de la
+     page : sur mobile, ça évite de faire recalculer/repeindre le layout
+     environnant à chaque frame animée, ce qui coûte cher sur ces appareils. */
+  contain:strict;
 }
 .np-concert-lights.active{ opacity:1; animation-play-state:running; }
 @keyframes npConcertHue{ from{ filter:hue-rotate(0deg); } to{ filter:hue-rotate(360deg); } }
@@ -431,14 +435,16 @@ input,textarea{ font-family:inherit; }
   filter:blur(3px); opacity:0; transform-origin:top center; will-change:transform, opacity;
   transition:opacity .18s ease-out;
 }
-/* 5 faisceaux : aigus à gauche / centre / droite (np-beam-1, np-beam-3,
-   np-beam-5), médiums dans les espaces restants entre eux (np-beam-2,
-   np-beam-4) — répartition régulière sur toute la largeur. */
-.np-beam-1{ --beam-color:rgba(255,138,61,.95); left:-6%;  animation:npBeamSweep1 7s ease-in-out infinite; }
-.np-beam-2{ --beam-color:rgba(120,190,255,.9); left:13%;  animation:npBeamSweep2 9s ease-in-out infinite; }
-.np-beam-3{ --beam-color:rgba(255,90,200,.85); left:32%;  animation:npBeamSweep3 8s ease-in-out infinite; }
-.np-beam-4{ --beam-color:rgba(140,255,170,.85); left:51%; animation:npBeamSweep4 10s ease-in-out infinite; }
-.np-beam-5{ --beam-color:rgba(255,138,61,.95); left:70%;  animation:npBeamSweep5 8.5s ease-in-out infinite; }
+/* 5 faisceaux répartis à écarts strictement égaux et centrés sur l'écran :
+   le faisceau du centre (np-beam-3) vise exactement le milieu (50%), les
+   autres s'en écartent par pas identiques de part et d'autre. Aigus à
+   gauche / centre / droite (np-beam-1, np-beam-3, np-beam-5), médiums
+   dans les deux espaces restants entre eux (np-beam-2, np-beam-4). */
+.np-beam-1{ --beam-color:rgba(255,138,61,.95); left:-9%;  animation:npBeamSweep1 7s ease-in-out infinite; }
+.np-beam-2{ --beam-color:rgba(120,190,255,.9); left:10%;  animation:npBeamSweep2 9s ease-in-out infinite; }
+.np-beam-3{ --beam-color:rgba(255,90,200,.85); left:29%;  animation:npBeamSweep3 8s ease-in-out infinite; }
+.np-beam-4{ --beam-color:rgba(140,255,170,.85); left:48%; animation:npBeamSweep4 10s ease-in-out infinite; }
+.np-beam-5{ --beam-color:rgba(255,138,61,.95); left:67%;  animation:npBeamSweep5 8.5s ease-in-out infinite; }
 @keyframes npBeamSweep1{ 0%,100%{ transform:rotate(8deg); } 50%{ transform:rotate(26deg); } }
 @keyframes npBeamSweep2{ 0%,100%{ transform:rotate(-20deg); } 50%{ transform:rotate(-4deg); } }
 @keyframes npBeamSweep3{ 0%,100%{ transform:rotate(0deg); } 50%{ transform:rotate(15deg); } }
@@ -477,7 +483,7 @@ input,textarea{ font-family:inherit; }
 .np-toggle-input:focus-visible + .np-toggle-switch{ outline:2px solid var(--copper-bright); outline-offset:2px; }
 .np-art-wrap{ position:relative; flex:1; display:flex; align-items:center; justify-content:center; min-height:0; padding:20px 0; overflow:hidden; }
 .np-art-track{ display:flex; align-items:center; justify-content:center; gap:12px; width:100%; }
-.np-art{ width:min(56vw,260px); height:min(56vw,260px); max-width:100%; max-height:100%; object-fit:cover; border-radius:22px; box-shadow:0 30px 70px -20px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.08); flex-shrink:0; }
+.np-art{ width:min(56vw,260px); height:min(56vw,260px); max-width:100%; max-height:100%; object-fit:cover; border-radius:22px; box-shadow:0 30px 70px -20px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.08); flex-shrink:0; will-change:transform; }
 .np-art-side{
   flex-shrink:0; width:min(20vw,110px); height:min(20vw,110px);
   object-fit:cover; border-radius:16px; cursor:pointer;
@@ -537,6 +543,15 @@ input,textarea{ font-family:inherit; }
   .np-art{ width:min(50vw,240px); height:min(50vw,240px); }
   .np-art-side{ width:min(17vw,90px); height:min(17vw,90px); }
   .np-art-track{ gap:8px; }
+  /* Mode concert optimisé mobile : faisceaux plus fins et moins flous
+     (moins de pixels à recalculer/repeindre à chaque frame), pour rester
+     fluide sur des appareils moins puissants. */
+  .np-beam{ width:34%; filter:blur(2px); }
+  .np-beam-1{ left:-7%; }
+  .np-beam-2{ left:13%; }
+  .np-beam-3{ left:33%; }
+  .np-beam-4{ left:53%; }
+  .np-beam-5{ left:73%; }
 }
 
 /* =========================================================
@@ -3844,6 +3859,13 @@ let concertModeOn = false;
 const npConcertLightsEl = document.getElementById('np-concert-lights');
 const concertBeams = Array.from(document.querySelectorAll('.np-beam'));
 const concertStrobe = document.getElementById('np-strobe');
+const npCoverEl = document.getElementById('np-cover');
+// Sur mobile/tactile, on allège le travail du mode concert (une frame sur
+// deux) : moins de calculs de bandes de fréquences et moins de repaint des
+// faisceaux/flash par seconde, pour rester fluide sur des appareils moins
+// puissants. L'effet reste perçu comme fluide car l'oeil lisse ~30fps.
+const concertLitePerf = window.matchMedia('(max-width:760px)').matches || ('ontouchstart' in window);
+let concertFrameCounter = 0;
 // Historique court de la basse (pour détecter un vrai "coup" plutôt qu'un
 // niveau de basse simplement élevé) + anti-rebond pour ne pas re-flasher
 // en boucle tant que la basse reste haute.
@@ -3855,17 +3877,29 @@ let concertStrobeLevel = 0;
 // varier en continu.
 let concertMidOn = false;
 let concertTrebleOn = false;
+// Amplitude courante du tremblement de la pochette (suit la basse, avec
+// une petite rémanence pour un mouvement plus organique qu'un pur bruit).
+let concertShakeMag = 0;
 function resetConcertLights(){
   concertBeams.forEach(b=> b.style.opacity = 0);
   if(concertStrobe) concertStrobe.style.opacity = 0;
+  if(npCoverEl) npCoverEl.style.transform = '';
   concertBassHistory = [];
   concertLastHitTime = 0;
   concertStrobeLevel = 0;
   concertMidOn = false;
   concertTrebleOn = false;
+  concertShakeMag = 0;
+  concertFrameCounter = 0;
 }
 function updateConcertLights(data){
   if(!concertModeOn || !concertBeams.length) return;
+  // Allègement mobile : une frame sur deux, on ne recalcule/repeint rien
+  // (faisceaux, flash, tremblement de la pochette gardent leur dernière
+  // valeur) — imperceptible à l'oeil (~30fps perçus) mais divise par deux
+  // le travail JS/CSS à chaque frame sur les appareils moins puissants.
+  concertFrameCounter++;
+  if(concertLitePerf && (concertFrameCounter % 2 === 0)) return;
   const clamp = v => Math.max(0, Math.min(1, v));
   let bass, mid, treble;
   if(data){
@@ -3908,6 +3942,25 @@ function updateConcertLights(data){
     concertStrobeLevel *= 0.72; // extinction rapide façon flash, pas un fondu
   }
   if(concertStrobe) concertStrobe.style.opacity = concertStrobeLevel < 0.03 ? 0 : concertStrobeLevel;
+
+  // Tremblement de la pochette : suit le niveau de basse en direct, avec
+  // une petite rémanence (décroissance) pour un mouvement plus organique
+  // qu'un bruit brut, et une pointe supplémentaire sur chaque coup détecté
+  // (isHit) pour un effet plus "percussif".
+  concertShakeMag = Math.max(bass, concertShakeMag * 0.82);
+  if(isHit) concertShakeMag = clamp(concertShakeMag + 0.3);
+  if(npCoverEl){
+    const amt = clamp(concertShakeMag);
+    if(amt > 0.05){
+      const maxPx = 9;
+      const dx = (Math.random() * 2 - 1) * maxPx * amt;
+      const dy = (Math.random() * 2 - 1) * maxPx * amt * 0.7;
+      const rot = (Math.random() * 2 - 1) * 2.2 * amt;
+      npCoverEl.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) rotate(${rot.toFixed(2)}deg)`;
+    }else{
+      npCoverEl.style.transform = '';
+    }
+  }
 }
 document.getElementById('np-menu-concert-toggle').addEventListener('change', function(){
   concertModeOn = this.checked;
