@@ -454,25 +454,44 @@ input,textarea{ font-family:inherit; }
   position:absolute; inset:0; opacity:0; pointer-events:none;
   background:radial-gradient(circle at 50% 28%, rgba(255,255,255,0.95), transparent 62%);
 }
-/* Affichage mobile du mode concert : remplace les 5 faisceaux balayants
-   (coûteux et un peu confus sur un petit écran) par une seule lueur
-   ambiante douce qui respire avec les médiums/aigus, en plus du flash
-   sur les basses (.np-strobe, conservé tel quel). Un seul élément dont on
-   anime juste l'opacité : beaucoup plus léger à repeindre à chaque frame
-   qu'animer 5 faisceaux en rotation, donc mieux adapté aux appareils
-   mobiles. Posée dans .np-art-wrap (position:relative), directement
-   derrière la pochette (z-index négatif : passe donc derrière .np-art-track
-   qui n'est pas positionné) plutôt que derrière toute la carte du lecteur —
-   elle reste ainsi bien visible juste autour de la photo. Masquée par
-   défaut (bureau) ; activée uniquement dans le media query mobile
-   ci-dessous. */
+/* Affichage mobile du mode concert : au lieu de faisceaux balayants
+   (bureau) ou d'une simple lueur rectangulaire, la pochette est entourée
+   d'un halo ROND (.np-concert-glow, forme circulaire via border-radius:50%
+   + dégradé radial centré) et d'ondes circulaires qui se diffusent vers
+   l'extérieur en boucle (.np-concert-wave) — comme des ronds dans l'eau
+   partant de l'image. Postés dans .np-art-wrap (position:relative),
+   directement derrière la pochette (z-index négatif : passent donc
+   derrière .np-art-track qui n'est pas positionné) plutôt que derrière
+   toute la carte du lecteur. Masqués par défaut (bureau) ; activés
+   uniquement dans le media query mobile ci-dessous. */
 .np-concert-glow{
-  position:absolute; inset:-14%; z-index:-1; display:none; opacity:0; pointer-events:none;
-  background:
-    radial-gradient(circle at 22% 18%, rgba(255,138,61,.9) 0%, transparent 58%),
-    radial-gradient(circle at 78% 24%, rgba(255,90,200,.8) 0%, transparent 58%),
-    radial-gradient(circle at 50% 88%, rgba(120,190,255,.85) 0%, transparent 60%);
-  filter:blur(26px);
+  position:absolute; top:50%; left:50%; z-index:-1; display:none; opacity:0; pointer-events:none;
+  width:min(92vw,420px); height:min(92vw,420px);
+  transform:translate(-50%,-50%);
+  border-radius:50%;
+  background:radial-gradient(circle, rgba(255,153,72,.55) 0%, rgba(255,90,200,.4) 42%, rgba(120,190,255,.28) 66%, transparent 78%);
+  filter:blur(28px);
+}
+/* Ondes rondes qui se diffusent en continu autour de la pochette : simple
+   anneau qui grossit en s'estompant, rejoué en boucle avec un léger
+   décalage entre les deux (np-wave-2) pour un effet d'ondes successives,
+   façon rond dans l'eau. Pas d'animation tant que le mode concert n'est
+   pas actif (classe .active ajoutée/retirée en JS), pour ne rien
+   consommer inutilement quand c'est éteint. */
+.np-concert-wave{
+  position:absolute; top:50%; left:50%; z-index:-1; display:none; pointer-events:none;
+  width:min(50vw,240px); height:min(50vw,240px); border-radius:50%;
+  transform:translate(-50%,-50%) scale(.85);
+  border:2px solid rgba(255,176,64,.65);
+  opacity:0;
+}
+.np-concert-wave.active{ animation:npConcertWave 2.4s ease-out infinite; }
+.np-concert-wave.np-wave-2{ border-color:rgba(120,190,255,.6); }
+.np-concert-wave.np-wave-2.active{ animation-delay:1.2s; }
+@keyframes npConcertWave{
+  0%{ transform:translate(-50%,-50%) scale(.82); opacity:0; }
+  16%{ opacity:.55; }
+  100%{ transform:translate(-50%,-50%) scale(2.15); opacity:0; }
 }
 .np-content{ position:relative; z-index:2; height:100%; display:flex; flex-direction:column; padding:calc(env(safe-area-inset-top,0px) + 16px) 26px calc(env(safe-area-inset-bottom,0px) + 26px); }
 .np-topbar{ display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
@@ -564,11 +583,13 @@ input,textarea{ font-family:inherit; }
   .np-art-side{ width:min(17vw,90px); height:min(17vw,90px); }
   .np-art-track{ gap:8px; }
   /* Mode concert optimisé mobile : on remplace entièrement les 5 faisceaux
-     balayants par la lueur ambiante unique .np-concert-glow définie
-     plus haut — un seul élément à repeindre par frame au lieu de 5,
-     mieux adapté aux petits écrans et aux appareils moins puissants. */
+     balayants par un halo rond + des ondes circulaires (.np-concert-glow /
+     .np-concert-wave définis plus haut) — beaucoup plus léger à repeindre
+     par frame que 5 faisceaux en rotation, et mieux adapté aux petits
+     écrans et aux appareils moins puissants. */
   .np-beam{ display:none; }
   .np-concert-glow{ display:block; }
+  .np-concert-wave{ display:block; }
 }
 
 /* =========================================================
@@ -1051,10 +1072,13 @@ input,textarea{ font-family:inherit; }
       </div>
 
       <div class="np-art-wrap">
-        <!-- Mode concert (mobile uniquement) : lueur ambiante posée derrière
-             la pochette elle-même (au lieu de derrière toute la carte du
-             lecteur), donc bien visible juste autour/derrière la photo. -->
+        <!-- Mode concert (mobile uniquement) : halo rond + ondes circulaires
+             posés derrière la pochette elle-même (au lieu de derrière toute
+             la carte du lecteur), donc bien visibles juste autour/derrière
+             la photo, sous forme de ronds qui se diffusent (pas un carré). -->
         <span class="np-concert-glow" id="np-concert-glow" aria-hidden="true"></span>
+        <span class="np-concert-wave np-wave-1" id="np-concert-wave-1" aria-hidden="true"></span>
+        <span class="np-concert-wave np-wave-2" id="np-concert-wave-2" aria-hidden="true"></span>
         <div class="np-art-track" id="np-art-track">
           <img class="np-art-side" id="np-art-prev" alt="" aria-hidden="true">
           <img class="np-art" id="np-cover" alt="">
@@ -3889,6 +3913,7 @@ let concertModeOn = false;
 const npConcertLightsEl = document.getElementById('np-concert-lights');
 const concertBeams = Array.from(document.querySelectorAll('.np-beam'));
 const concertGlow = document.getElementById('np-concert-glow');
+const concertWaves = Array.from(document.querySelectorAll('.np-concert-wave'));
 const concertStrobe = document.getElementById('np-strobe');
 const npCoverEl = document.getElementById('np-cover');
 // Sur mobile/tactile, on allège le travail du mode concert (une frame sur
@@ -3923,6 +3948,7 @@ let concertShakeRot = 0;
 function resetConcertLights(){
   concertBeams.forEach(b=> b.style.opacity = 0);
   if(concertGlow) concertGlow.style.opacity = 0;
+  concertWaves.forEach(w=> w.classList.remove('active'));
   if(concertStrobe) concertStrobe.style.opacity = 0;
   if(npCoverEl) npCoverEl.style.transform = '';
   concertBassHistory = [];
@@ -4102,6 +4128,9 @@ function setConcertMode(enabled, opts){
     ensureAnalyser();
     if(!eqRAF && !audioEl.paused) animateEq();
     applyConcertBeamColors();
+    // Ondes rondes (mobile) : boucle continue tant que le mode concert est
+    // actif, indépendamment de l'analyse audio par frame.
+    concertWaves.forEach(w=> w.classList.add('active'));
   }
   if(save) saveConcertModeSetting(concertModeOn);
 }
