@@ -417,8 +417,14 @@ input,textarea{ font-family:inherit; }
 .p-right{ display:flex; align-items:center; justify-content:flex-end; gap:12px; }
 .wave-eq{ display:flex; align-items:flex-end; gap:2px; height:22px; }
 .wave-eq span{ width:3px; background:var(--copper); border-radius:2px; height:4px; transition:height .08s linear; }
-.vol-wrap{ display:flex; align-items:center; gap:6px; }
+.vol-wrap{ display:flex; align-items:center; gap:6px; position:relative; }
 #vol-range{ width:70px; accent-color:var(--copper); }
+/* Volume verrouillé par l'admin pour un titre certifié "mode concert" :
+   le curseur reste visible (même valeur pour tout le monde) mais devient
+   inerte, avec un petit cadenas pour signaler que c'est volontaire. */
+#vol-range:disabled{ opacity:.55; cursor:not-allowed; accent-color:var(--copper-bright,#ffce6a); }
+.vol-lock-icon{ display:none; font-size:11px; line-height:1; cursor:default; }
+.vol-wrap.vol-locked .vol-lock-icon{ display:inline-block; }
 .player{ cursor:pointer; }
 .player button, .player input, .player .p-bar{ cursor:pointer; }
 
@@ -1045,9 +1051,10 @@ input,textarea{ font-family:inherit; }
   </div>
   <div class="p-right">
     <div class="wave-eq" id="wave-eq"></div>
-    <div class="vol-wrap">
+    <div class="vol-wrap" id="vol-wrap">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg>
       <input type="range" id="vol-range" min="0" max="100" value="80">
+      <span class="vol-lock-icon" id="vol-lock-icon" title="Volume verrouillé par l'admin pour ce titre (mode concert)">🔒</span>
     </div>
   </div>
 </div>
@@ -1319,6 +1326,15 @@ input,textarea{ font-family:inherit; }
       <span id="edit-concert-toggle-icon">🎤</span>
       <span id="edit-concert-toggle-label">Certifier pour le mode concert</span>
     </button>
+
+    <!-- Volume propre à ce titre certifié : réglé et verrouillé par l'admin,
+         il remplace le curseur de volume habituel pour tout le monde tant
+         que ce titre est en cours de lecture (voir updateVolumeUIForTrack). -->
+    <div class="field" id="edit-concert-volume-field" style="margin-top:14px; display:none;">
+      <label>Volume verrouillé (mode concert) — <span id="edit-concert-volume-value">80%</span></label>
+      <input type="range" id="edit-concert-volume" min="0" max="100" value="80" style="width:100%;">
+      <p style="margin:6px 0 0; font-size:11px; color:var(--text-faint); line-height:1.4;">Ce volume sera imposé à tout le monde pendant la lecture de ce titre ; le curseur de volume du lecteur sera bloqué sur cette valeur.</p>
+    </div>
 
     <button class="btn btn-gold btn-block" id="edit-submit" style="margin-top:16px;">Enregistrer</button>
   </div>
@@ -3050,12 +3066,16 @@ async function deleteTrack(trackId){
 let editingTrackId = null;
 let editCoverDataUrl = null;
 let editConcertCertified = false;
+let editConcertVolume = 80; // volume (0..100) que l'admin verrouille pour ce titre certifié
 function refreshEditConcertToggleUI(){
   const btn = document.getElementById('edit-concert-toggle');
   const label = document.getElementById('edit-concert-toggle-label');
+  const volField = document.getElementById('edit-concert-volume-field');
   if(!btn || !label) return;
   btn.classList.toggle('is-active', editConcertCertified);
   label.textContent = editConcertCertified ? 'Certifié pour le mode concert ✓' : 'Certifier pour le mode concert';
+  // Le réglage du volume verrouillé n'a de sens que pour un titre certifié.
+  if(volField) volField.style.display = editConcertCertified ? '' : 'none';
 }
 function openEditModal(trackId){
   if(!isAdmin){ showToast("Seul l'admin peut modifier les infos d'un titre."); return; }
@@ -3064,6 +3084,9 @@ function openEditModal(trackId){
   editingTrackId = trackId;
   editCoverDataUrl = track.coverURL || null;
   editConcertCertified = !!track.concertCertified;
+  editConcertVolume = (typeof track.concertVolume === 'number') ? track.concertVolume : 80;
+  document.getElementById('edit-concert-volume').value = editConcertVolume;
+  document.getElementById('edit-concert-volume-value').textContent = editConcertVolume + '%';
   refreshEditConcertToggleUI();
   document.getElementById('edit-error').style.display = 'none';
   document.getElementById('edit-title').value = track.title || '';
@@ -3121,6 +3144,26 @@ document.getElementById('edit-concert-toggle').addEventListener('click', async (
     showToast('Impossible de mettre à jour la certification.');
   }finally{
     btn.disabled = false;
+  }
+});
+/* Volume verrouillé du mode concert : l'affichage (%) se met à jour en
+   direct pendant qu'on glisse le curseur (input), et l'enregistrement dans
+   Firestore ne se fait qu'au relâchement (change) pour éviter d'écrire à
+   chaque pixel. Se répercute en direct sur le lecteur de tout le monde via
+   l'onSnapshot du catalogue (voir updateVolumeUIForTrack). */
+document.getElementById('edit-concert-volume').addEventListener('input', (e)=>{
+  editConcertVolume = Number(e.target.value);
+  document.getElementById('edit-concert-volume-value').textContent = editConcertVolume + '%';
+});
+document.getElementById('edit-concert-volume').addEventListener('change', async (e)=>{
+  if(!isAdmin || !editingTrackId) return;
+  const val = Number(e.target.value);
+  try{
+    await tracksRef.doc(editingTrackId).update({ concertVolume: val });
+    showToast('Volume verrouillé mis à jour pour ce titre.');
+  }catch(err){
+    console.error(err);
+    showToast("Impossible d'enregistrer le volume verrouillé.");
   }
 });
 document.getElementById('edit-submit').addEventListener('click', async ()=>{
@@ -3386,6 +3429,13 @@ let eqLow = null, eqMid = null, eqHigh = null, masterGain = null;
 let savedEq = { bass: 0, mid: 0, treble: 0 };
 let eqSaveTimer = null;
 let targetVolume = 0.8; // volume "voulu" par l'utilisateur (0..1), indépendant du fondu en cours
+// Volume verrouillé (0..1) imposé par l'admin pour le titre certifié "mode
+// concert" actuellement chargé ; null si le titre en cours n'en a pas et
+// que le curseur de volume normal (targetVolume) s'applique.
+let lockedConcertVolume = null;
+// Volume réellement appliqué à la lecture : le verrouillage d'un titre
+// certifié prime toujours sur le réglage personnel de l'utilisateur.
+function getEffectiveVolume(){ return lockedConcertVolume != null ? lockedConcertVolume : targetVolume; }
 const FADE_MS = 220; // durée des fondus courts (lecture/pause)
 const CROSSFADE_MS = 3000; // durée du fondu enchaîné entre deux morceaux, façon Apple Music
 let crossfadeEchoes = []; // lecteurs "fantômes" qui terminent le morceau précédent en fondu
@@ -3421,7 +3471,7 @@ function ensureAnalyser(){
     eqHigh.type = 'highshelf'; eqHigh.frequency.value = 3500; eqHigh.gain.value = savedEq.treble;
 
     masterGain = audioCtx.createGain();
-    masterGain.gain.value = perceptualGain(targetVolume);
+    masterGain.gain.value = perceptualGain(getEffectiveVolume());
 
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 64;
@@ -3436,7 +3486,33 @@ function ensureAnalyser(){
     // Le volume réel est désormais géré par le noeud de gain ; l'élément
     // <audio> reste à 1 pour laisser le Web Audio API tout contrôler.
     audioEl.volume = 1;
-  }catch(e){ console.warn('Analyseur audio indisponible, repli sur le volume natif du lecteur.', e); analyser = null; masterGain = null; audioEl.volume = targetVolume; }
+  }catch(e){ console.warn('Analyseur audio indisponible, repli sur le volume natif du lecteur.', e); analyser = null; masterGain = null; audioEl.volume = getEffectiveVolume(); }
+}
+
+/* Met à jour le curseur de volume du bandeau (et la version plein écran s'il
+   y en avait une) en fonction du titre en cours : si ce titre est certifié
+   "mode concert" ET qu'un volume a été réglé par un admin, le curseur passe
+   sur cette valeur fixe et se désactive pour tout le monde (y compris
+   l'admin, sur cet appareil — il doit repasser par le modal d'édition pour
+   changer la valeur). Sinon, le curseur redevient libre et reprend le
+   dernier volume choisi par l'utilisateur (targetVolume). */
+function updateVolumeUIForTrack(track){
+  const hasLock = !!(track && track.concertCertified && typeof track.concertVolume === 'number');
+  lockedConcertVolume = hasLock ? Math.max(0, Math.min(100, track.concertVolume)) / 100 : null;
+  const volRangeEl = document.getElementById('vol-range');
+  const volWrapEl = document.getElementById('vol-wrap');
+  if(!volRangeEl) return;
+  if(hasLock){
+    volRangeEl.value = Math.round(lockedConcertVolume * 100);
+    volRangeEl.disabled = true;
+    volRangeEl.title = "Volume verrouillé par l'admin pour ce titre (mode concert)";
+    if(volWrapEl) volWrapEl.classList.add('vol-locked');
+  }else{
+    volRangeEl.value = Math.round(targetVolume * 100);
+    volRangeEl.disabled = false;
+    volRangeEl.removeAttribute('title');
+    if(volWrapEl) volWrapEl.classList.remove('vol-locked');
+  }
 }
 
 // Fondu doux du volume vers une valeur cible (0..1 linéaire), en douceur
@@ -3599,6 +3675,7 @@ async function playTrackById(trackId, direction){
   nextTrackPrefetchTriggered = false;
   activeClipStart = null; // lecture normale : plus de bornes d'extrait
   activeClipEnd = null;
+  updateVolumeUIForTrack(track); // applique/retire le volume verrouillé de ce titre
   // Incrémente le compteur d'écoutes du titre (utilisé par le Classement).
   tracksRef.doc(trackId).update({ plays: firebase.firestore.FieldValue.increment(1) }).catch(()=>{});
   document.getElementById('p-cover').src = track.coverURL || fallbackCoverSvg();
@@ -3626,7 +3703,7 @@ async function playTrackById(trackId, direction){
     if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     if(masterGain) masterGain.gain.setValueAtTime(0.0001, audioCtx.currentTime); // silence net avant le fondu d'entrée
     else audioEl.volume = 0;
-    audioEl.play().then(()=> fadeGainTo(targetVolume, outgoingSrc ? CROSSFADE_MS : FADE_MS)).catch(()=>{});
+    audioEl.play().then(()=> fadeGainTo(getEffectiveVolume(), outgoingSrc ? CROSSFADE_MS : FADE_MS)).catch(()=>{});
     syncNowPlayingUI();
   }catch(e){
     console.error(e);
@@ -3638,7 +3715,7 @@ function togglePlayPause(){
   if(!audioEl.src) return;
   if(audioEl.paused){
     if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-    audioEl.play().then(()=> fadeGainTo(targetVolume)).catch(()=>{});
+    audioEl.play().then(()=> fadeGainTo(getEffectiveVolume())).catch(()=>{});
   }else{
     fadeGainTo(0, 140);
     setTimeout(()=>{ if(audioEl && !audioEl.ended) audioEl.pause(); }, 150);
@@ -3652,6 +3729,7 @@ function stopPlayback(){
   currentTrackId = null;
   activeClipStart = null;
   activeClipEnd = null;
+  updateVolumeUIForTrack(null); // plus de titre en cours : déverrouille le curseur de volume
   playerBar.classList.remove('visible');
   renderTracks();
   updateHeroPlayState();
@@ -3914,6 +3992,9 @@ function wireSeekBar(barId, fillId, labelId, otherFillId, otherLabelId){
 wireSeekBar('p-bar', 'p-bar-fill', 'p-time-current', 'np-bar-fill', 'np-time-current');
 wireSeekBar('np-bar', 'np-bar-fill', 'np-time-current', 'p-bar-fill', 'p-time-current');
 document.getElementById('vol-range').addEventListener('input', (e)=>{
+  // Verrouillé par l'admin pour ce titre certifié : le curseur est déjà
+  // `disabled`, mais on ignore quand même toute valeur par sécurité.
+  if(e.target.disabled || lockedConcertVolume != null){ e.target.value = Math.round(lockedConcertVolume * 100); return; }
   targetVolume = Number(e.target.value) / 100;
   if(masterGain){
     const now = audioCtx.currentTime;
@@ -4259,11 +4340,19 @@ document.getElementById('np-menu-eq-btn').addEventListener('click', ()=>{ closeN
 document.getElementById('np-eq-close').addEventListener('click', closeEqPanel);
 npEqBackdrop.addEventListener('click', closeEqPanel);
 
-/* Reflète les changements de "likes" en direct sur le lecteur */
+/* Reflète en direct sur le lecteur les changements faits par l'admin :
+   "likes" mais aussi certification/volume verrouillé du mode concert, pour
+   que le blocage du volume s'applique immédiatement à tout le monde même
+   en pleine écoute, sans attendre le titre suivant. */
 tracksRef.onSnapshot(()=>{
   if(currentTrackId){
     const t = allTracks.find(tt => tt.id === currentTrackId);
-    if(t) updateLikeButtons(t);
+    if(t){
+      updateLikeButtons(t);
+      const wasLocked = lockedConcertVolume;
+      updateVolumeUIForTrack(t);
+      if(lockedConcertVolume !== wasLocked) fadeGainTo(getEffectiveVolume(), 300);
+    }
   }
 });
 
