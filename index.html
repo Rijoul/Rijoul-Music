@@ -131,12 +131,16 @@ input,textarea{ font-family:inherit; }
 .user-chip-name{ font-size:13.5px; font-weight:600; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .chip-caret{ opacity:.6; transition:.15s; }
 .user-chip.open .chip-caret{ transform:rotate(180deg); }
-.user-dd{ position:absolute; top:calc(100% + 10px); right:0; width:224px; background:rgba(28,28,30,0.75); backdrop-filter:var(--glass-blur); -webkit-backdrop-filter:var(--glass-blur); border:1px solid var(--glass-border-strong); border-radius:18px; box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,0.1); padding:6px; display:none; z-index:50; }
-.user-chip.open .user-dd{ display:block; }
+.user-dd{ position:absolute; top:calc(100% + 10px); right:0; width:224px; background:rgba(28,28,30,0.75); backdrop-filter:var(--glass-blur); -webkit-backdrop-filter:var(--glass-blur); border:1px solid var(--glass-border-strong); border-radius:18px; box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,0.1); padding:6px; display:none; z-index:500; }
+.user-chip.open .user-dd, .user-dd.open{ display:block; }
 /* Sur mobile, .topnav passe en overflow:hidden pour contenir ses lignes
-   empilées : ça coupait ce menu (le bouton "Se déconnecter" devenait
-   inaccessible). En position "fixed", calculée en JS à l'ouverture, le menu
-   sort de ce conteneur et reste toujours entièrement visible et cliquable. */
+   empilées, et comme .topnav a un backdrop-filter, il devient lui-même le
+   "containing block" de tout descendant en position:fixed : un simple
+   position:fixed sur le menu NE SUFFIT DONC PAS à s'en échapper, il reste
+   coupé par cet overflow:hidden. La seule façon fiable de le garder visible
+   est de sortir le menu du DOM de la nav (déplacé directement dans <body>
+   au clic, voir positionUserDropdown en JS) : ainsi plus aucun ancêtre ne
+   peut jamais le rogner, quel que soit l'écran. */
 .user-dd.fixed-pos{ position:fixed; top:var(--dd-top,60px); right:var(--dd-right,12px); left:auto; }
 .dd-item{ display:flex; align-items:center; gap:9px; width:100%; text-align:left; background:transparent; border:0; color:var(--text); padding:10px 11px; border-radius:12px; font-size:13.5px; font-weight:500; }
 .dd-item:hover{ background:rgba(255,255,255,0.09); }
@@ -1576,9 +1580,13 @@ const userNameLabel = document.getElementById('user-name-label');
 accountBtn.addEventListener('click', ()=>{ clearAuthErrors(); openOverlay('account-overlay'); });
 const userDropdown = userChip.querySelector('.user-dd');
 // Repositionne le menu (dont "Se déconnecter") en position fixe, calculée
-// depuis la position réelle du bouton compte. Ça évite qu'il soit coupé par
-// le `overflow:hidden` de la barre de nav sur mobile, et le garde toujours
-// visible et accessible au doigt.
+// depuis la position réelle du bouton compte. Sur mobile, .topnav a un
+// backdrop-filter qui en fait le "containing block" de tout position:fixed
+// interne : un simple position:fixed sur place ne suffit pas à échapper à
+// son overflow:hidden. On déplace donc réellement le noeud du menu dans
+// <body> (une seule fois, on le mémorise) pour qu'aucun ancêtre ne puisse
+// plus jamais le rogner ni le cacher, quel que soit l'écran.
+if(userDropdown.parentElement !== document.body) document.body.appendChild(userDropdown);
 function positionUserDropdown(){
   const r = userChip.getBoundingClientRect();
   userDropdown.classList.add('fixed-pos');
@@ -1589,11 +1597,20 @@ userChip.addEventListener('click', (e)=>{
   if(e.target.closest('#dd-logout') || e.target.closest('#dd-edit-profile') || e.target.closest('#dd-my-uploads')) return;
   const willOpen = !userChip.classList.contains('open');
   userChip.classList.toggle('open', willOpen);
+  // Le menu vit maintenant hors de .user-chip (déplacé dans <body>), donc le
+  // sélecteur CSS ".user-chip.open .user-dd" ne le vise plus : on pilote son
+  // affichage directement avec sa propre classe .open.
+  userDropdown.classList.toggle('open', willOpen);
   if(willOpen) positionUserDropdown();
 });
 window.addEventListener('resize', ()=>{ if(userChip.classList.contains('open')) positionUserDropdown(); });
 window.addEventListener('scroll', ()=>{ if(userChip.classList.contains('open')) positionUserDropdown(); }, true);
-document.addEventListener('click', (e)=>{ if(!userChip.contains(e.target)) userChip.classList.remove('open'); });
+document.addEventListener('click', (e)=>{
+  if(!userChip.contains(e.target) && !userDropdown.contains(e.target)){
+    userChip.classList.remove('open');
+    userDropdown.classList.remove('open');
+  }
+});
 
 document.getElementById('dd-logout').addEventListener('click', async ()=>{
   await auth.signOut();
