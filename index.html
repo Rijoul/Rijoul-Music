@@ -221,6 +221,9 @@ input,textarea{ font-family:inherit; }
 .card-uploader{ display:flex; align-items:center; gap:5px; overflow:hidden; }
 .card-uploader img{ width:16px; height:16px; border-radius:50%; object-fit:cover; flex-shrink:0; }
 .card-uploader span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Qui a ajouté un titre reste une info interne (permissions, "mes ajouts")
+   mais n'est plus affichée publiquement sur le site. */
+.hero-uploader, .card-uploader{ display:none !important; }
 .like-btn{ display:flex; align-items:center; gap:4px; background:transparent; border:0; color:var(--text-faint); font-size:11.5px; font-family:var(--mono); padding:2px; flex-shrink:0; }
 .like-btn.liked{ color:var(--copper); }
 .like-btn svg{ transition:.15s; }
@@ -1061,6 +1064,11 @@ function subscribeToProfile(uid){
     document.getElementById('profile-name').value = label;
     currentProfilePhoto = data.photoURL || null;
     updateProfilePreview(label, data.photoURL || null);
+    applyEqSettings(
+      typeof data.eqBass === 'number' ? data.eqBass : 0,
+      typeof data.eqMid === 'number' ? data.eqMid : 0,
+      typeof data.eqTreble === 'number' ? data.eqTreble : 0
+    );
   });
 }
 function updateProfilePreview(label, photoURL){
@@ -1142,6 +1150,7 @@ auth.onAuthStateChanged(async (user)=>{
     userChip.classList.remove('open');
     if(profileUnsub){ profileUnsub(); profileUnsub = null; }
     currentProfile = null;
+    applyEqSettings(0, 0, 0);
   }
   renderTracks();
 });
@@ -1518,6 +1527,10 @@ document.addEventListener('keydown', (e)=>{
 
 let audioCtx = null, analyser = null, analyserSource = null, eqBars = [], eqRAF = null;
 let eqLow = null, eqMid = null, eqHigh = null, masterGain = null;
+// Réglages d'égaliseur liés au compte (sauvegardés dans usersRef) afin de se
+// retrouver identiques sur n'importe quel appareil une fois connecté.
+let savedEq = { bass: 0, mid: 0, treble: 0 };
+let eqSaveTimer = null;
 let targetVolume = 0.8; // volume "voulu" par l'utilisateur (0..1), indépendant du fondu en cours
 const FADE_MS = 220; // durée des fondus enchaînés (lecture/pause/changement de titre)
 
@@ -1541,13 +1554,13 @@ function ensureAnalyser(){
     // Chaîne : source -> EQ 3 bandes (basses/médiums/aigus) -> gain maître
     // (contrôle du volume + fondus enchaînés) -> analyseur -> sortie.
     eqLow = audioCtx.createBiquadFilter();
-    eqLow.type = 'lowshelf'; eqLow.frequency.value = 200; eqLow.gain.value = 0;
+    eqLow.type = 'lowshelf'; eqLow.frequency.value = 200; eqLow.gain.value = savedEq.bass;
 
     eqMid = audioCtx.createBiquadFilter();
-    eqMid.type = 'peaking'; eqMid.frequency.value = 1000; eqMid.Q.value = 0.9; eqMid.gain.value = 0;
+    eqMid.type = 'peaking'; eqMid.frequency.value = 1000; eqMid.Q.value = 0.9; eqMid.gain.value = savedEq.mid;
 
     eqHigh = audioCtx.createBiquadFilter();
-    eqHigh.type = 'highshelf'; eqHigh.frequency.value = 3500; eqHigh.gain.value = 0;
+    eqHigh.type = 'highshelf'; eqHigh.frequency.value = 3500; eqHigh.gain.value = savedEq.treble;
 
     masterGain = audioCtx.createGain();
     masterGain.gain.value = perceptualGain(targetVolume);
@@ -1746,28 +1759,55 @@ audioEl.volume = 0.8;
    filtres Web Audio créés dans ensureAnalyser(). Sans contexte Web Audio
    disponible (ex. restrictions CORS), les curseurs restent inertes plutôt
    que de casser la lecture. */
-function wireEqSlider(sliderId, valId, getFilter){
+function wireEqSlider(sliderId, valId, getFilter, key){
   const slider = document.getElementById(sliderId);
   const val = document.getElementById(valId);
   slider.addEventListener('input', (e)=>{
     const db = Number(e.target.value);
     val.textContent = (db > 0 ? '+' : '') + db;
+    savedEq[key] = db;
     const filter = getFilter();
     if(filter) filter.gain.setTargetAtTime(db, audioCtx.currentTime, 0.02);
+    scheduleEqSave();
   });
 }
-wireEqSlider('eq-bass', 'eq-bass-val', ()=> eqLow);
-wireEqSlider('eq-mid', 'eq-mid-val', ()=> eqMid);
-wireEqSlider('eq-treble', 'eq-treble-val', ()=> eqHigh);
+wireEqSlider('eq-bass', 'eq-bass-val', ()=> eqLow, 'bass');
+wireEqSlider('eq-mid', 'eq-mid-val', ()=> eqMid, 'mid');
+wireEqSlider('eq-treble', 'eq-treble-val', ()=> eqHigh, 'treble');
 document.getElementById('np-eq-reset').addEventListener('click', ()=>{
-  [['eq-bass','eq-bass-val'],['eq-mid','eq-mid-val'],['eq-treble','eq-treble-val']].forEach(([sId,vId])=>{
-    document.getElementById(sId).value = 0;
-    document.getElementById(vId).textContent = '0';
-  });
-  if(eqLow) eqLow.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
-  if(eqMid) eqMid.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
-  if(eqHigh) eqHigh.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
+  applyEqSettings(0, 0, 0);
+  scheduleEqSave();
 });
+
+// Applique des valeurs d'égaliseur aux curseurs, au libellé et (si actifs)
+// aux filtres Web Audio en cours d'utilisation.
+function applyEqSettings(bass, mid, treble){
+  savedEq = { bass, mid, treble };
+  [['eq-bass','eq-bass-val',bass],['eq-mid','eq-mid-val',mid],['eq-treble','eq-treble-val',treble]].forEach(([sId,vId,db])=>{
+    document.getElementById(sId).value = db;
+    document.getElementById(vId).textContent = (db > 0 ? '+' : '') + db;
+  });
+  if(audioCtx){
+    if(eqLow) eqLow.gain.setTargetAtTime(bass, audioCtx.currentTime, 0.02);
+    if(eqMid) eqMid.gain.setTargetAtTime(mid, audioCtx.currentTime, 0.02);
+    if(eqHigh) eqHigh.gain.setTargetAtTime(treble, audioCtx.currentTime, 0.02);
+  }
+}
+
+// Sauvegarde (avec un léger délai pour ne pas écrire à chaque pixel glissé)
+// les réglages d'égaliseur sur le profil du compte connecté, pour qu'ils se
+// retrouvent identiques en changeant d'appareil.
+function scheduleEqSave(){
+  const uid = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser.uid : null;
+  if(!uid) return;
+  clearTimeout(eqSaveTimer);
+  eqSaveTimer = setTimeout(()=>{
+    usersRef.doc(uid).set({
+      eqBass: savedEq.bass, eqMid: savedEq.mid, eqTreble: savedEq.treble,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true }).catch(err=> console.error("Impossible d'enregistrer l'égaliseur :", err));
+  }, 500);
+}
 
 /* Menu "..." du grand lecteur (Now Playing) : n'ouvre pour l'instant
    qu'un seul item, l'égaliseur, qui s'affiche en panneau flottant. */
