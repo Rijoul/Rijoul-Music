@@ -108,6 +108,8 @@ input,textarea{ font-family:inherit; }
 }
 #search-input:focus{ border-color:var(--glass-border-strong); background:rgba(255,255,255,0.11); }
 #search-input::placeholder{ color:var(--text-faint); }
+#search-input::-webkit-search-cancel-button,
+#search-input::-webkit-search-decoration{ -webkit-appearance:none; appearance:none; }
 .nav-right{ display:flex; align-items:center; gap:10px; margin-left:auto; flex-shrink:0; }
 .btn{ border:0; border-radius:999px; padding:10px 18px; font-size:13.5px; font-weight:800; transition:.18s cubic-bezier(.4,0,.2,1); }
 .btn-gold{ background:var(--copper); color:#241a06; box-shadow:0 6px 18px -6px rgba(255,176,32,0.55); }
@@ -361,9 +363,13 @@ input,textarea{ font-family:inherit; }
     <button class="tab-btn active" data-view="library">Bibliothèque</button>
     <button class="tab-btn" data-view="mine">Mes ajouts</button>
   </div>
+  <!-- Champs leurres : absorbent l'autofill agressif de Chrome (email/mot de passe)
+       pour qu'il ne se colle jamais dans la vraie barre de recherche juste en dessous. -->
+  <input type="text" name="username" autocomplete="username" class="visually-hidden" tabindex="-1" aria-hidden="true">
+  <input type="password" name="password" autocomplete="current-password" class="visually-hidden" tabindex="-1" aria-hidden="true">
   <div class="search-wrap">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-    <input id="search-input" type="text" placeholder="Chercher un titre, un artiste…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="rijoul-search-q" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
+    <input id="search-input" type="search" placeholder="Chercher un titre, un artiste…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="rijoul-search-q" role="searchbox" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onmousedown="this.removeAttribute('readonly')" onclick="this.removeAttribute('readonly')" ontouchstart="this.removeAttribute('readonly')">
   </div>
   <div class="nav-right">
     <button class="btn btn-gold" id="upload-open-btn">+ Ajouter un titre</button>
