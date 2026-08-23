@@ -315,8 +315,23 @@ input,textarea{ font-family:inherit; }
 .np-menu-dropdown.open{ display:block; }
 .np-menu-item{ display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:transparent; border:0; color:var(--text); padding:10px 12px; border-radius:11px; font-size:13.5px; font-weight:600; }
 .np-menu-item:hover{ background:rgba(255,255,255,0.09); }
-.np-art-wrap{ flex:1; display:flex; align-items:center; justify-content:center; min-height:0; padding:20px 0; }
-.np-art{ width:min(74vw,300px); height:min(74vw,300px); max-width:100%; max-height:100%; object-fit:cover; border-radius:22px; box-shadow:0 30px 70px -20px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.08); }
+.np-art-wrap{ position:relative; flex:1; display:flex; align-items:center; justify-content:center; min-height:0; padding:20px 0; overflow:hidden; }
+.np-art-track{ display:flex; align-items:center; justify-content:center; gap:12px; width:100%; }
+.np-art{ width:min(56vw,260px); height:min(56vw,260px); max-width:100%; max-height:100%; object-fit:cover; border-radius:22px; box-shadow:0 30px 70px -20px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.08); flex-shrink:0; }
+.np-art-side{
+  flex-shrink:0; width:min(20vw,110px); height:min(20vw,110px);
+  object-fit:cover; border-radius:16px; cursor:pointer;
+  opacity:.4; filter:brightness(.55) saturate(.9); transform:scale(.92);
+  box-shadow:0 18px 40px -16px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06);
+  transition:opacity .2s, transform .2s, filter .2s;
+}
+.np-art-side:hover{ opacity:.7; transform:scale(.97); filter:brightness(.7) saturate(1); }
+@keyframes npArtSlideLeft{ from{ transform:translateX(30px); opacity:0; } to{ transform:translateX(0); opacity:1; } }
+@keyframes npArtSlideRight{ from{ transform:translateX(-30px); opacity:0; } to{ transform:translateX(0); opacity:1; } }
+@keyframes npArtFade{ from{ transform:scale(.96); opacity:0; } to{ transform:scale(1); opacity:1; } }
+.np-art-track.anim-left{ animation:npArtSlideLeft .34s cubic-bezier(.25,1,.4,1) both; }
+.np-art-track.anim-right{ animation:npArtSlideRight .34s cubic-bezier(.25,1,.4,1) both; }
+.np-art-track.anim-fade{ animation:npArtFade .3s cubic-bezier(.25,1,.4,1) both; }
 .np-meta{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex-shrink:0; margin-bottom:20px; }
 .np-meta-text{ min-width:0; }
 .np-title{ font-family:var(--display); font-size:21px; font-weight:800; letter-spacing:-0.02em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -359,6 +374,9 @@ input,textarea{ font-family:inherit; }
   .np-sheet{ border-radius:24px; height:min(94vh,760px); }
   .np-title{ font-size:19px; }
   .np-controls{ gap:26px; }
+  .np-art{ width:min(50vw,240px); height:min(50vw,240px); }
+  .np-art-side{ width:min(17vw,90px); height:min(17vw,90px); }
+  .np-art-track{ gap:8px; }
 }
 
 /* =========================================================
@@ -609,7 +627,11 @@ input,textarea{ font-family:inherit; }
       </div>
 
       <div class="np-art-wrap">
-        <img class="np-art" id="np-cover" alt="">
+        <div class="np-art-track" id="np-art-track">
+          <img class="np-art-side" id="np-art-prev" alt="" aria-hidden="true">
+          <img class="np-art" id="np-cover" alt="">
+          <img class="np-art-side" id="np-art-next" alt="" aria-hidden="true">
+        </div>
       </div>
 
       <div class="np-meta">
@@ -1254,6 +1276,14 @@ function renderTracks(){
       emptyText: "Ajoute ton premier titre pour le voir apparaître ici."
     });
   }
+  // Garde les pochettes précédente/suivante du grand lecteur à jour si la
+  // liste affichée change (recherche, ajout/suppression d'un titre…),
+  // sans rejouer l'animation de glissement.
+  if(currentTrackId){
+    const idx = currentQueue.findIndex(t => t.id === currentTrackId);
+    if(idx >= 0) currentTrackIndex = idx;
+    refreshNpArtSides();
+  }
 }
 function paintGrid(gridId, emptyId, countId, list, texts){
   const grid = document.getElementById(gridId);
@@ -1764,7 +1794,7 @@ function stopEq(){
   eqBars.forEach(b=> b.style.height = '4px');
 }
 
-async function playTrackById(trackId){
+async function playTrackById(trackId, direction){
   const track = allTracks.find(t => t.id === trackId);
   if(!track) return;
   const idxInQueue = currentQueue.findIndex(t => t.id === trackId);
@@ -1789,6 +1819,8 @@ async function playTrackById(trackId){
   renderTracks();
   updateHeroPlayState();
   syncNowPlayingUI();
+  refreshNpArtSides();
+  animateNpArtTrack(direction);
   try{
     const blobUrl = await getTrackAudioBlobUrl(track);
     if(currentTrackId !== trackId) return; // l'utilisateur a changé de morceau entre-temps
@@ -1833,8 +1865,59 @@ function playAdjacent(delta){
   let idx = currentTrackIndex + delta;
   if(idx < 0) idx = currentQueue.length - 1;
   if(idx >= currentQueue.length) idx = 0;
-  playTrackById(currentQueue[idx].id);
+  playTrackById(currentQueue[idx].id, delta > 0 ? 1 : -1);
 }
+
+/* =========================================================
+   CARROUSEL DE POCHETTES DU GRAND LECTEUR — affiche un aperçu
+   du morceau précédent et du suivant de part et d'autre de la
+   pochette en cours, avec un glissement à chaque changement de
+   titre (façon Apple Music).
+   ========================================================= */
+function getAdjacentTrack(offset){
+  if(currentQueue.length < 2 || currentTrackIndex < 0) return null;
+  let idx = currentTrackIndex + offset;
+  if(idx < 0) idx = currentQueue.length - 1;
+  if(idx >= currentQueue.length) idx = 0;
+  return currentQueue[idx] || null;
+}
+function refreshNpArtSides(){
+  const prevEl = document.getElementById('np-art-prev');
+  const nextEl = document.getElementById('np-art-next');
+  const prevTrack = getAdjacentTrack(-1);
+  const nextTrack = getAdjacentTrack(1);
+  if(prevTrack){
+    prevEl.src = prevTrack.coverURL || fallbackCoverSvg();
+    prevEl.style.visibility = 'visible';
+    prevEl.style.pointerEvents = 'auto';
+  }else{
+    prevEl.removeAttribute('src');
+    prevEl.style.visibility = 'hidden';
+    prevEl.style.pointerEvents = 'none';
+  }
+  if(nextTrack){
+    nextEl.src = nextTrack.coverURL || fallbackCoverSvg();
+    nextEl.style.visibility = 'visible';
+    nextEl.style.pointerEvents = 'auto';
+  }else{
+    nextEl.removeAttribute('src');
+    nextEl.style.visibility = 'hidden';
+    nextEl.style.pointerEvents = 'none';
+  }
+}
+// direction: 1 = on vient d'avancer (glissement vers la gauche),
+// -1 = on vient de reculer (glissement vers la droite), sinon un
+// simple fondu (sélection directe d'un titre dans une liste).
+function animateNpArtTrack(direction){
+  const track = document.getElementById('np-art-track');
+  if(!track) return;
+  track.classList.remove('anim-left', 'anim-right', 'anim-fade');
+  void track.offsetWidth; // force le reflow pour pouvoir rejouer l'animation
+  track.classList.add(direction === 1 ? 'anim-left' : direction === -1 ? 'anim-right' : 'anim-fade');
+}
+document.getElementById('np-art-prev').addEventListener('click', ()=>{ if(currentQueue.length > 1) playAdjacent(-1); });
+document.getElementById('np-art-next').addEventListener('click', ()=>{ if(currentQueue.length > 1) playAdjacent(1); });
+
 function updateLikeButtons(track){
   const uid = auth.currentUser ? auth.currentUser.uid : null;
   const liked = !!(uid && Array.isArray(track.likes) && track.likes.includes(uid));
