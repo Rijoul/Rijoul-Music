@@ -7,7 +7,7 @@
 <meta name="application-name" content="RIJOUL MUSIC">
 <meta name="apple-mobile-web-app-title" content="RIJOUL MUSIC">
 <meta name="description" content="Écoute et partage de la musique.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%23000000'/%3E%3Ccircle cx='50' cy='50' r='34' fill='none' stroke='%235E5CE6' stroke-width='6'/%3E%3Cpath d='M34 66V38l32 14z' fill='%235E5CE6'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%23000000'/%3E%3Ccircle cx='50' cy='50' r='34' fill='none' stroke='%23FFB020' stroke-width='6'/%3E%3Cpath d='M34 66V38l32 14z' fill='%23FFB020'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -34,14 +34,14 @@
   --glass-hl: rgba(255,255,255,0.35);
   --line: rgba(255,255,255,0.09);
   --line-strong: rgba(255,255,255,0.18);
-  --copper: #5E5CE6;         /* accent principal (indigo iOS) */
-  --copper-bright: #8B7FFF;
-  --amber: #5E5CE6;
+  --copper: #FFB020;         /* accent principal (ambre chaleureux, hi-fi) */
+  --copper-bright: #FFD37A;
+  --amber: #FFB020;
   --text: #ffffff;
   --text-dim: #b3b3b3;
   --text-faint: #7a7a7e;
   --danger: #ff5c5c;
-  --good: #5E5CE6;
+  --good: #FFB020;
   --radius: 22px;
   --radius-sm: 16px;
   --shadow: 0 24px 60px -20px rgba(0,0,0,0.85);
@@ -56,9 +56,9 @@ html,body{ height:100%; }
 body{
   margin:0;
   background:
-    radial-gradient(1000px 560px at 15% -10%, rgba(94,92,230,0.14), transparent 60%),
-    radial-gradient(900px 520px at 100% 0%, rgba(94,92,230,0.07), transparent 55%),
-    radial-gradient(1200px 700px at 50% 120%, rgba(94,92,230,0.06), transparent 60%),
+    radial-gradient(1000px 560px at 15% -10%, rgba(255,176,32,0.14), transparent 60%),
+    radial-gradient(900px 520px at 100% 0%, rgba(255,176,32,0.07), transparent 55%),
+    radial-gradient(1200px 700px at 50% 120%, rgba(255,176,32,0.06), transparent 60%),
     var(--bg);
   color:var(--text);
   font-family:var(--body);
@@ -66,7 +66,7 @@ body{
   padding-bottom: calc(var(--player-h) + 30px);
   letter-spacing:-0.01em;
 }
-::selection{ background:var(--copper); color:#ffffff; }
+::selection{ background:var(--copper); color:#241a06; }
 a{ color:inherit; }
 button{ font-family:inherit; cursor:pointer; }
 input,textarea{ font-family:inherit; }
@@ -93,7 +93,7 @@ input,textarea{ font-family:inherit; }
 }
 .brand{ display:flex; align-items:center; gap:10px; text-decoration:none; flex-shrink:0; }
 .brand-mark{ width:32px; height:32px; border-radius:50%; background:radial-gradient(circle at 35% 30%, var(--copper-bright), var(--copper) 55%, #0d5a2c 100%); position:relative; box-shadow:0 0 0 1px var(--glass-border-strong), 0 4px 10px rgba(0,0,0,0.5); }
-.brand-mark::after{ content:''; position:absolute; inset:0; margin:auto; width:0; height:0; border-style:solid; border-width:5px 0 5px 8px; border-color:transparent transparent transparent #ffffff; }
+.brand-mark::after{ content:''; position:absolute; inset:0; margin:auto; width:0; height:0; border-style:solid; border-width:5px 0 5px 8px; border-color:transparent transparent transparent #241a06; }
 .brand-word{ font-family:var(--display); font-weight:900; font-size:18px; letter-spacing:-0.02em; }
 .brand-word em{ font-style:normal; font-weight:800; color:var(--copper-bright); }
 .tabs{ display:flex; gap:3px; background:rgba(255,255,255,0.06); padding:4px; border-radius:999px; border:1px solid var(--line); }
@@ -110,7 +110,7 @@ input,textarea{ font-family:inherit; }
 #search-input::placeholder{ color:var(--text-faint); }
 .nav-right{ display:flex; align-items:center; gap:10px; margin-left:auto; flex-shrink:0; }
 .btn{ border:0; border-radius:999px; padding:10px 18px; font-size:13.5px; font-weight:800; transition:.18s cubic-bezier(.4,0,.2,1); }
-.btn-gold{ background:var(--copper); color:#ffffff; box-shadow:0 6px 18px -6px rgba(94,92,230,0.55); }
+.btn-gold{ background:var(--copper); color:#241a06; box-shadow:0 6px 18px -6px rgba(255,176,32,0.55); }
 .btn-gold:hover{ background:var(--copper-bright); transform:translateY(-1px) scale(1.02); }
 .btn-gold:active{ transform:translateY(0) scale(0.98); }
 .btn-ghost{ background:rgba(255,255,255,0.08); border:1px solid var(--glass-border); color:var(--text); backdrop-filter:blur(8px); }
@@ -119,7 +119,7 @@ input,textarea{ font-family:inherit; }
 
 .user-chip{ position:relative; display:none; align-items:center; gap:9px; background:rgba(255,255,255,0.07); border:1px solid var(--line); padding:5px 12px 5px 5px; border-radius:999px; }
 .user-chip.visible{ display:flex; }
-.user-avatar{ width:32px; height:32px; border-radius:50%; overflow:hidden; background:var(--copper); color:#ffffff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px; flex-shrink:0; }
+.user-avatar{ width:32px; height:32px; border-radius:50%; overflow:hidden; background:var(--copper); color:#241a06; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px; flex-shrink:0; }
 .user-avatar img{ width:100%; height:100%; object-fit:cover; }
 .user-chip-name{ font-size:13.5px; font-weight:600; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .chip-caret{ opacity:.6; transition:.15s; }
@@ -139,13 +139,13 @@ input,textarea{ font-family:inherit; }
   display:grid; grid-template-columns:220px 1fr; gap:36px; align-items:center;
   padding:34px; border-radius:32px; margin-bottom:38px;
   background:
-    linear-gradient(150deg, rgba(94,92,230,0.16) 0%, rgba(255,255,255,0.04) 45%, rgba(255,255,255,0.02) 100%);
+    linear-gradient(150deg, rgba(255,176,32,0.16) 0%, rgba(255,255,255,0.04) 45%, rgba(255,255,255,0.02) 100%);
   border:1px solid var(--glass-border);
   backdrop-filter:var(--glass-blur); -webkit-backdrop-filter:var(--glass-blur);
   position:relative; overflow:hidden;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), var(--shadow);
 }
-.hero::before{ content:''; position:absolute; inset:0; background:radial-gradient(460px 280px at 88% 10%, rgba(94,92,230,0.22), transparent 70%); pointer-events:none; }
+.hero::before{ content:''; position:absolute; inset:0; background:radial-gradient(460px 280px at 88% 10%, rgba(255,176,32,0.22), transparent 70%); pointer-events:none; }
 .hero-eyebrow{ font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--copper-bright); margin:0 0 8px; font-weight:600; }
 .hero-title{ font-family:var(--display); font-size:clamp(28px,3.6vw,44px); font-weight:900; margin:0 0 6px; line-height:1.05; letter-spacing:-0.03em; }
 .hero-title em{ font-style:normal; font-weight:900; color:var(--copper-bright); }
@@ -167,7 +167,7 @@ input,textarea{ font-family:inherit; }
   width:220px; height:220px; border-radius:50%; position:relative;
   background:
     repeating-radial-gradient(circle at 50% 50%, #131315 0 2px, #0c0c0e 2px 4px);
-  box-shadow: 0 25px 50px -18px rgba(0,0,0,0.85), 0 0 0 1px var(--glass-border), inset 0 0 30px rgba(94,92,230,0.06);
+  box-shadow: 0 25px 50px -18px rgba(0,0,0,0.85), 0 0 0 1px var(--glass-border), inset 0 0 30px rgba(255,176,32,0.06);
   animation: spin 7s linear infinite; animation-play-state: paused;
 }
 .turntable.playing .vinyl-disc{ animation-play-state:running; }
@@ -206,8 +206,8 @@ input,textarea{ font-family:inherit; }
 .card-cover-fallback{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-faint); }
 .card-play{
   position:absolute; right:8px; bottom:8px; width:40px; height:40px; border-radius:50%;
-  background:var(--copper); color:#ffffff; border:0; display:flex; align-items:center; justify-content:center;
-  opacity:0; transform:translateY(6px) scale(.9); transition:.2s cubic-bezier(.4,0,.2,1); box-shadow:0 10px 22px -6px rgba(94,92,230,0.6);
+  background:var(--copper); color:#241a06; border:0; display:flex; align-items:center; justify-content:center;
+  opacity:0; transform:translateY(6px) scale(.9); transition:.2s cubic-bezier(.4,0,.2,1); box-shadow:0 10px 22px -6px rgba(255,176,32,0.6);
 }
 .card:hover .card-play, .card.is-playing .card-play{ opacity:1; transform:none; }
 .card.is-playing .card-cover{ box-shadow:0 0 0 2px var(--copper-bright); }
@@ -309,12 +309,12 @@ input,textarea{ font-family:inherit; }
 .forgot-link:hover{ color:var(--copper-bright); }
 
 .photo-row{ display:flex; align-items:center; gap:14px; margin-bottom:18px; }
-.photo-preview{ width:64px; height:64px; border-radius:50%; overflow:hidden; background:var(--copper); color:#ffffff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:22px; flex-shrink:0; }
+.photo-preview{ width:64px; height:64px; border-radius:50%; overflow:hidden; background:var(--copper); color:#241a06; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:22px; flex-shrink:0; }
 .photo-preview img{ width:100%; height:100%; object-fit:cover; }
 .photo-actions{ display:flex; gap:8px; }
 
 .upload-drop{ border:1.5px dashed var(--glass-border-strong); border-radius:18px; padding:20px; text-align:center; cursor:pointer; transition:.2s; background:rgba(255,255,255,0.02); }
-.upload-drop:hover{ border-color:var(--copper); background:rgba(94,92,230,0.06); }
+.upload-drop:hover{ border-color:var(--copper); background:rgba(255,176,32,0.06); }
 .upload-drop.has-file{ border-color:var(--good); border-style:solid; }
 .upload-drop svg{ opacity:.6; margin-bottom:6px; }
 .upload-drop-text{ font-size:13px; color:var(--text-dim); }
@@ -388,7 +388,7 @@ input,textarea{ font-family:inherit; }
   <section class="hero" id="hero" style="display:none;">
     <div class="turntable" id="hero-turntable">
       <div class="tonearm">
-        <svg width="130" height="130" viewBox="0 0 130 130"><line x1="118" y1="12" x2="40" y2="70" stroke="#5E5CE6" stroke-width="4" stroke-linecap="round"/><circle cx="118" cy="12" r="9" fill="#121214" stroke="#5E5CE6" stroke-width="2"/><circle cx="40" cy="70" r="4" fill="#8B7FFF"/></svg>
+        <svg width="130" height="130" viewBox="0 0 130 130"><line x1="118" y1="12" x2="40" y2="70" stroke="#FFB020" stroke-width="4" stroke-linecap="round"/><circle cx="118" cy="12" r="9" fill="#121214" stroke="#FFB020" stroke-width="2"/><circle cx="40" cy="70" r="4" fill="#FFD37A"/></svg>
       </div>
       <div class="vinyl-disc">
         <div class="vinyl-label"><img id="hero-cover" alt=""></div>
@@ -1000,7 +1000,7 @@ function renderHero(){
   updateHeroPlayState();
 }
 function fallbackCoverSvg(){
-  return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Crect width="100" height="100" fill="%23181818"/%3E%3Ccircle cx="50" cy="50" r="22" fill="none" stroke="%235E5CE6" stroke-width="2"/%3E%3Ccircle cx="50" cy="50" r="4" fill="%235E5CE6"/%3E%3C/svg%3E';
+  return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Crect width="100" height="100" fill="%23181818"/%3E%3Ccircle cx="50" cy="50" r="22" fill="none" stroke="%23FFB020" stroke-width="2"/%3E%3Ccircle cx="50" cy="50" r="4" fill="%23FFB020"/%3E%3C/svg%3E';
 }
 
 function matchesSearch(t){
