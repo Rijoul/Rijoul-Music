@@ -15,6 +15,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<!-- Encodeur MP3 100% côté navigateur, utilisé uniquement pour générer le
+     fichier MP3 téléchargeable d'un extrait (passage court), sans backend. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
 
 <style>
 /* =========================================================
@@ -248,6 +251,12 @@ input,textarea{ font-family:inherit; }
 }
 .extract-card:hover .extract-card-play, .extract-card.is-playing .extract-card-play{ opacity:1; transform:translate(-50%,-50%) scale(1); }
 .extract-card.is-playing .extract-card-cover{ box-shadow:0 0 0 2px var(--copper-bright); }
+.extract-card-actions{ position:absolute; top:7px; right:7px; display:flex; gap:4px; opacity:0; transition:.15s; z-index:2; }
+.extract-card:hover .extract-card-actions, .extract-card.is-playing .extract-card-actions{ opacity:1; }
+.extract-card-actions .icon-btn{ width:24px; height:24px; }
+.extract-card-actions .icon-btn.is-loading{ opacity:.6; pointer-events:none; }
+.extract-card-actions .icon-btn:hover{ background:var(--copper); border-color:var(--copper); color:#241a06; }
+.extract-card-actions .icon-btn[data-delete-extract]:hover{ background:var(--danger); border-color:var(--danger); color:#fff; }
 .extract-card-duration{ position:absolute; right:7px; bottom:7px; background:rgba(0,0,0,0.65); color:#fff; font-family:var(--mono); font-size:10.5px; padding:2px 6px; border-radius:8px; }
 .extract-card-label{ font-weight:700; font-size:13.5px; margin:0 0 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .extract-card-track{ font-size:11.5px; color:var(--text-dim); margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -1335,6 +1344,7 @@ let playlistFormCoverDataUrl = null;
 let pickerTrackId = null;  // titre ciblé par la modale "Ajouter à une playlist"
 
 let allExtracts = [];        // tous les extraits, tel que reçu de Firestore (onSnapshot)
+let activeClipStart = null;  // instant (s) où débute l'extrait en cours de lecture (pour la durée affichée)
 let activeClipEnd = null;    // instant (s) où couper la lecture en cours si elle rejoue un extrait
 let extractFormTrackId = null; // titre ciblé par la modale "Créer un extrait"
 let extractFormDuration = 0;
@@ -1683,8 +1693,12 @@ function renderExtractsSection(){
   }
   section.style.display = '';
   count.textContent = allExtracts.length + (allExtracts.length > 1 ? ' extraits' : ' extrait');
+  const uid = auth.currentUser ? auth.currentUser.uid : null;
   row.innerHTML = allExtracts.map(ex=>{
     const isPlaying = ex.trackId === currentTrackId && activeClipEnd === ex.end && !audioEl.paused;
+    // Seul l'auteur de l'extrait (ou l'admin) peut le supprimer ; tout le
+    // monde peut en revanche le télécharger en MP3.
+    const canDelete = !!(uid && (ex.creatorId === uid || isAdmin));
     return `
     <div class="extract-card ${isPlaying ? 'is-playing' : ''}" data-extract-id="${ex.id}">
       <div class="extract-card-cover">
@@ -1692,6 +1706,12 @@ function renderExtractsSection(){
         <button class="extract-card-play" data-play-extract="${ex.id}" aria-label="Lire l'extrait">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
         </button>
+        <div class="extract-card-actions">
+          <button class="icon-btn" data-download-extract="${ex.id}" aria-label="Télécharger l'extrait en MP3" title="Télécharger en MP3">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+          </button>
+          ${canDelete ? `<button class="icon-btn" data-delete-extract="${ex.id}" aria-label="Supprimer l'extrait" title="Supprimer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>` : ''}
+        </div>
         <span class="extract-card-duration">${formatTime(Math.max(0,(ex.end||0)-(ex.start||0)))}</span>
       </div>
       <p class="extract-card-label">${escapeHtml(ex.label || 'Extrait')}</p>
@@ -1701,9 +1721,101 @@ function renderExtractsSection(){
   row.querySelectorAll('[data-play-extract]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); playExtractById(btn.dataset.playExtract); });
   });
+  row.querySelectorAll('[data-download-extract]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); downloadExtractAsMp3(btn.dataset.downloadExtract); });
+  });
+  row.querySelectorAll('[data-delete-extract]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); deleteExtract(btn.dataset.deleteExtract); });
+  });
   row.querySelectorAll('.extract-card').forEach(el=>{
     el.addEventListener('click', ()=> playExtractById(el.dataset.extractId));
   });
+}
+
+/* --- Suppression d'un extrait (par son créateur, ou l'admin) --- */
+async function deleteExtract(extractId){
+  const ex = allExtracts.find(e => e.id === extractId);
+  if(!ex) return;
+  const uid = auth.currentUser ? auth.currentUser.uid : null;
+  if(!uid || (ex.creatorId !== uid && !isAdmin)){
+    showToast("Tu ne peux supprimer que tes propres extraits.");
+    return;
+  }
+  if(!confirm(`Supprimer l'extrait « ${ex.label || 'Extrait'} » ?`)) return;
+  try{
+    await extractsRef.doc(extractId).delete();
+    showToast('Extrait supprimé.');
+  }catch(e){
+    console.error(e);
+    showToast("Impossible de supprimer cet extrait.");
+  }
+}
+
+/* --- Téléchargement d'un extrait en MP3 ---
+   Récupère l'audio complet du titre, ne garde que la portion [start, end]
+   de l'extrait, puis ré-encode cette portion en MP3 (via lamejs, 100% côté
+   navigateur) et déclenche le téléchargement du fichier obtenu. */
+function floatTo16BitPCM(float32Array){
+  const out = new Int16Array(float32Array.length);
+  for(let i = 0; i < float32Array.length; i++){
+    const s = Math.max(-1, Math.min(1, float32Array[i]));
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  return out;
+}
+async function downloadExtractAsMp3(extractId){
+  const ex = allExtracts.find(e => e.id === extractId);
+  if(!ex) return;
+  const track = allTracks.find(t => t.id === ex.trackId);
+  if(!track){ showToast("Ce titre n'est plus disponible."); return; }
+  if(typeof lamejs === 'undefined'){ showToast("L'encodeur MP3 n'a pas pu se charger."); return; }
+  const btn = document.querySelector(`[data-download-extract="${extractId}"]`);
+  if(btn){ btn.disabled = true; btn.classList.add('is-loading'); }
+  try{
+    showToast('Préparation du MP3…');
+    const blobUrl = await getTrackAudioBlobUrl(track);
+    const arrayBuffer = await (await fetch(blobUrl)).arrayBuffer();
+    const decodeCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const decoded = await decodeCtx.decodeAudioData(arrayBuffer.slice(0));
+    const sampleRate = decoded.sampleRate;
+    const startSample = Math.max(0, Math.floor((ex.start || 0) * sampleRate));
+    const endSample = Math.min(decoded.length, Math.ceil((ex.end || decoded.duration) * sampleRate));
+    if(endSample <= startSample) throw new Error('Portion vide.');
+    const numChannels = Math.min(2, decoded.numberOfChannels);
+    const int16Channels = [];
+    for(let c = 0; c < numChannels; c++){
+      int16Channels.push(floatTo16BitPCM(decoded.getChannelData(c).subarray(startSample, endSample)));
+    }
+    const mp3encoder = new lamejs.Mp3Encoder(numChannels, sampleRate, 128);
+    const blockSize = 1152;
+    const mp3Chunks = [];
+    const total = int16Channels[0].length;
+    for(let i = 0; i < total; i += blockSize){
+      const left = int16Channels[0].subarray(i, i + blockSize);
+      const right = numChannels > 1 ? int16Channels[1].subarray(i, i + blockSize) : undefined;
+      const mp3buf = numChannels > 1 ? mp3encoder.encodeBuffer(left, right) : mp3encoder.encodeBuffer(left);
+      if(mp3buf.length > 0) mp3Chunks.push(new Int8Array(mp3buf));
+    }
+    const finalBuf = mp3encoder.flush();
+    if(finalBuf.length > 0) mp3Chunks.push(new Int8Array(finalBuf));
+    const blob = new Blob(mp3Chunks, { type: 'audio/mp3' });
+    const url = URL.createObjectURL(blob);
+    const safeName = (ex.label || 'extrait').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9\-_ ]/g, '').trim().replace(/\s+/g, '_') || 'extrait';
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${safeName}.mp3`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 4000);
+    showToast('Extrait téléchargé en MP3 ✅');
+  }catch(e){
+    console.error(e);
+    showToast("Impossible de générer le MP3 de cet extrait.");
+  }finally{
+    if(btn){ btn.disabled = false; btn.classList.remove('is-loading'); }
+  }
 }
 
 async function playExtractById(extractId){
@@ -1713,7 +1825,9 @@ async function playExtractById(extractId){
   if(!track){ showToast("Ce titre n'est plus disponible."); return; }
   const applyClip = ()=>{
     audioEl.currentTime = ex.start || 0;
+    activeClipStart = ex.start || 0;
     activeClipEnd = ex.end || null;
+    updateClipDurationDisplay();
     renderExtractsSection();
   };
   if(currentTrackId === ex.trackId && audioEl.src){
@@ -1813,7 +1927,9 @@ document.getElementById('extract-form-mark-end').addEventListener('click', ()=>{
 document.getElementById('extract-form-preview').addEventListener('click', ()=>{
   if(currentTrackId !== extractFormTrackId){ showToast("Le titre a changé, rouvre la modale."); return; }
   audioEl.currentTime = extractFormStart;
+  activeClipStart = extractFormStart;
   activeClipEnd = extractFormEnd;
+  updateClipDurationDisplay();
   if(audioEl.paused) audioEl.play().catch(()=>{});
 });
 document.getElementById('extract-form-save').addEventListener('click', async ()=>{
@@ -3150,7 +3266,8 @@ async function playTrackById(trackId, direction){
   currentTrackId = trackId;
   crossfadeTriggered = false;
   nextTrackPrefetchTriggered = false;
-  activeClipEnd = null; // lecture normale : plus de borne de fin d'extrait
+  activeClipStart = null; // lecture normale : plus de bornes d'extrait
+  activeClipEnd = null;
   // Incrémente le compteur d'écoutes du titre (utilisé par le Classement).
   tracksRef.doc(trackId).update({ plays: firebase.firestore.FieldValue.increment(1) }).catch(()=>{});
   document.getElementById('p-cover').src = track.coverURL || fallbackCoverSvg();
@@ -3202,6 +3319,7 @@ function stopPlayback(){
   crossfadeEchoes.forEach(echo=>{ try{ echo.pause(); echo.src=''; }catch(e){} });
   crossfadeEchoes = [];
   currentTrackId = null;
+  activeClipStart = null;
   activeClipEnd = null;
   playerBar.classList.remove('visible');
   renderTracks();
@@ -3361,26 +3479,43 @@ audioEl.addEventListener('pause', ()=>{
   updateHeroPlayState();
 });
 audioEl.addEventListener('ended', ()=> playAdjacent(1));
-audioEl.addEventListener('loadedmetadata', ()=>{
-  document.getElementById('p-time-total').textContent = formatTime(audioEl.duration);
-  document.getElementById('np-time-total').textContent = formatTime(audioEl.duration);
-});
+// Affiche la durée totale du lecteur : celle de l'extrait en cours si un
+// extrait est actif, sinon celle du titre complet.
+function updateClipDurationDisplay(){
+  const clipActive = activeClipStart !== null && activeClipEnd !== null;
+  const dur = clipActive ? Math.max(0, activeClipEnd - activeClipStart) : audioEl.duration;
+  const text = (dur && isFinite(dur)) ? formatTime(dur) : formatTime(0);
+  document.getElementById('p-time-total').textContent = text;
+  document.getElementById('np-time-total').textContent = text;
+}
+audioEl.addEventListener('loadedmetadata', updateClipDurationDisplay);
 audioEl.addEventListener('timeupdate', ()=>{
   // Si un extrait (passage court) est en cours de lecture, on coupe
   // automatiquement une fois sa borne de fin atteinte.
   if(activeClipEnd !== null && audioEl.currentTime >= activeClipEnd){
     audioEl.pause();
+    activeClipStart = null;
     activeClipEnd = null;
+    updateClipDurationDisplay();
     renderExtractsSection();
   }
   // Pendant que l'utilisateur glisse le curseur, on ne touche plus à
   // l'affichage : c'est le geste de glissement qui pilote la barre.
   if(isScrubbing) return;
-  document.getElementById('p-time-current').textContent = formatTime(audioEl.currentTime);
+  // Quand un extrait est en cours, le temps écoulé et la barre de
+  // progression affichés sont relatifs à l'extrait (et non au titre
+  // complet), pour que la durée globale corresponde bien à l'extrait.
+  const clipActive = activeClipStart !== null && activeClipEnd !== null;
+  const displayDuration = clipActive ? Math.max(0, activeClipEnd - activeClipStart) : audioEl.duration;
+  const displayCurrent = clipActive ? Math.max(0, audioEl.currentTime - activeClipStart) : audioEl.currentTime;
+  document.getElementById('p-time-current').textContent = formatTime(displayCurrent);
+  const displayPct = displayDuration ? (displayCurrent / displayDuration) * 100 : 0;
+  document.getElementById('p-bar-fill').style.width = displayPct + '%';
+  document.getElementById('np-time-current').textContent = formatTime(displayCurrent);
+  document.getElementById('np-bar-fill').style.width = displayPct + '%';
+  // Le préchargement et le fondu enchaîné restent basés sur la progression
+  // réelle dans le titre complet (indépendante de l'extrait affiché).
   const pct = audioEl.duration ? (audioEl.currentTime / audioEl.duration) * 100 : 0;
-  document.getElementById('p-bar-fill').style.width = pct + '%';
-  document.getElementById('np-time-current').textContent = formatTime(audioEl.currentTime);
-  document.getElementById('np-bar-fill').style.width = pct + '%';
   // Précharge le titre suivant (récupère ses morceaux audio en arrière-plan,
   // sans le lancer) une fois 30% du titre en cours écouté, pour qu'il
   // démarre instantanément le moment venu.
