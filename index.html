@@ -879,7 +879,7 @@ input,textarea{ font-family:inherit; }
     <input id="search-input" type="search" placeholder="Chercher un titre, un artiste…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="rijoul-search-q" role="searchbox" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onmousedown="this.removeAttribute('readonly')" onclick="this.removeAttribute('readonly')" ontouchstart="this.removeAttribute('readonly')">
   </div>
   <div class="nav-right">
-    <button class="btn btn-ghost nav-action-btn" id="install-app-btn" style="display:none;" title="Installer RIJOUL MUSIC sur cet appareil">
+    <button class="btn btn-ghost nav-action-btn" id="install-app-btn" title="Installer RIJOUL MUSIC sur cet appareil">
       <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13m0 0l-4.5-4.5M12 16l4.5-4.5"/><path d="M4 17v2.4A1.6 1.6 0 005.6 21h12.8a1.6 1.6 0 001.6-1.6V17"/></svg>
       <span class="btn-label">Installer l'app</span>
     </button>
@@ -2244,9 +2244,11 @@ const installAppBtn = document.getElementById('install-app-btn');
 function appIsAlreadyInstalled(){
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
+// Le bouton reste toujours visible et cliquable, que l'app soit déjà
+// installée ou non : seul son comportement au clic change (voir plus bas).
 function updateInstallButtonVisibility(){
   if(!installAppBtn) return;
-  installAppBtn.style.display = appIsAlreadyInstalled() ? 'none' : '';
+  installAppBtn.style.display = '';
 }
 updateInstallButtonVisibility();
 window.addEventListener('beforeinstallprompt', (e)=>{
@@ -2269,6 +2271,13 @@ if(installAppBtn){
       }catch(err){ console.warn(err); }
       deferredInstallPrompt = null;
       updateInstallButtonVisibility();
+      return;
+    }
+    // Déjà installée sur cet appareil : pas de prompt natif à proposer,
+    // on informe simplement l'utilisateur au lieu d'afficher les étapes
+    // d'installation.
+    if(appIsAlreadyInstalled()){
+      showToast('RIJOUL MUSIC est déjà installée sur cet appareil. ✅');
       return;
     }
     // Pas de prompt natif disponible (iOS/Safari, ou navigateur qui ne
