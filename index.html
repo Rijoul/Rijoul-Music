@@ -5202,10 +5202,14 @@ const npCoverEl = document.getElementById('np-cover');
 const concertMobileMQ = window.matchMedia('(max-width:760px)');
 const concertLitePerf = concertMobileMQ.matches || ('ontouchstart' in window);
 let concertFrameCounter = 0;
-// Flash de basse : même principe que les faisceaux (médiums/aigus) —
-// pas de détection de "coup" isolé, mais une intensité qui suit en
-// continu le niveau de basse, avec une hystérésis pour apparaître/
-// disparaître nettement plutôt que de scintiller autour du seuil.
+// Flash de basse : même principe que les faisceaux (médiums/aigus), avec
+// en plus une soustraction du "bruit de fond" des basses fréquences.
+// Les bins graves d'un analyseur audio portent presque toujours un peu
+// d'énergie résiduelle (bien plus que les médiums/aigus), donc comparer
+// la basse brute à un seuil fixe la fait rester "allumée" en permanence.
+// concertBassFloor suit ce bruit de fond (descend vite, remonte très
+// lentement) pour qu'on ne compare que la basse AU-DESSUS de ce plancher.
+let concertBassFloor = 0;
 let concertBassOn = false;
 // Faisceaux : état ON/OFF (avec hystérésis) piloté par les médiums et les
 // aigus, pour qu'ils apparaissent/disparaissent nettement au lieu de
@@ -5230,6 +5234,7 @@ function resetConcertLights(){
   if(concertStrobeLeft) concertStrobeLeft.style.opacity = 0;
   if(concertStrobeRight) concertStrobeRight.style.opacity = 0;
   if(npCoverEl) npCoverEl.style.transform = '';
+  concertBassFloor = 0;
   concertBassOn = false;
   concertMidOn = false;
   concertTrebleOn = false;
@@ -5343,13 +5348,20 @@ function updateConcertLights(data){
   }
 
   // Flashs en dégradé (angles bas de l'écran) : même logique que les
-  // faisceaux ci-dessus — pas de détection de "coup" isolé, l'intensité
-  // suit en direct le niveau de basse (avec hystérésis pour apparaître/
-  // disparaître nettement), donc le flash reste allumé tant qu'il y a de
-  // la basse et devient plus ou moins intense avec elle, sans jamais
-  // rester bloqué allumé ou éteint.
-  concertBassOn = concertBassOn ? (bass > offT) : (bass > onT);
-  const bassOpacity = concertBassOn ? clamp(0.1 + bass * 0.95) : 0;
+  // faisceaux ci-dessus (intensité continue + hystérésis), mais appliquée
+  // à la basse AU-DESSUS de son bruit de fond plutôt qu'à la basse brute.
+  // concertBassFloor suit ce bruit de fond : il redescend instantanément
+  // dès que la basse baisse (donc il colle au plancher réel), mais ne
+  // remonte que très lentement (donc un vrai coup de basse ne le fait pas
+  // "suivre" et rester allumé). Sans ça, les bins graves d'un analyseur
+  // portent presque toujours un peu d'énergie résiduelle même en silence,
+  // ce qui faisait rester le flash allumé en permanence et trop clair.
+  if(bass < concertBassFloor) concertBassFloor = bass;
+  else concertBassFloor += (bass - concertBassFloor) * 0.01;
+  const bassAboveFloor = Math.max(0, bass - concertBassFloor);
+  const bassOnT = 0.14, bassOffT = 0.07;
+  concertBassOn = concertBassOn ? (bassAboveFloor > bassOffT) : (bassAboveFloor > bassOnT);
+  const bassOpacity = concertBassOn ? clamp(bassAboveFloor * 2.2) : 0;
   if(concertStrobeLeft) concertStrobeLeft.style.opacity = bassOpacity;
   if(concertStrobeRight) concertStrobeRight.style.opacity = bassOpacity;
 
