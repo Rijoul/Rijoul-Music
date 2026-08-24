@@ -572,24 +572,46 @@ input,textarea{ font-family:inherit; }
   right:0;
   background:radial-gradient(circle at 100% 100%, var(--strobe-color, rgba(255,176,32,.92)) 0%, var(--strobe-color-2, rgba(255,176,32,.4)) 40%, transparent 72%);
 }
-/* Affichage mobile du mode concert : au lieu de faisceaux balayants
-   (bureau) ou d'une simple lueur rectangulaire, la pochette est entourée
-   d'un halo ROND (.np-concert-glow, forme circulaire via border-radius:50%
-   + dégradé radial centré) et d'ondes circulaires qui se diffusent vers
-   l'extérieur en boucle (.np-concert-wave) — comme des ronds dans l'eau
-   partant de l'image. Postés dans .np-art-wrap (position:relative),
-   directement derrière la pochette (z-index négatif : passent donc
-   derrière .np-art-track qui n'est pas positionné) plutôt que derrière
-   toute la carte du lecteur. Masqués par défaut (bureau) ; activés
-   uniquement dans le media query mobile ci-dessous. */
-.np-concert-glow{
-  position:absolute; top:50%; left:50%; z-index:-1; display:none; opacity:0; pointer-events:none;
-  width:min(92vw,420px); height:min(92vw,420px);
-  transform:translate(-50%,-50%);
-  border-radius:50%;
-  background:radial-gradient(circle, rgba(255,153,72,.55) 0%, rgba(255,90,200,.4) 42%, rgba(120,190,255,.28) 66%, transparent 78%);
-  filter:blur(28px);
+/* Affichage mobile du mode concert : au lieu des 5 faisceaux balayants du
+   bureau (postés en haut de l'écran), la pochette elle-même devient la
+   source de lumière : 8 faisceaux fins partent de son centre et rayonnent
+   vers l'extérieur, façon soleil/étoile — 4 vers les angles de l'image
+   (.np-art-beam-corner, pilotés par les aigus) et 4 vers le milieu de
+   chacune de ses 4 bordures (.np-art-beam-edge, pilotés par les médiums).
+   Postés dans .np-art-wrap (position:relative), directement derrière la
+   pochette (z-index négatif : passent donc derrière .np-art-track qui
+   n'est pas positionné) plutôt que derrière toute la carte du lecteur.
+   Chaque faisceau est ancré par son sommet (transform-origin:top center)
+   exactement au centre de la pochette (top:50%/left:50% + translateX(-50%)
+   pour centrer ce sommet), puis tourné (rotate) pour pointer dans sa
+   direction — même principe géométrique que les ondes ci-dessous. Masqués
+   par défaut (bureau) ; activés uniquement dans le media query mobile
+   ci-dessous. Les ondes circulaires (.np-concert-wave, juste après)
+   continuent de représenter les basses derrière l'image, inchangées dans
+   leur logique, mais reprennent désormais la couleur dominante de la
+   pochette (voir applyConcertBeamColors en JS) au lieu d'une couleur fixe. */
+.np-art-beam{
+  position:absolute; top:50%; left:50%; z-index:-1; display:none; pointer-events:none;
+  width:15%; height:min(72vw,320px);
+  transform-origin:top center;
+  background:linear-gradient(180deg, var(--beam-color, rgba(255,176,32,.9)) 0%, transparent 82%);
+  clip-path:polygon(50% 0%, 100% 100%, 0% 100%);
+  filter:blur(6px);
+  opacity:0;
+  mix-blend-mode:screen;
+  will-change:opacity;
+  transition:opacity .18s ease-out;
 }
+/* Faisceaux "bordures" (médiums) : haut / droite / bas / gauche de l'image. */
+.np-art-beam-t{ transform:translateX(-50%) rotate(180deg); }
+.np-art-beam-r{ transform:translateX(-50%) rotate(90deg); }
+.np-art-beam-b{ transform:translateX(-50%) rotate(0deg); }
+.np-art-beam-l{ transform:translateX(-50%) rotate(270deg); }
+/* Faisceaux "angles" (aigus) : coins haut-droit / bas-droit / bas-gauche / haut-gauche. */
+.np-art-beam-tr{ transform:translateX(-50%) rotate(135deg); }
+.np-art-beam-br{ transform:translateX(-50%) rotate(45deg); }
+.np-art-beam-bl{ transform:translateX(-50%) rotate(315deg); }
+.np-art-beam-tl{ transform:translateX(-50%) rotate(225deg); }
 /* Ondes rondes qui se diffusent en continu autour de la pochette : simple
    anneau qui grossit en s'estompant, rejoué en boucle avec un léger
    décalage entre les deux (np-wave-2) pour un effet d'ondes successives,
@@ -600,6 +622,9 @@ input,textarea{ font-family:inherit; }
   position:absolute; top:50%; left:50%; z-index:-1; display:none; pointer-events:none;
   width:min(50vw,240px); height:min(50vw,240px); border-radius:50%;
   transform:translate(-50%,-50%) scale(.85);
+  /* Couleur de repli tant qu'aucune couleur n'a encore été extraite de la
+     pochette ; en pratique remplacée en ligne (border-color) par
+     applyConcertBeamColors en JS, sur la couleur dominante de l'image. */
   border:2px solid rgba(255,176,64,.65);
   opacity:0;
 }
@@ -701,12 +726,15 @@ input,textarea{ font-family:inherit; }
   .np-art-side{ width:min(17vw,90px); height:min(17vw,90px); }
   .np-art-track{ gap:8px; }
   /* Mode concert optimisé mobile : on remplace entièrement les 5 faisceaux
-     balayants par un halo rond + des ondes circulaires (.np-concert-glow /
-     .np-concert-wave définis plus haut) — beaucoup plus léger à repeindre
-     par frame que 5 faisceaux en rotation, et mieux adapté aux petits
-     écrans et aux appareils moins puissants. */
+     balayants du bureau (.np-beam) et les flashs de basse en bas d'écran
+     (.np-strobe-corner) par des faisceaux qui partent directement de la
+     pochette (.np-art-beam, 8 au total) et des ondes circulaires derrière
+     l'image (.np-concert-wave) — tout part désormais de la pochette
+     elle-même plutôt que du bord de l'écran, et c'est plus léger à
+     repeindre par frame sur des appareils moins puissants. */
   .np-beam{ display:none; }
-  .np-concert-glow{ display:block; }
+  .np-strobe-corner{ display:none; }
+  .np-art-beam{ display:block; }
   .np-concert-wave{ display:block; }
 }
 
@@ -1238,11 +1266,20 @@ input,textarea{ font-family:inherit; }
       </div>
 
       <div class="np-art-wrap">
-        <!-- Mode concert (mobile uniquement) : halo rond + ondes circulaires
-             posés derrière la pochette elle-même (au lieu de derrière toute
-             la carte du lecteur), donc bien visibles juste autour/derrière
-             la photo, sous forme de ronds qui se diffusent (pas un carré). -->
-        <span class="np-concert-glow" id="np-concert-glow" aria-hidden="true"></span>
+        <!-- Mode concert (mobile uniquement) : 8 faisceaux qui partent du
+             centre de la pochette et rayonnent vers l'extérieur (4 vers ses
+             angles = aigus, 4 vers le milieu de ses bordures = médiums),
+             plus des ondes circulaires pour les basses — tout est posé
+             derrière la pochette elle-même (au lieu de derrière toute la
+             carte du lecteur ou du bord de l'écran). -->
+        <span class="np-art-beam np-art-beam-corner np-art-beam-tr" id="np-art-beam-tr" aria-hidden="true"></span>
+        <span class="np-art-beam np-art-beam-edge np-art-beam-r" id="np-art-beam-r" aria-hidden="true"></span>
+        <span class="np-art-beam np-art-beam-corner np-art-beam-br" id="np-art-beam-br" aria-hidden="true"></span>
+        <span class="np-art-beam np-art-beam-edge np-art-beam-b" id="np-art-beam-b" aria-hidden="true"></span>
+        <span class="np-art-beam np-art-beam-corner np-art-beam-bl" id="np-art-beam-bl" aria-hidden="true"></span>
+        <span class="np-art-beam np-art-beam-edge np-art-beam-l" id="np-art-beam-l" aria-hidden="true"></span>
+        <span class="np-art-beam np-art-beam-corner np-art-beam-tl" id="np-art-beam-tl" aria-hidden="true"></span>
+        <span class="np-art-beam np-art-beam-edge np-art-beam-t" id="np-art-beam-t" aria-hidden="true"></span>
         <span class="np-concert-wave np-wave-1" id="np-concert-wave-1" aria-hidden="true"></span>
         <span class="np-concert-wave np-wave-2" id="np-concert-wave-2" aria-hidden="true"></span>
         <div class="np-art-track" id="np-art-track">
@@ -5193,7 +5230,13 @@ document.addEventListener('click', (e)=>{ if(!npMenuBtn.contains(e.target) && !n
 let concertModeOn = false;
 const npConcertLightsEl = document.getElementById('np-concert-lights');
 const concertBeams = Array.from(document.querySelectorAll('.np-beam'));
-const concertGlow = document.getElementById('np-concert-glow');
+// Mode concert mobile : 8 faisceaux qui partent de la pochette elle-même
+// (voir .np-art-beam en CSS) — 4 vers ses angles (aigus) et 4 vers le
+// milieu de ses bordures (médiums), séparés en deux groupes pour être
+// pilotés indépendamment comme les faisceaux du bureau.
+const concertArtBeams = Array.from(document.querySelectorAll('.np-art-beam'));
+const concertArtBeamsCorner = concertArtBeams.filter(b=> b.classList.contains('np-art-beam-corner'));
+const concertArtBeamsEdge = concertArtBeams.filter(b=> b.classList.contains('np-art-beam-edge'));
 const concertWaves = Array.from(document.querySelectorAll('.np-concert-wave'));
 const concertStrobeLeft = document.getElementById('np-strobe-left');
 const concertStrobeRight = document.getElementById('np-strobe-right');
@@ -5232,7 +5275,7 @@ let concertShakeDy = 0;
 let concertShakeRot = 0;
 function resetConcertLights(){
   concertBeams.forEach(b=> b.style.opacity = 0);
-  if(concertGlow) concertGlow.style.opacity = 0;
+  concertArtBeams.forEach(b=> b.style.opacity = 0);
   concertWaves.forEach(w=> w.classList.remove('active'));
   if(concertStrobeLeft) concertStrobeLeft.style.opacity = 0;
   if(concertStrobeRight) concertStrobeRight.style.opacity = 0;
@@ -5343,9 +5386,21 @@ function applyConcertBeamColors(){
       if(color) beam.style.setProperty('--beam-color', color);
       else beam.style.removeProperty('--beam-color'); // retombe sur les couleurs par défaut du CSS
     });
-    // Flashs de basse (angles bas) : couleur dominante réelle de la
-    // pochette (pas la couleur "claire" utilisée pour les faisceaux), pour
-    // que le flash reprenne fidèlement la couleur de l'image au centre.
+    // Faisceaux mobile qui partent de la pochette : même principe de
+    // couleur que les faisceaux bureau ci-dessus — angles (aigus) en
+    // couleur claire, bordures (médiums) en couleur secondaire.
+    concertArtBeamsCorner.forEach(beam => {
+      if(lightColor) beam.style.setProperty('--beam-color', lightColor);
+      else beam.style.removeProperty('--beam-color');
+    });
+    concertArtBeamsEdge.forEach(beam => {
+      if(secondaryColor) beam.style.setProperty('--beam-color', secondaryColor);
+      else beam.style.removeProperty('--beam-color');
+    });
+    // Flashs de basse (angles bas, bureau) + ondes de basse derrière la
+    // pochette (mobile) : couleur dominante réelle de la pochette (pas la
+    // couleur "claire" utilisée pour les faisceaux), pour que ces deux
+    // effets reprennent fidèlement la couleur de l'image au centre.
     const dominant = extractDominantCoverColor(npCoverEl);
     const strobeColor = dominant ? `rgba(${dominant.r},${dominant.g},${dominant.b},.92)` : null;
     const strobeColorSoft = dominant ? `rgba(${dominant.r},${dominant.g},${dominant.b},.4)` : null;
@@ -5355,6 +5410,14 @@ function applyConcertBeamColors(){
       if(strobeColorSoft) npConcertLightsEl.style.setProperty('--strobe-color-2', strobeColorSoft);
       else npConcertLightsEl.style.removeProperty('--strobe-color-2');
     }
+    concertWaves.forEach((wave, i) => {
+      // Onde 1 (np-wave-1) en couleur dominante franche, onde 2 (np-wave-2,
+      // décalée dans le temps) en version plus douce — comme les deux
+      // flashs de basse du bureau, pour un effet cohérent entre les deux.
+      const waveColor = i === 0 ? strobeColor : (strobeColorSoft || strobeColor);
+      if(waveColor) wave.style.borderColor = waveColor;
+      else wave.style.borderColor = '';
+    });
   };
   if(npCoverEl.complete && npCoverEl.naturalWidth) run();
   else npCoverEl.addEventListener('load', run, { once: true });
@@ -5387,11 +5450,12 @@ function updateConcertLights(data){
   const midOpacity = concertMidOn ? clamp(0.16 + mid * 0.85) : 0;
   const trebleOpacity = concertTrebleOn ? clamp(0.14 + treble * 0.85) : 0;
   if(concertMobileMQ.matches){
-    // Mobile : un seul élément (la lueur ambiante) à mettre à jour au lieu
-    // des 5 faisceaux, moins coûteux à repeindre à chaque frame.
-    if(concertGlow) concertGlow.style.opacity = Math.max(midOpacity, trebleOpacity * 0.9);
+    // Mobile : les 8 faisceaux qui partent de la pochette réagissent
+    // directement aux médiums/aigus, comme les 5 faisceaux du bureau.
+    concertArtBeamsCorner.forEach(b=> b.style.opacity = trebleOpacity); // angles = aigus
+    concertArtBeamsEdge.forEach(b=> b.style.opacity = midOpacity);      // bordures = médiums
   }else{
-    if(concertGlow) concertGlow.style.opacity = 0;
+    concertArtBeams.forEach(b=> b.style.opacity = 0);
     // Faisceaux 1/3/5 (gauche / centre / droite) = aigus.
     // Faisceaux 2/4 (entre gauche-centre et centre-droite) = médiums.
     if(concertBeams[0]) concertBeams[0].style.opacity = trebleOpacity; // gauche
