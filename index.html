@@ -276,6 +276,17 @@ input,textarea{ font-family:inherit; }
   box-shadow:0 14px 32px -10px rgba(0,0,0,0.75);
 }
 .concert-badge:hover::after, .concert-badge:focus-visible::after{ opacity:1; transform:translateY(0); }
+/* Badge "HD" : affiché en bas à gauche de la pochette des titres marqués
+   par un modo (haute qualité audio) via le modal "Modifier le titre". */
+.hd-badge{
+  position:absolute; bottom:8px; left:8px; z-index:2;
+  padding:3px 7px; border-radius:6px;
+  background:rgba(10,8,4,0.78); backdrop-filter:blur(6px);
+  border:1px solid rgba(255,176,32,0.55);
+  color:var(--copper-bright, #ffce6a);
+  font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:.08em;
+  line-height:1; cursor:default;
+}
 /* Bouton de certification dans le modal d'édition (réservé aux modos) :
    surligné en copper une fois le titre certifié. */
 .edit-concert-toggle{ border-color:var(--glass-border-strong); }
@@ -361,6 +372,7 @@ input,textarea{ font-family:inherit; }
 .ranking-cover{ position:relative; width:48px; height:48px; border-radius:10px; overflow:hidden; background:var(--panel-solid); flex-shrink:0; cursor:pointer; }
 .ranking-cover img{ width:100%; height:100%; object-fit:cover; }
 .ranking-cover .card-play{ width:28px; height:28px; right:0; left:0; top:0; bottom:0; margin:auto; }
+.ranking-cover .hd-badge{ bottom:2px; left:2px; padding:1px 4px; font-size:7.5px; border-radius:4px; }
 .ranking-info{ min-width:0; overflow:hidden; }
 .ranking-title{ font-weight:700; font-size:13.5px; margin:0 0 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ranking-artist{ font-size:12px; color:var(--text-dim); margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -1357,6 +1369,14 @@ input,textarea{ font-family:inherit; }
     <button type="button" class="btn btn-ghost btn-sm edit-concert-toggle" id="edit-event-toggle" style="margin-top:10px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;">
       <span id="edit-event-toggle-icon">🎉</span>
       <span id="edit-event-toggle-label">Mettre en avant comme musique de l'événement</span>
+    </button>
+
+    <!-- Badge HD : marque une piste comme disponible en haute qualité audio.
+         Se sauvegarde immédiatement au clic, comme les autres badges
+         ci-dessus (indépendant du bouton "Enregistrer"). -->
+    <button type="button" class="btn btn-ghost btn-sm edit-concert-toggle" id="edit-hd-toggle" style="margin-top:10px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;">
+      <span id="edit-hd-toggle-icon">🟡</span>
+      <span id="edit-hd-toggle-label">Ajouter le badge HD</span>
     </button>
 
     <!-- Volume propre à ce titre certifié : l'admin règle le curseur (simple
@@ -3300,6 +3320,7 @@ function paintGrid(gridId, emptyId, countId, list, texts){
       <div class="card-cover">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge" tabindex="0" data-tooltip="Ce titre est certifié pour être adapté au mode concert.">🎤 CONCERT</span>` : ''}
+        ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
         </button>
@@ -3375,6 +3396,7 @@ function renderRanking(){
       <span class="ranking-rank">${i + 1}</span>
       <div class="ranking-cover" data-play="${t.id}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
+        ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
         </button>
@@ -3459,6 +3481,7 @@ let editingTrackId = null;
 let editCoverDataUrl = null;
 let editConcertCertified = false;
 let editEventFeatured = false;
+let editHdCertified = false;
 let editConcertVolume = 80; // valeur affichée sur le curseur (simple aperçu tant que non verrouillé)
 let editConcertVolumeLocked = false; // reflète track.concertVolume (présence = verrouillé)
 function refreshEditEventToggleUI(){
@@ -3467,6 +3490,13 @@ function refreshEditEventToggleUI(){
   if(!btn || !label) return;
   btn.classList.toggle('is-active', editEventFeatured);
   label.textContent = editEventFeatured ? 'Musique de l\'événement ✓ (bandeau d\'accueil)' : "Mettre en avant comme musique de l'événement";
+}
+function refreshEditHdToggleUI(){
+  const btn = document.getElementById('edit-hd-toggle');
+  const label = document.getElementById('edit-hd-toggle-label');
+  if(!btn || !label) return;
+  btn.classList.toggle('is-active', editHdCertified);
+  label.textContent = editHdCertified ? 'Badge HD ✓' : 'Ajouter le badge HD';
 }
 function refreshEditConcertToggleUI(){
   const btn = document.getElementById('edit-concert-toggle');
@@ -3506,7 +3536,9 @@ function openEditModal(trackId){
   editCoverDataUrl = track.coverURL || null;
   editConcertCertified = !!track.concertCertified;
   editEventFeatured = !!track.eventFeatured;
+  editHdCertified = !!track.hdCertified;
   refreshEditEventToggleUI();
+  refreshEditHdToggleUI();
   editConcertVolumeLocked = typeof track.concertVolume === 'number';
   editConcertVolume = editConcertVolumeLocked ? track.concertVolume : 80;
   document.getElementById('edit-concert-volume').value = editConcertVolume;
@@ -3600,6 +3632,30 @@ document.getElementById('edit-event-toggle').addEventListener('click', async ()=
   }catch(err){
     console.error(err);
     showToast("Impossible de mettre à jour la mise en avant.");
+  }finally{
+    btn.disabled = false;
+  }
+});
+/* Badge HD : simple marqueur qualité, se sauvegarde immédiatement au clic,
+   indépendamment du bouton "Enregistrer". Le badge apparaît/disparaît sur
+   la carte du titre dès la mise à jour Firestore (via onSnapshot). */
+document.getElementById('edit-hd-toggle').addEventListener('click', async ()=>{
+  if(!isAdmin || !editingTrackId) return;
+  const btn = document.getElementById('edit-hd-toggle');
+  const newVal = !editHdCertified;
+  btn.disabled = true;
+  try{
+    if(newVal){
+      await tracksRef.doc(editingTrackId).update({ hdCertified: true });
+    }else{
+      await tracksRef.doc(editingTrackId).update({ hdCertified: firebase.firestore.FieldValue.delete() });
+    }
+    editHdCertified = newVal;
+    refreshEditHdToggleUI();
+    showToast(newVal ? 'Badge HD ajouté.' : 'Badge HD retiré.');
+  }catch(err){
+    console.error(err);
+    showToast('Impossible de mettre à jour le badge HD.');
   }finally{
     btn.disabled = false;
   }
