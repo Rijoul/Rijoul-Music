@@ -3413,10 +3413,75 @@ function matchesSearch(t){
   if(!searchTerm) return true;
   return (t.title||'').toLowerCase().includes(searchTerm) || (t.artist||'').toLowerCase().includes(searchTerm);
 }
+
+/* =========================================================
+   RECOMMANDATION PERSONNALISÉE — bibliothèque
+   Construit un profil de goûts à partir de l'historique d'écoute
+   (allHistoryEntries) et des titres likés (t.likes), puis calcule
+   un score par titre pour trier la bibliothèque : les morceaux les
+   plus susceptibles de plaire à l'utilisateur apparaissent en premier.
+   Fonctionne aussi "à froid" (utilisateur non connecté / sans
+   historique) en s'appuyant alors sur la popularité globale.
+   ========================================================= */
+function getMillis(ts){
+  if(!ts) return null;
+  if(typeof ts.toDate === 'function') return ts.toDate().getTime();
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? null : d.getTime();
+}
+function buildTasteProfile(uid){
+  const artistScore = Object.create(null); // affinité par artiste, pondérée par la fraîcheur des écoutes
+  const trackPlayScore = Object.create(null); // affinité directe par titre déjà écouté
+  const now = Date.now();
+  if(uid){
+    allHistoryEntries.forEach(h=>{
+      const playedAtMs = getMillis(h.playedAt);
+      const ageDays = playedAtMs ? Math.max(0, (now - playedAtMs) / 86400000) : 15;
+      // Poids qui décroît avec l'ancienneté de l'écoute (demi-vie ~ 2 semaines), sans jamais tomber à 0
+      const recencyWeight = Math.max(0.12, Math.exp(-ageDays / 20));
+      trackPlayScore[h.trackId] = (trackPlayScore[h.trackId] || 0) + recencyWeight;
+      const track = allTracks.find(t => t.id === h.trackId);
+      const artistKey = track && track.artist ? track.artist.trim().toLowerCase() : null;
+      if(artistKey) artistScore[artistKey] = (artistScore[artistKey] || 0) + recencyWeight;
+    });
+  }
+  return { artistScore, trackPlayScore };
+}
+function trackRecommendationScore(t, profile, uid){
+  let score = 0;
+  // 1) Le titre a déjà été écouté par l'utilisateur : familiarité, pondérée par récence des écoutes
+  score += (profile.trackPlayScore[t.id] || 0) * 6;
+  // 2) Affinité pour l'artiste (déduite de l'historique d'écoute sur d'autres titres du même artiste)
+  const artistKey = (t.artist || '').trim().toLowerCase();
+  if(artistKey) score += (profile.artistScore[artistKey] || 0) * 4;
+  // 3) Like explicite de l'utilisateur sur ce titre : signal fort
+  if(uid && Array.isArray(t.likes) && t.likes.includes(uid)) score += 15;
+  // 4) Popularité générale (likes/écoutes de tous les membres) : utile pour la découverte
+  //    et pour les utilisateurs sans historique (nouveaux comptes / déconnectés)
+  const totalLikes = Array.isArray(t.likes) ? t.likes.length : 0;
+  const totalPlays = t.plays || 0;
+  score += Math.log(1 + totalLikes) * 2;
+  score += Math.log(1 + totalPlays) * 1.2;
+  // 5) Léger coup de pouce à la fraîcheur pour garder la bibliothèque vivante
+  const createdMs = getMillis(t.createdAt);
+  if(createdMs){
+    const ageDays = Math.max(0, (Date.now() - createdMs) / 86400000);
+    score += Math.max(0, 3 - ageDays / 10);
+  }
+  return score;
+}
+function sortByRecommendation(list, uid){
+  const profile = buildTasteProfile(uid);
+  return list
+    .map(t => ({ t, s: trackRecommendationScore(t, profile, uid) }))
+    .sort((a, b) => b.s - a.s)
+    .map(x => x.t);
+}
+
 function renderTracks(){
   const uid = auth.currentUser ? auth.currentUser.uid : null;
   if(currentView === 'library'){
-    const list = allTracks.filter(matchesSearch);
+    const list = sortByRecommendation(allTracks.filter(matchesSearch), uid);
     currentQueue = list;
     paintGrid('library-grid', 'library-empty', 'library-count', list, {
       emptyTitle: searchTerm ? 'Aucun résultat' : "Aucun titre pour l'instant",
@@ -3609,6 +3674,7 @@ function subscribeToHistory(uid){
   historyUnsub = musicHistoryEntriesRef(uid).orderBy('playedAt', 'desc').limit(100).onSnapshot((snap)=>{
     allHistoryEntries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     if(currentView === 'historique') renderHistory();
+    else if(currentView === 'library') renderTracks(); // réaffine le tri "coup de cœur" de la bibliothèque
   }, (err)=>{
     console.error("Erreur de chargement de l'historique :", err);
   });
