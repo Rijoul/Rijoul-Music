@@ -377,18 +377,65 @@ input,textarea{ font-family:inherit; }
    ========================================================= */
 .ranking-list{ display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
 .ranking-row{
-  display:grid; grid-template-columns:36px 48px 1fr auto auto; align-items:center; gap:14px;
+  position:relative; display:grid; grid-template-columns:40px 48px 1fr auto auto; align-items:center; gap:14px;
   background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:9px 14px;
   transition:.18s cubic-bezier(.4,0,.2,1);
 }
 .ranking-row:hover{ border-color:var(--glass-border-strong); background:var(--panel-2); }
 .ranking-row.is-playing{ box-shadow:0 0 0 1.5px var(--copper-bright); }
 .ranking-rank{ font-family:var(--mono); font-size:15px; font-weight:800; color:var(--text-faint); text-align:center; }
-.ranking-row:nth-child(1) .ranking-rank{ color:var(--copper-bright); font-size:18px; }
-.ranking-row:nth-child(2) .ranking-rank{ color:var(--copper); }
-.ranking-row:nth-child(3) .ranking-rank{ color:var(--copper); opacity:.85; }
-/* L'historique n'a pas de classement numéroté : la première colonne
-   (rang) est retirée, les lignes passent directement à la pochette. */
+/* --- Podium (Top 3 du Classement) : traitement doré/argent/bronze,
+   légèrement plus premium (~10%) que les lignes standard : dégradé de
+   fond, contour lumineux, numéro en dégradé métallique, léger effet de
+   brillance qui balaie la ligne au survol. */
+.ranking-row.rank-gold,
+.ranking-row.rank-silver,
+.ranking-row.rank-bronze{ overflow:hidden; }
+.ranking-row.rank-gold::before,
+.ranking-row.rank-silver::before,
+.ranking-row.rank-bronze::before{
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background:linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.14) 46%, transparent 62%);
+  transform:translateX(-120%); transition:transform .7s ease;
+}
+.ranking-row.rank-gold:hover::before,
+.ranking-row.rank-silver:hover::before,
+.ranking-row.rank-bronze:hover::before{ transform:translateX(120%); }
+.ranking-row.rank-gold{
+  border-color:rgba(255,196,64,0.55);
+  background:linear-gradient(135deg, rgba(255,196,64,0.16), rgba(255,176,32,0.03) 55%, var(--panel));
+  box-shadow:0 10px 26px -12px rgba(255,176,32,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+  transform:scale(1.022);
+}
+.ranking-row.rank-gold:hover{ transform:scale(1.03) translateY(-1px); border-color:var(--copper-bright); }
+.ranking-row.rank-silver{
+  border-color:rgba(210,214,222,0.42);
+  background:linear-gradient(135deg, rgba(210,214,222,0.11), rgba(210,214,222,0.02) 55%, var(--panel));
+}
+.ranking-row.rank-bronze{
+  border-color:rgba(205,140,90,0.38);
+  background:linear-gradient(135deg, rgba(205,140,90,0.11), rgba(205,140,90,0.02) 55%, var(--panel));
+}
+.rank-gold .ranking-rank{
+  background:linear-gradient(135deg,#FFF1CC,#FFB020 52%,#C77E00);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  font-size:19px; filter:drop-shadow(0 0 6px rgba(255,176,32,0.55));
+}
+.rank-silver .ranking-rank{
+  background:linear-gradient(135deg,#F6F8FA,#C7CDD6 52%,#8B93A0);
+  -webkit-background-clip:text; background-clip:text; color:transparent; font-size:16.5px;
+}
+.rank-bronze .ranking-rank{
+  background:linear-gradient(135deg,#EFC49A,#C17A46 52%,#8A5228);
+  -webkit-background-clip:text; background-clip:text; color:transparent; font-size:16px;
+}
+.rank-gold .ranking-cover{ box-shadow:0 0 0 2px #FFD37A, 0 0 16px -3px rgba(255,176,32,0.65); }
+.rank-silver .ranking-cover{ box-shadow:0 0 0 2px #D7DCE3, 0 0 10px -4px rgba(210,214,222,0.5); }
+.rank-bronze .ranking-cover{ box-shadow:0 0 0 2px #C98B55, 0 0 10px -4px rgba(201,139,85,0.5); }
+.rank-gold .ranking-title{ color:#FFE7B8; }
+.rank-gold .ranking-plays,
+.rank-gold .ranking-plays svg{ color:var(--copper-bright); }
+.ranking-medal{ font-size:14px; line-height:1; margin-right:3px; filter:drop-shadow(0 0 3px rgba(0,0,0,0.4)); }
 #history-list .ranking-row{ grid-template-columns:48px 1fr auto auto; }
 .ranking-cover{ position:relative; width:48px; height:48px; border-radius:10px; overflow:hidden; background:var(--panel-solid); flex-shrink:0; cursor:pointer; }
 .ranking-cover img{ width:100%; height:100%; object-fit:cover; }
@@ -3945,9 +3992,12 @@ function renderRanking(){
   list.innerHTML = visible.map((t, i)=>{
     const isPlaying = t.id === currentTrackId;
     const plays = t.plays || 0;
+    // Top 3 : traitement "podium" doré / argent / bronze.
+    const rankClass = i === 0 ? 'rank-gold' : i === 1 ? 'rank-silver' : i === 2 ? 'rank-bronze' : '';
+    const medal = i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
     return `
-    <div class="ranking-row ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
-      <span class="ranking-rank">${i + 1}</span>
+    <div class="ranking-row ${isPlaying ? 'is-playing' : ''} ${rankClass}" data-track-id="${t.id}">
+      <span class="ranking-rank">${medal ? `<span class="ranking-medal">${medal}</span>` : ''}${i + 1}</span>
       <div class="ranking-cover" data-play="${t.id}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
@@ -5023,7 +5073,11 @@ async function playTrackById(trackId, direction, opts){
   activeClipEnd = null;
   updateVolumeUIForTrack(track); // applique/retire le volume verrouillé de ce titre
   // Incrémente le compteur d'écoutes du titre (utilisé par le Classement).
-  tracksRef.doc(trackId).update({ plays: firebase.firestore.FieldValue.increment(1) }).catch(()=>{});
+  // Doit fonctionner pour TOUT visiteur (connecté ou non) — si ça échoue,
+  // c'est presque toujours une règle de sécurité Firestore trop stricte
+  // sur le champ "plays" (log conservé pour diagnostic).
+  tracksRef.doc(trackId).update({ plays: firebase.firestore.FieldValue.increment(1) })
+    .catch(err => console.error('Échec incrément "plays" (vérifier les règles Firestore) :', err));
   recordListenHistory(trackId);
   document.getElementById('p-cover').src = track.coverURL || fallbackCoverSvg();
   document.getElementById('p-title').textContent = track.title || 'Sans titre';
