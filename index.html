@@ -369,6 +369,9 @@ input,textarea{ font-family:inherit; }
 .ranking-row:nth-child(1) .ranking-rank{ color:var(--copper-bright); font-size:18px; }
 .ranking-row:nth-child(2) .ranking-rank{ color:var(--copper); }
 .ranking-row:nth-child(3) .ranking-rank{ color:var(--copper); opacity:.85; }
+/* L'historique n'a pas de classement numéroté : la première colonne
+   (rang) est retirée, les lignes passent directement à la pochette. */
+#history-list .ranking-row{ grid-template-columns:48px 1fr auto auto; }
 .ranking-cover{ position:relative; width:48px; height:48px; border-radius:10px; overflow:hidden; background:var(--panel-solid); flex-shrink:0; cursor:pointer; }
 .ranking-cover img{ width:100%; height:100%; object-fit:cover; }
 .ranking-cover .card-play{ width:28px; height:28px; right:0; left:0; top:0; bottom:0; margin:auto; }
@@ -908,6 +911,7 @@ input,textarea{ font-family:inherit; }
     <button class="tab-btn" data-view="mine">Mes ajouts</button>
     <button class="tab-btn" data-view="playlists">Playlists</button>
     <button class="tab-btn" data-view="classement">Classement</button>
+    <button class="tab-btn" data-view="historique">Historique</button>
   </div>
   <!-- Champs leurres : absorbent l'autofill agressif de Chrome (email/mot de passe)
        pour qu'il ne se colle jamais dans la vraie barre de recherche juste en dessous. -->
@@ -1043,6 +1047,21 @@ input,textarea{ font-family:inherit; }
     <div class="empty-state" id="classement-empty" style="display:none;">
       <h3>Aucun titre pour l'instant</h3>
       <p>Le classement apparaîtra dès que des titres seront écoutés.</p>
+    </div>
+  </section>
+
+  <!-- HISTORIQUE — titres écoutés par le membre connecté, du plus récent
+       au plus ancien (un seul point d'entrée par titre : rejouer un titre
+       remonte son horodatage plutôt que de créer un doublon). -->
+  <section id="view-historique" style="display:none;">
+    <div class="section-head">
+      <h2 class="section-title">Historique</h2>
+      <span class="section-count" id="historique-count">0 titre</span>
+    </div>
+    <div class="ranking-list" id="history-list"></div>
+    <div class="empty-state" id="historique-empty" style="display:none;">
+      <h3>Aucune écoute pour l'instant</h3>
+      <p>Les titres que tu écoutes apparaîtront ici, du plus récent au plus ancien.</p>
     </div>
   </section>
 
@@ -1845,6 +1864,13 @@ const extractsRef = db.collection("musicExtracts");
 // facilement sur un autre appareil (voir bloc "SYNCHRO MULTI-APPAREILS").
 const playbackSyncRef = db.collection("musicPlayback");
 
+// Historique d'écoute personnel : une entrée par titre déjà écouté
+// (id du document = id du titre), horodatée à chaque écoute. Rejouer un
+// titre remonte simplement son horodatage plutôt que de créer un doublon.
+function musicHistoryEntriesRef(uid){
+  return db.collection("musicHistory").doc(uid).collection("entries");
+}
+
 /* =========================================================
    UTILITAIRES
    ========================================================= */
@@ -1946,6 +1972,11 @@ let ignoreNextPlaybackSyncWrite = false; // vrai pendant qu'on applique un état
 let lastPlaybackSyncWriteAt = 0;         // throttle des écritures périodiques pendant la lecture
 let lastAppliedRemoteUpdatedAtMs = 0;    // évite de re-proposer la même bannière plusieurs fois
 let pendingSyncState = null;             // état distant en attente d'action de l'utilisateur (bannière)
+
+// --- Historique d'écoute personnel ---
+let historyUnsub = null;
+let allHistoryEntries = []; // [{ trackId, playedAt }], tel que reçu de Firestore (onSnapshot), triées du plus récent au plus ancien
+let lastRecordedHistoryTrackId = null; // évite de ré-écrire l'historique en boucle pour le même titre
 let playlistFormCoverDataUrl = null;
 let pickerTrackId = null;  // titre ciblé par la modale "Ajouter à une playlist"
 
@@ -2225,6 +2256,7 @@ auth.onAuthStateChanged(async (user)=>{
     }catch(err){ console.error("Profil partagé indisponible :", err); }
     subscribeToPlaylists(realUser.uid);
     subscribeToPlaybackSync(realUser.uid);
+    subscribeToHistory(realUser.uid);
   }else{
     accountBtn.style.display = 'flex';
     userChip.classList.remove('visible');
@@ -2237,7 +2269,10 @@ auth.onAuthStateChanged(async (user)=>{
     allPlaylists = [];
     if(playbackSyncUnsub){ playbackSyncUnsub(); playbackSyncUnsub = null; }
     hideSyncBanner();
-    if(currentView === 'playlists' || currentView === 'playlist-detail'){ switchView('library'); }
+    if(historyUnsub){ historyUnsub(); historyUnsub = null; }
+    allHistoryEntries = [];
+    lastRecordedHistoryTrackId = null;
+    if(currentView === 'playlists' || currentView === 'playlist-detail' || currentView === 'historique'){ switchView('library'); }
     renderPlaylistsGrid();
   }
   renderTracks();
@@ -2250,7 +2285,7 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click', ()=> switchView(btn.dataset.view));
 });
 function switchView(view){
-  if((view === 'mine' || view === 'playlists') && !auth.currentUser){
+  if((view === 'mine' || view === 'playlists' || view === 'historique') && !auth.currentUser){
     clearAuthErrors();
     openOverlay('account-overlay');
     return;
@@ -2261,15 +2296,20 @@ function switchView(view){
   document.getElementById('view-mine').style.display = view === 'mine' ? '' : 'none';
   document.getElementById('view-playlists').style.display = view === 'playlists' ? '' : 'none';
   document.getElementById('view-classement').style.display = view === 'classement' ? '' : 'none';
+  document.getElementById('view-historique').style.display = view === 'historique' ? '' : 'none';
   document.getElementById('view-playlist-detail').style.display = 'none';
   if(view === 'classement'){
     rankingVisibleCount = 20;
     renderRanking();
   }
+  if(view === 'historique'){
+    renderHistory();
+  }
   renderTracks();
   renderPlaylistsGrid();
-  // Le classement s'affiche seul : on masque le bloc "musique de
-  // l'événement" (hero) et la section "Extraits" créés par les membres.
+  // Le classement et l'historique s'affichent seuls : on masque le bloc
+  // "musique de l'événement" (hero) et la section "Extraits" créés par
+  // les membres.
   renderHero();
   renderExtractsSection();
 }
@@ -2457,7 +2497,7 @@ function renderExtractsSection(){
   const section = document.getElementById('extracts-section');
   const row = document.getElementById('extract-row');
   const count = document.getElementById('extracts-count');
-  if(currentView === 'classement' || !allExtracts.length){
+  if(currentView === 'classement' || currentView === 'historique' || !allExtracts.length){
     section.style.display = 'none';
     row.innerHTML = '';
     return;
@@ -3343,7 +3383,7 @@ function applyHeroTheme(theme){
 }
 function renderHero(){
   const hero = document.getElementById('hero');
-  if(currentView === 'classement'){ hero.style.display = 'none'; return; }
+  if(currentView === 'classement' || currentView === 'historique'){ hero.style.display = 'none'; return; }
   if(!allTracks.length){ hero.style.display = 'none'; return; }
   // Priorité au titre choisi par l'admin comme "musique de l'événement" ;
   // à défaut, on retombe sur le dernier titre ajouté au catalogue.
@@ -3393,6 +3433,8 @@ function renderTracks(){
     renderPlaylistDetailTracks(); // gère elle-même currentQueue, dans l'ordre de la playlist
   }else if(currentView === 'classement'){
     renderRanking();
+  }else if(currentView === 'historique'){
+    renderHistory();
   }
   // Garde les pochettes précédente/suivante du grand lecteur à jour si la
   // liste affichée change (recherche, ajout/suppression d'un titre…),
@@ -3544,6 +3586,100 @@ document.getElementById('ranking-more-btn').addEventListener('click', ()=>{
   rankingVisibleCount = rankingVisibleCount < 50 ? 50 : 100;
   renderRanking();
 });
+
+/* =========================================================
+   HISTORIQUE — titres déjà écoutés par le membre connecté, du
+   plus récent au plus ancien (réservé aux comptes réels).
+   ========================================================= */
+// Enregistre (ou met à jour) l'horodatage d'écoute d'un titre. Un seul
+// document par titre (id = trackId) : rejouer un titre remonte simplement
+// sa date au lieu de créer un doublon dans l'historique.
+function recordListenHistory(trackId){
+  const user = auth.currentUser;
+  if(!user || user.isAnonymous) return; // historique réservé aux comptes réels
+  if(!trackId) return;
+  lastRecordedHistoryTrackId = trackId;
+  musicHistoryEntriesRef(user.uid).doc(trackId).set({
+    trackId,
+    playedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge:true }).catch(err=> console.error("Historique : écriture impossible :", err));
+}
+function subscribeToHistory(uid){
+  if(historyUnsub) historyUnsub();
+  historyUnsub = musicHistoryEntriesRef(uid).orderBy('playedAt', 'desc').limit(100).onSnapshot((snap)=>{
+    allHistoryEntries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if(currentView === 'historique') renderHistory();
+  }, (err)=>{
+    console.error("Erreur de chargement de l'historique :", err);
+  });
+}
+// Formate l'horodatage d'une écoute en texte lisible ("Aujourd'hui à
+// 14:32", "Hier à 09:10", "12 août à 18:03").
+function formatHistoryWhen(ts){
+  if(!ts) return 'À l\u2019instant';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const now = new Date();
+  const time = d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+  const sameDay = d.toDateString() === now.toDateString();
+  if(sameDay) return `Aujourd'hui à ${time}`;
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  if(d.toDateString() === yesterday.toDateString()) return `Hier à ${time}`;
+  return d.toLocaleDateString('fr-FR', { day:'numeric', month:'short' }) + ` à ${time}`;
+}
+function renderHistory(){
+  const list = document.getElementById('history-list');
+  const empty = document.getElementById('historique-empty');
+  const countEl = document.getElementById('historique-count');
+
+  // Associe chaque entrée d'historique à son titre (le titre a pu être
+  // supprimé depuis : on ignore alors l'entrée).
+  const entries = allHistoryEntries
+    .map(h => ({ h, track: allTracks.find(t => t.id === h.trackId) }))
+    .filter(e => !!e.track);
+
+  if(!entries.length){
+    list.innerHTML = '';
+    empty.style.display = '';
+    countEl.textContent = '0 titre';
+    return;
+  }
+  empty.style.display = 'none';
+  countEl.textContent = entries.length + (entries.length > 1 ? ' titres écoutés' : ' titre écouté');
+
+  currentQueue = entries.map(e => e.track); // permet précédent/suivant depuis l'historique
+
+  list.innerHTML = entries.map(({ h, track: t })=>{
+    const isPlaying = t.id === currentTrackId;
+    return `
+    <div class="ranking-row ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
+      <div class="ranking-cover" data-play="${t.id}">
+        <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
+        ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
+        <button class="card-play" data-play="${t.id}" aria-label="Lire">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
+        </button>
+      </div>
+      <div class="ranking-info">
+        <p class="ranking-title">${escapeHtml(t.title || 'Sans titre')}</p>
+        <p class="ranking-artist">${escapeHtml(t.artist || 'Artiste inconnu')}</p>
+      </div>
+      <span class="ranking-plays">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+        ${formatHistoryWhen(h.playedAt)}
+      </span>
+      <button class="like-btn addpl-btn" data-add-to-playlist="${t.id}" aria-label="Ajouter à une playlist">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('[data-play]').forEach(el=>{
+    el.addEventListener('click', (e)=>{ e.stopPropagation(); playTrackById(el.dataset.play); });
+  });
+  list.querySelectorAll('[data-add-to-playlist]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); openAddToPlaylistModal(btn.dataset.addToPlaylist); });
+  });
+}
 
 async function toggleLike(trackId){
   const user = auth.currentUser;
@@ -4447,6 +4583,7 @@ async function playTrackById(trackId, direction){
   updateVolumeUIForTrack(track); // applique/retire le volume verrouillé de ce titre
   // Incrémente le compteur d'écoutes du titre (utilisé par le Classement).
   tracksRef.doc(trackId).update({ plays: firebase.firestore.FieldValue.increment(1) }).catch(()=>{});
+  recordListenHistory(trackId);
   document.getElementById('p-cover').src = track.coverURL || fallbackCoverSvg();
   document.getElementById('p-title').textContent = track.title || 'Sans titre';
   document.getElementById('p-artist').textContent = (track.artist || 'Artiste inconnu') + ' · chargement…';
