@@ -2164,6 +2164,10 @@ function switchView(view){
   }
   renderTracks();
   renderPlaylistsGrid();
+  // Le classement s'affiche seul : on masque le bloc "musique de
+  // l'événement" (hero) et la section "Extraits" créés par les membres.
+  renderHero();
+  renderExtractsSection();
 }
 
 /* =========================================================
@@ -2324,7 +2328,7 @@ function renderExtractsSection(){
   const section = document.getElementById('extracts-section');
   const row = document.getElementById('extract-row');
   const count = document.getElementById('extracts-count');
-  if(!allExtracts.length){
+  if(currentView === 'classement' || !allExtracts.length){
     section.style.display = 'none';
     row.innerHTML = '';
     return;
@@ -3210,6 +3214,7 @@ function applyHeroTheme(theme){
 }
 function renderHero(){
   const hero = document.getElementById('hero');
+  if(currentView === 'classement'){ hero.style.display = 'none'; return; }
   if(!allTracks.length){ hero.style.display = 'none'; return; }
   // Priorité au titre choisi par l'admin comme "musique de l'événement" ;
   // à défaut, on retombe sur le dernier titre ajouté au catalogue.
