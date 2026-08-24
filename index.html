@@ -553,9 +553,20 @@ input,textarea{ font-family:inherit; }
 @keyframes npBeamSweep3{ 0%,100%{ transform:rotate(0deg); } 50%{ transform:rotate(15deg); } }
 @keyframes npBeamSweep4{ 0%,100%{ transform:rotate(-24deg); } 50%{ transform:rotate(-9deg); } }
 @keyframes npBeamSweep5{ 0%,100%{ transform:rotate(18deg); } 50%{ transform:rotate(-2deg); } }
-.np-strobe{
-  position:absolute; inset:0; opacity:0; pointer-events:none;
-  background:radial-gradient(circle at 50% 28%, rgba(255,255,255,0.95), transparent 62%);
+/* Flash de basse : au lieu d'un flash blanc plein écran derrière la
+   pochette, deux flashs en dégradé posés dans les angles bas de l'écran
+   (façon éclairage de scène au sol), qui pulsent sur les coups de basse. */
+.np-strobe-corner{
+  position:absolute; bottom:0; width:65vw; height:55vh; max-width:520px; max-height:460px;
+  opacity:0; pointer-events:none; will-change:opacity;
+}
+.np-strobe-corner-left{
+  left:0;
+  background:radial-gradient(circle at 0% 100%, rgba(255,176,32,.9) 0%, rgba(255,90,200,.45) 40%, transparent 72%);
+}
+.np-strobe-corner-right{
+  right:0;
+  background:radial-gradient(circle at 100% 100%, rgba(120,190,255,.9) 0%, rgba(255,90,200,.45) 40%, transparent 72%);
 }
 /* Affichage mobile du mode concert : au lieu de faisceaux balayants
    (bureau) ou d'une simple lueur rectangulaire, la pochette est entourée
@@ -1182,7 +1193,8 @@ input,textarea{ font-family:inherit; }
     <span class="np-beam np-beam-3"></span>
     <span class="np-beam np-beam-4"></span>
     <span class="np-beam np-beam-5"></span>
-    <span class="np-strobe" id="np-strobe"></span>
+    <span class="np-strobe-corner np-strobe-corner-left" id="np-strobe-left"></span>
+    <span class="np-strobe-corner np-strobe-corner-right" id="np-strobe-right"></span>
   </div>
   <div class="np-sheet" id="np-sheet">
     <img class="np-bg" id="np-bg" alt="">
@@ -5179,7 +5191,8 @@ const npConcertLightsEl = document.getElementById('np-concert-lights');
 const concertBeams = Array.from(document.querySelectorAll('.np-beam'));
 const concertGlow = document.getElementById('np-concert-glow');
 const concertWaves = Array.from(document.querySelectorAll('.np-concert-wave'));
-const concertStrobe = document.getElementById('np-strobe');
+const concertStrobeLeft = document.getElementById('np-strobe-left');
+const concertStrobeRight = document.getElementById('np-strobe-right');
 const npCoverEl = document.getElementById('np-cover');
 // Sur mobile/tactile, on allège le travail du mode concert (une frame sur
 // deux) : moins de calculs de bandes de fréquences et moins de repaint des
@@ -5214,7 +5227,8 @@ function resetConcertLights(){
   concertBeams.forEach(b=> b.style.opacity = 0);
   if(concertGlow) concertGlow.style.opacity = 0;
   concertWaves.forEach(w=> w.classList.remove('active'));
-  if(concertStrobe) concertStrobe.style.opacity = 0;
+  if(concertStrobeLeft) concertStrobeLeft.style.opacity = 0;
+  if(concertStrobeRight) concertStrobeRight.style.opacity = 0;
   if(npCoverEl) npCoverEl.style.transform = '';
   concertBassHistory = [];
   concertLastHitTime = 0;
@@ -5330,10 +5344,10 @@ function updateConcertLights(data){
     if(concertBeams[4]) concertBeams[4].style.opacity = trebleOpacity; // droite
   }
 
-  // Flash blanc : ne se déclenche plus dès que la basse est "haute" en
-  // continu, mais seulement sur un vrai coup, c'est-à-dire un pic net
-  // au-dessus de la moyenne récente, avec un temps minimum entre deux
-  // flashs pour éviter le stroboscope permanent.
+  // Flashs en dégradé (angles bas de l'écran) : ne se déclenchent plus dès
+  // que la basse est "haute" en continu, mais seulement sur un vrai coup,
+  // c'est-à-dire un pic net au-dessus de la moyenne récente, avec un temps
+  // minimum entre deux flashs pour éviter le stroboscope permanent.
   concertBassHistory.push(bass);
   if(concertBassHistory.length > 40) concertBassHistory.shift();
   const avg = concertBassHistory.reduce((a,b)=>a+b, 0) / concertBassHistory.length;
@@ -5345,7 +5359,9 @@ function updateConcertLights(data){
   }else{
     concertStrobeLevel *= 0.72; // extinction rapide façon flash, pas un fondu
   }
-  if(concertStrobe) concertStrobe.style.opacity = concertStrobeLevel < 0.03 ? 0 : concertStrobeLevel;
+  const strobeOpacity = concertStrobeLevel < 0.03 ? 0 : concertStrobeLevel;
+  if(concertStrobeLeft) concertStrobeLeft.style.opacity = strobeOpacity;
+  if(concertStrobeRight) concertStrobeRight.style.opacity = strobeOpacity;
 
   // Tremblement de la pochette : suit le niveau de basse en direct, avec
   // une petite rémanence (décroissance) pour un mouvement plus organique
