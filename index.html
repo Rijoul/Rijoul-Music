@@ -918,6 +918,10 @@ input,textarea{ font-family:inherit; }
     <input id="search-input" type="search" placeholder="Chercher un titre, un artiste…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="rijoul-search-q" role="searchbox" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onmousedown="this.removeAttribute('readonly')" onclick="this.removeAttribute('readonly')" ontouchstart="this.removeAttribute('readonly')">
   </div>
   <div class="nav-right">
+    <button class="btn btn-ghost nav-action-btn" id="share-app-btn" title="Partager RIJOUL MUSIC">
+      <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4"/></svg>
+      <span class="btn-label">Partager</span>
+    </button>
     <button class="btn btn-ghost nav-action-btn" id="install-app-btn" title="Installer RIJOUL MUSIC sur cet appareil">
       <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13m0 0l-4.5-4.5M12 16l4.5-4.5"/><path d="M4 17v2.4A1.6 1.6 0 005.6 21h12.8a1.6 1.6 0 001.6-1.6V17"/></svg>
       <span class="btn-label">Installer l'app</span>
@@ -2392,6 +2396,31 @@ if(installAppBtn){
       showToast("Sur iPhone/iPad : appuie sur le bouton Partager 􀈂 puis « Sur l'écran d'accueil ». 📲");
     }else{
       showToast("L'installation n'est pas encore proposée par ce navigateur sur cet appareil.");
+    }
+  });
+}
+
+/* --- Bouton "Partager" (barre de navigation) : partage le lien du site
+   lui-même (pas un titre en particulier). Utilise le partage natif quand
+   il est disponible (mobile), sinon copie le lien dans le presse-papiers. */
+const shareAppBtn = document.getElementById('share-app-btn');
+if(shareAppBtn){
+  shareAppBtn.addEventListener('click', async ()=>{
+    const shareData = {
+      title: 'RIJOUL MUSIC',
+      text: 'Écoute et ajoute des titres sur RIJOUL MUSIC 🎵',
+      url: location.origin + location.pathname
+    };
+    if(navigator.share){
+      try{ await navigator.share(shareData); }
+      catch(e){ /* partage annulé par l'utilisateur */ }
+      return;
+    }
+    try{
+      await navigator.clipboard.writeText(shareData.url);
+      showToast('Lien copié ! Partage-le où tu veux. 🔗');
+    }catch(e){
+      showToast("Impossible de copier le lien automatiquement : " + shareData.url);
     }
   });
 }
