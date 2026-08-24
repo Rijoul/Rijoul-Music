@@ -4717,6 +4717,17 @@ document.getElementById('np-next').addEventListener('click', ()=> playAdjacent(1
 document.getElementById('np-like-btn').addEventListener('click', ()=>{ if(currentTrackId) toggleLike(currentTrackId); });
 document.addEventListener('keydown', (e)=>{
   if(e.key === 'Escape') closeOverlay('nowplaying-overlay');
+  else if(e.code === 'Space' || e.key === ' '){
+    // Ignore la barre espace quand elle sert à son usage normal : taper
+    // dans un champ, ou activer un bouton/lien qui a le focus.
+    const tag = (e.target.tagName || '').toLowerCase();
+    const isEditable = e.target.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select';
+    const isInteractive = tag === 'button' || tag === 'a' || !!e.target.closest('button, a, [role="button"]');
+    if(isEditable || isInteractive) return;
+    if(!audioEl.src) return; // aucun titre chargé : rien à mettre en pause/reprendre
+    e.preventDefault(); // évite le défilement de la page au clavier
+    togglePlayPause();
+  }
 });
 
 let audioCtx = null, analyser = null, analyserSource = null, eqBars = [], eqRAF = null;
