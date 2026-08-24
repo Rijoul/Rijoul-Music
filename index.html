@@ -2625,6 +2625,7 @@ tracksRef.orderBy('createdAt', 'desc').onSnapshot((snap)=>{
   renderHero();
   renderTracks();
   renderExtractsSection();
+  scheduleInitialRecommendations();
 }, (err)=>{
   console.error('Erreur de chargement de la musique :', err);
   showToast("Impossible de charger la musique pour le moment.");
@@ -3630,20 +3631,24 @@ function sortByRecommendation(list, uid){
 }
 
 /* =========================================================
-   PLAYLIST "POUR VOUS" — playlist virtuelle (non stockée dans
-   Firestore) recalculée à la volée à partir du même moteur de
-   recommandation que la bibliothèque : elle met en avant les
-   titres que l'utilisateur a le plus de chances d'aimer (déjà
-   likés/écoutés, artistes proches de ses goûts, ou à défaut les
-   titres les plus populaires de RIJOUL MUSIC pour les nouveaux
-   membres / visiteurs non connectés).
+   RECOMMANDATIONS FIGÉES À L'OUVERTURE DE L'APPLICATION
+   Plutôt que de recalculer l'ordre "coup de cœur" de la bibliothèque
+   et la playlist "Pour vous" en direct à chaque changement (un like,
+   une écoute, un nouveau titre...), on les calcule UNE SEULE FOIS au
+   chargement de l'application (une fois le catalogue — et si possible
+   l'historique d'écoute — chargés), puis on les garde figés pour
+   toute la session. Il faut rouvrir/recharger l'application pour
+   obtenir une nouvelle sélection.
    ========================================================= */
-function buildForYouPlaylist(){
-  const uid = auth.currentUser ? auth.currentUser.uid : null;
-  const ranked = sortByRecommendation(allTracks, uid);
-  const trackIds = ranked.slice(0, FOR_YOU_TRACK_LIMIT).map(t => t.id);
-  const first = ranked[0];
-  const pl = {
+let recommendationsScheduled = false;
+let recommendationsInitialized = false;
+let cachedLibraryOrderIds = [];
+let cachedForYouPlaylist = null;
+
+function buildForYouPlaylistData(rankedList, uid){
+  const trackIds = rankedList.slice(0, FOR_YOU_TRACK_LIMIT).map(t => t.id);
+  const first = rankedList[0];
+  return {
     id: FOR_YOU_PLAYLIST_ID,
     name: '✨ Pour vous',
     description: uid
@@ -3653,11 +3658,67 @@ function buildForYouPlaylist(){
     coverURL: first ? first.coverURL : null,
     isAuto: true
   };
-  sharedPlaylistCache[FOR_YOU_PLAYLIST_ID] = pl;
-  return pl;
+}
+// Calcule et fige définitivement (pour cette session) l'ordre de la
+// bibliothèque et la playlist "Pour vous".
+function computeAndFreezeRecommendations(){
+  const uid = auth.currentUser ? auth.currentUser.uid : null;
+  const ranked = sortByRecommendation(allTracks, uid);
+  cachedLibraryOrderIds = ranked.map(t => t.id);
+  cachedForYouPlaylist = buildForYouPlaylistData(ranked, uid);
+  sharedPlaylistCache[FOR_YOU_PLAYLIST_ID] = cachedForYouPlaylist;
+  recommendationsInitialized = true;
+  renderTracks();
+}
+// Déclenché au chargement du catalogue et de l'historique : ne calcule
+// qu'une seule fois (la première fois où assez de données sont
+// disponibles), avec un court délai pour laisser le temps à l'état de
+// connexion et à l'historique d'écoute de s'établir avant de figer la
+// sélection initiale.
+function scheduleInitialRecommendations(){
+  if(recommendationsInitialized || recommendationsScheduled) return;
+  if(!allTracks.length) return;
+  recommendationsScheduled = true;
+  setTimeout(computeAndFreezeRecommendations, 700);
+}
+// Ordre de la bibliothèque à afficher : l'ordre figé à l'ouverture une
+// fois disponible (les titres ajoutés depuis sont ajoutés à la suite,
+// pour ne jamais les faire disparaître), sinon l'ordre par défaut du
+// catalogue en attendant le calcul initial.
+function getOrderedLibraryTracks(){
+  if(!recommendationsInitialized) return allTracks;
+  const byId = new Map(allTracks.map(t => [t.id, t]));
+  const ordered = [];
+  cachedLibraryOrderIds.forEach(id=>{
+    const t = byId.get(id);
+    if(t){ ordered.push(t); byId.delete(id); }
+  });
+  byId.forEach(t => ordered.push(t));
+  return ordered;
+}
+
+/* =========================================================
+   PLAYLIST "POUR VOUS" — playlist virtuelle (non stockée dans
+   Firestore), calculée une seule fois à l'ouverture de l'application
+   par le moteur de recommandation ci-dessus : elle met en avant les
+   titres que l'utilisateur a le plus de chances d'aimer (déjà
+   likés/écoutés, artistes proches de ses goûts, ou à défaut les
+   titres les plus populaires de RIJOUL MUSIC pour les nouveaux
+   membres / visiteurs non connectés).
+   ========================================================= */
+function getForYouPlaylist(){
+  if(cachedForYouPlaylist) return cachedForYouPlaylist;
+  // Calcul pas encore figé (application tout juste ouverte) : on
+  // affiche une version provisoire, sans l'enregistrer comme
+  // définitive, en attendant le calcul figé par computeAndFreezeRecommendations.
+  const uid = auth.currentUser ? auth.currentUser.uid : null;
+  const ranked = sortByRecommendation(allTracks, uid);
+  const temp = buildForYouPlaylistData(ranked, uid);
+  sharedPlaylistCache[FOR_YOU_PLAYLIST_ID] = temp;
+  return temp;
 }
 function playForYouPlaylist(){
-  const pl = buildForYouPlaylist();
+  const pl = getForYouPlaylist();
   const list = pl.trackIds.map(id => allTracks.find(t => t.id === id)).filter(Boolean);
   if(!list.length){ showToast("Pas encore assez de titres pour te proposer une sélection."); return; }
   currentQueue = list;
@@ -3665,7 +3726,7 @@ function playForYouPlaylist(){
   playTrackById(list[0].id);
 }
 function openForYouPlaylist(){
-  buildForYouPlaylist();
+  getForYouPlaylist();
   openPlaylistDetail(FOR_YOU_PLAYLIST_ID);
 }
 function renderHomePlaylistsSection(){
@@ -3676,7 +3737,7 @@ function renderHomePlaylistsSection(){
   }
   section.style.display = '';
   const row = document.getElementById('home-pl-row');
-  const forYou = buildForYouPlaylist();
+  const forYou = getForYouPlaylist();
   const forYouCover = forYou.coverURL || fallbackCoverSvg();
   const ownedPlaylists = [...allPlaylists].sort((a,b)=> (b.createdAtMs || 0) - (a.createdAtMs || 0));
 
@@ -3740,7 +3801,7 @@ document.getElementById('home-pl-see-all').addEventListener('click', ()=> switch
 function renderTracks(){
   const uid = auth.currentUser ? auth.currentUser.uid : null;
   if(currentView === 'library'){
-    const list = sortByRecommendation(allTracks.filter(matchesSearch), uid);
+    const list = getOrderedLibraryTracks().filter(matchesSearch);
     currentQueue = list;
     paintGrid('library-grid', 'library-empty', 'library-count', list, {
       emptyTitle: searchTerm ? 'Aucun résultat' : "Aucun titre pour l'instant",
@@ -3934,7 +3995,12 @@ function subscribeToHistory(uid){
   historyUnsub = musicHistoryEntriesRef(uid).orderBy('playedAt', 'desc').limit(100).onSnapshot((snap)=>{
     allHistoryEntries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     if(currentView === 'historique') renderHistory();
-    else if(currentView === 'library') renderTracks(); // réaffine le tri "coup de cœur" de la bibliothèque
+    // Ne réaffine PAS le tri "coup de cœur" en direct : la recommandation
+    // n'est calculée qu'une seule fois à l'ouverture de l'application
+    // (voir scheduleInitialRecommendations). On tente simplement de la
+    // déclencher si elle n'a pas encore eu lieu (ex. historique arrivé
+    // avant le catalogue).
+    scheduleInitialRecommendations();
   }, (err)=>{
     console.error("Erreur de chargement de l'historique :", err);
   });
