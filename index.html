@@ -617,7 +617,9 @@ input,textarea{ font-family:inherit; }
    décalage entre les deux (np-wave-2) pour un effet d'ondes successives,
    façon rond dans l'eau. Pas d'animation tant que le mode concert n'est
    pas actif (classe .active ajoutée/retirée en JS), pour ne rien
-   consommer inutilement quand c'est éteint. */
+   consommer inutilement quand c'est éteint. Épaisseur/opacité augmentées
+   (3px, pic à .8 dans le keyframe ci-dessous) + légère lueur (drop-shadow)
+   pour que les basses restent bien visibles même sur un écran lumineux. */
 .np-concert-wave{
   position:absolute; top:50%; left:50%; z-index:-1; display:none; pointer-events:none;
   width:min(50vw,240px); height:min(50vw,240px); border-radius:50%;
@@ -625,7 +627,8 @@ input,textarea{ font-family:inherit; }
   /* Couleur de repli tant qu'aucune couleur n'a encore été extraite de la
      pochette ; en pratique remplacée en ligne (border-color) par
      applyConcertBeamColors en JS, sur la couleur dominante de l'image. */
-  border:2px solid rgba(255,176,64,.65);
+  border:3px solid rgba(255,176,64,.65);
+  filter:drop-shadow(0 0 10px rgba(255,176,64,.55));
   opacity:0;
 }
 .np-concert-wave.active{ animation:npConcertWave 2.4s ease-out infinite; }
@@ -633,8 +636,27 @@ input,textarea{ font-family:inherit; }
 .np-concert-wave.np-wave-2.active{ animation-delay:1.2s; }
 @keyframes npConcertWave{
   0%{ transform:translate(-50%,-50%) scale(.82); opacity:0; }
-  16%{ opacity:.55; }
+  16%{ opacity:.85; }
   100%{ transform:translate(-50%,-50%) scale(2.15); opacity:0; }
+}
+/* Lueur de basse (mobile) : en plus des deux anneaux ci-dessus (qui
+   tournent en boucle continue, indépendamment du niveau audio réel), cette
+   lueur derrière la pochette flashe EN DIRECT sur chaque coup de basse
+   détecté (son opacité est pilotée frame par frame par updateConcertLights
+   en JS, comme les faisceaux médiums/aigus) — les basses restent ainsi
+   nettement visibles même entre deux passages des anneaux. Couleur alignée
+   sur la couleur dominante de la pochette (voir applyConcertBeamColors). */
+.np-concert-bass-glow{
+  position:absolute; top:50%; left:50%; z-index:-1; display:none; pointer-events:none;
+  width:min(105vw,480px); height:min(105vw,480px);
+  transform:translate(-50%,-50%);
+  border-radius:50%;
+  background:radial-gradient(circle, var(--bass-glow-color, rgba(255,176,64,.9)) 0%, transparent 68%);
+  filter:blur(20px);
+  opacity:0;
+  mix-blend-mode:screen;
+  will-change:opacity;
+  transition:opacity .1s ease-out;
 }
 .np-content{ position:relative; z-index:2; height:100%; display:flex; flex-direction:column; padding:calc(env(safe-area-inset-top,0px) + 16px) 26px calc(env(safe-area-inset-bottom,0px) + 26px); }
 .np-topbar{ display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
@@ -736,6 +758,7 @@ input,textarea{ font-family:inherit; }
   .np-strobe-corner{ display:none; }
   .np-art-beam{ display:block; }
   .np-concert-wave{ display:block; }
+  .np-concert-bass-glow{ display:block; }
 }
 
 /* =========================================================
@@ -1282,6 +1305,7 @@ input,textarea{ font-family:inherit; }
         <span class="np-art-beam np-art-beam-edge np-art-beam-t" id="np-art-beam-t" aria-hidden="true"></span>
         <span class="np-concert-wave np-wave-1" id="np-concert-wave-1" aria-hidden="true"></span>
         <span class="np-concert-wave np-wave-2" id="np-concert-wave-2" aria-hidden="true"></span>
+        <span class="np-concert-bass-glow" id="np-concert-bass-glow" aria-hidden="true"></span>
         <div class="np-art-track" id="np-art-track">
           <img class="np-art-side" id="np-art-prev" alt="" aria-hidden="true">
           <img class="np-art" id="np-cover" alt="">
@@ -1702,6 +1726,22 @@ const DEVICE_LABEL = detectDeviceLabel();
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+// Persistance hors-ligne Firestore : garde en cache local (IndexedDB) les
+// documents déjà reçus (titres, playlists, chunks audio...), pour que
+// l'app retrouve au moins ce qui a déjà été chargé si on la rouvre sans
+// connexion — en complément du téléchargement explicite pour l'écoute
+// hors-ligne (voir OFFLINE_DB_NAME plus bas, qui lui garde des fichiers
+// audio complets, choisis par l'utilisateur, indépendamment de ce cache).
+// synchronizeTabs permet de garder cette persistance active même avec
+// plusieurs onglets ouverts sur l'app (sinon Firestore désactive la
+// persistance dans tous les onglets sauf le premier ouvert).
+try{
+  db.enablePersistence({ synchronizeTabs:true }).catch((err)=>{
+    console.warn('Persistance hors-ligne Firestore indisponible :', err && err.code || err);
+  });
+}catch(err){
+  console.warn('Persistance hors-ligne Firestore indisponible :', err);
+}
 const auth = firebase.auth();
 const googleProvider = new firebase.auth.GoogleAuthProvider();
 
@@ -2440,6 +2480,27 @@ document.getElementById('brand-home').addEventListener('click', (e)=>{ e.prevent
     console.warn("Impossible de générer le manifeste d'installation :", err);
   }
 })();
+/* =========================================================
+   MODE HORS CONNEXION (Service Worker)
+   Met en cache la "coquille" de l'app (cette page + les scripts/polices
+   externes dont elle dépend : SDK Firebase, Google Fonts, lamejs) afin de
+   pouvoir OUVRIR l'app même sans connexion internet, au lieu de l'erreur
+   "pas de connexion" du navigateur. Les DONNÉES (titres, playlists) sont
+   gérées séparément : par la persistance hors-ligne Firestore activée
+   plus haut (db.enablePersistence) pour ce qui a déjà été chargé, et par
+   le téléchargement explicite (OFFLINE_DB_NAME, IndexedDB) pour l'écoute
+   garantie hors-ligne d'une playlist entière.
+   Le fichier sw.js doit être déposé À CÔTÉ de cette page (même dossier)
+   pour que l'enregistrement ci-dessous fonctionne.
+   ========================================================= */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js').catch((err)=>{
+      console.warn("Mode hors connexion indisponible (service worker non installé) :", err);
+    });
+  });
+}
+
 let deferredInstallPrompt = null;
 const installAppBtn = document.getElementById('install-app-btn');
 function appIsAlreadyInstalled(){
@@ -5238,6 +5299,7 @@ const concertArtBeams = Array.from(document.querySelectorAll('.np-art-beam'));
 const concertArtBeamsCorner = concertArtBeams.filter(b=> b.classList.contains('np-art-beam-corner'));
 const concertArtBeamsEdge = concertArtBeams.filter(b=> b.classList.contains('np-art-beam-edge'));
 const concertWaves = Array.from(document.querySelectorAll('.np-concert-wave'));
+const concertBassGlow = document.getElementById('np-concert-bass-glow');
 const concertStrobeLeft = document.getElementById('np-strobe-left');
 const concertStrobeRight = document.getElementById('np-strobe-right');
 const npCoverEl = document.getElementById('np-cover');
@@ -5277,6 +5339,7 @@ function resetConcertLights(){
   concertBeams.forEach(b=> b.style.opacity = 0);
   concertArtBeams.forEach(b=> b.style.opacity = 0);
   concertWaves.forEach(w=> w.classList.remove('active'));
+  if(concertBassGlow) concertBassGlow.style.opacity = 0;
   if(concertStrobeLeft) concertStrobeLeft.style.opacity = 0;
   if(concertStrobeRight) concertStrobeRight.style.opacity = 0;
   if(npCoverEl) npCoverEl.style.transform = '';
@@ -5410,6 +5473,10 @@ function applyConcertBeamColors(){
       if(strobeColorSoft) npConcertLightsEl.style.setProperty('--strobe-color-2', strobeColorSoft);
       else npConcertLightsEl.style.removeProperty('--strobe-color-2');
     }
+    if(concertBassGlow){
+      if(strobeColor) concertBassGlow.style.setProperty('--bass-glow-color', strobeColor);
+      else concertBassGlow.style.removeProperty('--bass-glow-color');
+    }
     concertWaves.forEach((wave, i) => {
       // Onde 1 (np-wave-1) en couleur dominante franche, onde 2 (np-wave-2,
       // décalée dans le temps) en version plus douce — comme les deux
@@ -5482,6 +5549,11 @@ function updateConcertLights(data){
   const bassOpacity = concertBassOn ? clamp(bassAboveFloor * 2.2) : 0;
   if(concertStrobeLeft) concertStrobeLeft.style.opacity = bassOpacity;
   if(concertStrobeRight) concertStrobeRight.style.opacity = bassOpacity;
+  // Mobile : la lueur de basse derrière la pochette flashe en direct sur
+  // chaque coup de basse (même valeur/hystérésis que les flashs du bureau
+  // ci-dessus), pour que les basses restent nettement visibles en plus des
+  // deux anneaux qui tournent en boucle continue.
+  if(concertMobileMQ.matches && concertBassGlow) concertBassGlow.style.opacity = bassOpacity;
 
   // Tremblement de la pochette : suit le niveau de basse en direct, avec
   // une petite rémanence (décroissance) pour un mouvement plus organique
