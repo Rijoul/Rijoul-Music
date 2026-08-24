@@ -4952,7 +4952,7 @@ function stopEq(){
   if(typeof resetConcertLights === 'function') resetConcertLights();
 }
 
-async function playTrackById(trackId, direction){
+async function playTrackById(trackId, direction, opts){
   const track = allTracks.find(t => t.id === trackId);
   if(!track) return;
   const idxInQueue = currentQueue.findIndex(t => t.id === trackId);
@@ -4961,9 +4961,20 @@ async function playTrackById(trackId, direction){
     togglePlayPause();
     return;
   }
+  // Certains changements de titre (ex. "suivant"/"précédent" déclenchés
+  // depuis l'écran de verrouillage / la notification média) doivent couper
+  // net l'ancien morceau plutôt que d'enchaîner en fondu : dans ce cas
+  // (crossfade:false), on stoppe immédiatement tout ce qui joue, y compris
+  // un fondu déjà en cours, pour ne jamais superposer deux morceaux.
+  const useCrossfade = !opts || opts.crossfade !== false;
+  if(!useCrossfade){
+    crossfadeEchoes.forEach(echo=>{ try{ echo.pause(); echo.src=''; }catch(e){} });
+    crossfadeEchoes = [];
+    try{ audioEl.pause(); }catch(e){}
+  }
   // Capture le morceau en cours de lecture avant de basculer, pour pouvoir
   // le laisser finir en fondu (crossfade) pendant que le nouveau démarre.
-  const wasPlaying = !!(currentTrackId && audioEl.src && !audioEl.paused);
+  const wasPlaying = useCrossfade && !!(currentTrackId && audioEl.src && !audioEl.paused);
   const outgoingSrc = wasPlaying ? audioEl.currentSrc : null;
   const outgoingTime = wasPlaying ? audioEl.currentTime : 0;
 
@@ -5037,12 +5048,12 @@ function stopPlayback(){
   closeOverlay('nowplaying-overlay');
   pushPlaybackState({ stopped:true });
 }
-function playAdjacent(delta){
+function playAdjacent(delta, opts){
   if(!currentQueue.length) return;
   let idx = currentTrackIndex + delta;
   if(idx < 0) idx = currentQueue.length - 1;
   if(idx >= currentQueue.length) idx = 0;
-  playTrackById(currentQueue[idx].id, delta > 0 ? 1 : -1);
+  playTrackById(currentQueue[idx].id, delta > 0 ? 1 : -1, opts);
 }
 
 /* =========================================================
@@ -5079,8 +5090,12 @@ function setupMediaSessionHandlers(){
   // "nexttrack" / "previoustrack" sont les commandes standard envoyées par
   // les écouteurs (triple-clic droit = suivant, triple-clic gauche =
   // précédent), le verrou d'écran, ou une télécommande casque/voiture.
-  safeSetHandler('nexttrack', ()=> playAdjacent(1));
-  safeSetHandler('previoustrack', ()=> playAdjacent(-1));
+  // On coupe net l'ancien morceau (pas de fondu enchaîné) : ces commandes
+  // arrivent typiquement quand la page est en arrière-plan (écran verrouillé),
+  // où le fondu (basé sur requestAnimationFrame) ne peut pas s'exécuter et
+  // laisserait l'ancien morceau jouer indéfiniment par-dessus le nouveau.
+  safeSetHandler('nexttrack', ()=> playAdjacent(1, { crossfade:false }));
+  safeSetHandler('previoustrack', ()=> playAdjacent(-1, { crossfade:false }));
   safeSetHandler('play', ()=>{ if(audioEl.src) audioEl.play().catch(()=>{}); });
   safeSetHandler('pause', ()=>{ audioEl.pause(); });
   safeSetHandler('seekbackward', (details)=>{ audioEl.currentTime = Math.max(0, audioEl.currentTime - (details.seekOffset || 10)); });
@@ -5091,8 +5106,8 @@ setupMediaSessionHandlers();
 // multimédias comme de simples événements clavier (peu d'écouteurs le font,
 // mais certains claviers Bluetooth ou dongles le font).
 document.addEventListener('keydown', (e)=>{
-  if(e.code === 'MediaTrackNext'){ playAdjacent(1); }
-  else if(e.code === 'MediaTrackPrevious'){ playAdjacent(-1); }
+  if(e.code === 'MediaTrackNext'){ playAdjacent(1, { crossfade:false }); }
+  else if(e.code === 'MediaTrackPrevious'){ playAdjacent(-1, { crossfade:false }); }
 });
 
 
