@@ -1308,6 +1308,10 @@ input,textarea{ font-family:inherit; }
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v18l6-4.5L18 21V3H6z"/></svg>
               Créer un extrait
             </button>
+            <button class="np-menu-item" id="np-menu-share-btn" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4"/></svg>
+              Partager
+            </button>
             <div class="np-menu-sep"></div>
             <label class="np-menu-item np-menu-item-toggle" for="np-menu-concert-toggle">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4L12 2z"/></svg>
@@ -2628,6 +2632,7 @@ tracksRef.orderBy('createdAt', 'desc').onSnapshot((snap)=>{
   renderTracks();
   renderExtractsSection();
   scheduleInitialRecommendations();
+  openSharedTrackFromURL();
 }, (err)=>{
   console.error('Erreur de chargement de la musique :', err);
   showToast("Impossible de charger la musique pour le moment.");
@@ -2647,7 +2652,7 @@ function renderExtractsSection(){
   const section = document.getElementById('extracts-section');
   const row = document.getElementById('extract-row');
   const count = document.getElementById('extracts-count');
-  if(currentView === 'classement' || currentView === 'historique' || !allExtracts.length){
+  if(currentView === 'classement' || currentView === 'historique' || currentView === 'mine' || currentView === 'playlists' || currentView === 'playlist-detail' || !allExtracts.length){
     section.style.display = 'none';
     row.innerHTML = '';
     return;
@@ -3329,6 +3334,16 @@ async function openSharedPlaylistFromURL(){
     showToast("Impossible d'ouvrir cette playlist partagée.");
   }
 }
+/* --- Ouvre/lance automatiquement un titre partagé via ?track=ID dans l'URL --- */
+let sharedTrackIdFromURL = new URLSearchParams(location.search).get('track');
+function openSharedTrackFromURL(){
+  if(!sharedTrackIdFromURL) return;
+  const t = allTracks.find(tr => tr.id === sharedTrackIdFromURL);
+  if(!t) return; // pas encore chargé, ou titre inexistant/supprimé
+  sharedTrackIdFromURL = null;
+  playTrackById(t.id);
+  openNowPlaying();
+}
 document.getElementById('playlist-form-cover-choose').addEventListener('click', ()=> document.getElementById('playlist-form-cover-input').click());
 document.getElementById('playlist-form-cover-input').addEventListener('change', async (e)=>{
   const file = e.target.files[0];
@@ -3537,7 +3552,7 @@ function applyHeroTheme(theme){
 }
 function renderHero(){
   const hero = document.getElementById('hero');
-  if(currentView === 'classement' || currentView === 'historique'){ hero.style.display = 'none'; return; }
+  if(currentView === 'classement' || currentView === 'historique' || currentView === 'mine' || currentView === 'playlists' || currentView === 'playlist-detail'){ hero.style.display = 'none'; return; }
   if(!allTracks.length){ hero.style.display = 'none'; return; }
   // Priorité au titre choisi par l'admin comme "musique de l'événement" ;
   // à défaut, on retombe sur le dernier titre ajouté au catalogue.
@@ -5949,6 +5964,31 @@ function closeEqPanel(){
   npEqBackdrop.classList.remove('open');
 }
 document.getElementById('np-menu-eq-btn').addEventListener('click', ()=>{ closeNpMenu(); openEqPanel(); });
+/* --- Partager le titre en cours depuis le menu "..." du grand lecteur ---
+   Génère un lien direct (?track=ID) vers le morceau : utilise le partage
+   natif quand il est disponible (mobile), sinon copie le lien. */
+document.getElementById('np-menu-share-btn').addEventListener('click', async ()=>{
+  closeNpMenu();
+  if(!currentTrackId) return;
+  const t = allTracks.find(tr => tr.id === currentTrackId);
+  if(!t) return;
+  const shareData = {
+    title: t.title || 'Titre sur RIJOUL MUSIC',
+    text: `Écoute "${t.title || 'ce titre'}" de ${t.artist || 'un artiste'} sur RIJOUL MUSIC 🎵`,
+    url: `${location.origin}${location.pathname}?track=${encodeURIComponent(currentTrackId)}`
+  };
+  if(navigator.share){
+    try{ await navigator.share(shareData); }
+    catch(e){ /* partage annulé par l'utilisateur */ }
+    return;
+  }
+  try{
+    await navigator.clipboard.writeText(shareData.url);
+    showToast('Lien du titre copié ! 🔗');
+  }catch(e){
+    showToast("Impossible de copier le lien automatiquement : " + shareData.url);
+  }
+});
 document.getElementById('np-eq-close').addEventListener('click', closeEqPanel);
 npEqBackdrop.addEventListener('click', closeEqPanel);
 
