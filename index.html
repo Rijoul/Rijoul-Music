@@ -4920,6 +4920,7 @@ async function playTrackById(trackId, direction){
   syncNowPlayingUI();
   refreshNpArtSides();
   animateNpArtTrack(direction);
+  updateMediaSessionMetadata(track);
   try{
     // Le fondu sortant est lancé en parallèle du chargement du nouveau
     // morceau (et non après) : l'écho a ainsi le temps de démarrer pendant
@@ -4977,6 +4978,57 @@ function playAdjacent(delta){
   if(idx >= currentQueue.length) idx = 0;
   playTrackById(currentQueue[idx].id, delta > 0 ? 1 : -1);
 }
+
+/* =========================================================
+   COMMANDES DES ÉCOUTEURS / OREILLETTES BLUETOOTH (Media Session)
+   Un site web ne peut pas savoir directement quel écouteur (gauche
+   ou droit) a été cliqué : ce sont les écouteurs eux-mêmes (ou le
+   système) qui interprètent le triple-clic et envoient au
+   navigateur une commande générique "titre suivant" / "titre
+   précédent" via l'API Media Session — exactement comme le fait
+   Spotify ou Apple Music. Sur la plupart des écouteurs (AirPods et
+   équivalents), le triple-clic sur l'écouteur droit correspond par
+   défaut à "suivant" et sur l'écouteur gauche à "précédent" (réglage
+   modifiable dans l'appli du fabricant). En branchant ces handlers,
+   RIJOUL MUSIC répond donc correctement à ce geste.
+   ========================================================= */
+function updateMediaSessionMetadata(track){
+  if(!('mediaSession' in navigator) || !track) return;
+  try{
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title || 'Sans titre',
+      artist: track.artist || 'Artiste inconnu',
+      album: 'RIJOUL MUSIC',
+      artwork: track.coverURL ? [
+        { src: track.coverURL, sizes: '512x512', type: 'image/png' }
+      ] : []
+    });
+  }catch(e){ /* MediaMetadata indisponible sur ce navigateur */ }
+}
+function setupMediaSessionHandlers(){
+  if(!('mediaSession' in navigator)) return;
+  const safeSetHandler = (action, handler)=>{
+    try{ navigator.mediaSession.setActionHandler(action, handler); }catch(e){ /* action non supportée */ }
+  };
+  // "nexttrack" / "previoustrack" sont les commandes standard envoyées par
+  // les écouteurs (triple-clic droit = suivant, triple-clic gauche =
+  // précédent), le verrou d'écran, ou une télécommande casque/voiture.
+  safeSetHandler('nexttrack', ()=> playAdjacent(1));
+  safeSetHandler('previoustrack', ()=> playAdjacent(-1));
+  safeSetHandler('play', ()=>{ if(audioEl.src) audioEl.play().catch(()=>{}); });
+  safeSetHandler('pause', ()=>{ audioEl.pause(); });
+  safeSetHandler('seekbackward', (details)=>{ audioEl.currentTime = Math.max(0, audioEl.currentTime - (details.seekOffset || 10)); });
+  safeSetHandler('seekforward', (details)=>{ audioEl.currentTime = Math.min(audioEl.duration || Infinity, audioEl.currentTime + (details.seekOffset || 10)); });
+}
+setupMediaSessionHandlers();
+// Filet de sécurité pour les claviers/télécommandes qui envoient les touches
+// multimédias comme de simples événements clavier (peu d'écouteurs le font,
+// mais certains claviers Bluetooth ou dongles le font).
+document.addEventListener('keydown', (e)=>{
+  if(e.code === 'MediaTrackNext'){ playAdjacent(1); }
+  else if(e.code === 'MediaTrackPrevious'){ playAdjacent(-1); }
+});
+
 
 /* =========================================================
    CARROUSEL DE POCHETTES DU GRAND LECTEUR — affiche un aperçu
@@ -5116,6 +5168,7 @@ audioEl.addEventListener('play', ()=>{
   if(!eqRAF) animateEq();
   updateHeroPlayState();
   pushPlaybackState();
+  if('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
 });
 audioEl.addEventListener('pause', ()=>{
   pPlayIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
@@ -5123,6 +5176,7 @@ audioEl.addEventListener('pause', ()=>{
   stopEq();
   updateHeroPlayState();
   pushPlaybackState();
+  if('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
 });
 audioEl.addEventListener('ended', ()=> playAdjacent(1));
 audioEl.addEventListener('seeked', ()=> pushPlaybackState());
