@@ -401,6 +401,33 @@ input,textarea{ font-family:inherit; }
    sans arrêter la musique : elle reste "visible" côté lecture, seule sa
    présence à l'écran est cachée jusqu'à ce qu'on la fasse réapparaître. */
 .player.visible.user-hidden{ transform:translateY(140%); }
+/* Bannière "reprendre sur cet appareil" : apparaît quand un autre appareil
+   du même compte a une lecture en cours (ou en pause) plus récente que ce
+   qui est chargé localement. Flotte au-dessus de la barre de lecture. */
+.sync-banner{
+  position:fixed; left:16px; right:16px; bottom:14px; z-index:59;
+  max-width:520px; margin:0 auto;
+  display:flex; align-items:center; gap:12px;
+  background:rgba(24,20,12,0.86); backdrop-filter:var(--glass-blur); -webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid rgba(255,176,32,0.4);
+  border-radius:20px; padding:10px 12px 10px 10px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 20px 50px -16px rgba(0,0,0,0.9);
+  transform:translateY(160%); opacity:0; transition:transform .35s cubic-bezier(.3,1,.4,1), opacity .35s;
+  pointer-events:none;
+}
+.sync-banner.visible{ transform:translateY(0); opacity:1; pointer-events:auto; }
+.sync-banner.above-player{ bottom:calc(var(--player-h) + 28px); }
+.sync-banner-cover{ width:40px; height:40px; border-radius:10px; overflow:hidden; flex-shrink:0; background:var(--panel-solid); }
+.sync-banner-cover img{ width:100%; height:100%; object-fit:cover; }
+.sync-banner-info{ flex:1; min-width:0; }
+.sync-banner-eyebrow{ font-size:10px; font-weight:700; letter-spacing:.06em; color:var(--copper-bright); text-transform:uppercase; margin:0 0 2px; display:flex; align-items:center; gap:5px; }
+.sync-banner-eyebrow svg{ flex-shrink:0; }
+.sync-banner-title{ font-size:13px; font-weight:600; color:var(--text); margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sync-banner-sub{ font-size:11.5px; color:var(--text-dim); margin:1px 0 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sync-banner-actions{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.sync-banner-resume{ background:var(--copper); color:#241a06; border:0; border-radius:14px; padding:8px 14px; font-size:12.5px; font-weight:700; white-space:nowrap; }
+.sync-banner-dismiss{ width:28px; height:28px; border-radius:50%; background:rgba(255,255,255,0.08); border:1px solid var(--glass-border); color:var(--text-dim); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.sync-banner-dismiss:hover{ color:var(--text); background:rgba(255,255,255,0.14); }
 .p-hide-btn{
   position:absolute; top:-15px; left:50%; transform:translateX(-50%);
   width:34px; height:15px; border-radius:9px 9px 0 0;
@@ -1051,6 +1078,26 @@ input,textarea{ font-family:inherit; }
 </div>
 
 <!-- =========================================================
+     BANNIÈRE DE SYNCHRONISATION MULTI-APPAREILS — proposée quand un
+     autre appareil du même compte a une lecture plus récente.
+     ========================================================= -->
+<div class="sync-banner" id="sync-banner">
+  <div class="sync-banner-cover"><img id="sync-banner-cover-img" alt=""></div>
+  <div class="sync-banner-info">
+    <p class="sync-banner-eyebrow">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="10" height="18" rx="2"/><path d="M17 6h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-3"/><line x1="9" y1="18" x2="9" y2="18"/></svg>
+      <span id="sync-banner-eyebrow-text">En cours sur un autre appareil</span>
+    </p>
+    <p class="sync-banner-title" id="sync-banner-title">—</p>
+    <p class="sync-banner-sub" id="sync-banner-sub">—</p>
+  </div>
+  <div class="sync-banner-actions">
+    <button class="sync-banner-resume" id="sync-banner-resume">Reprendre ici</button>
+    <button class="sync-banner-dismiss" id="sync-banner-dismiss" aria-label="Ignorer">✕</button>
+  </div>
+</div>
+
+<!-- =========================================================
      PLAYER BAR
      ========================================================= -->
 <div class="player" id="player">
@@ -1560,6 +1607,23 @@ const firebaseConfig = {
 const ADMIN_UID = "K4DFzCs0MVccolAVciX1ViPUBk83"; // même admin que RIJOUL VISION
 const ONYX_APP_ID = "onyx-pro-chat"; // même espace de profils partagés que RIJOUL VISION
 
+// Identifiant unique de CET onglet/appareil (régénéré à chaque chargement de
+// page), utilisé pour ignorer nos propres écritures dans le flux de
+// synchronisation de lecture (voir "SYNCHRO MULTI-APPAREILS").
+const DEVICE_ID = (crypto.randomUUID ? crypto.randomUUID() : 'dev-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+// Nom lisible de l'appareil, affiché dans la bannière de reprise sur les
+// autres appareils du compte (ex. "iPhone", "Mac", "Android").
+function detectDeviceLabel(){
+  const ua = navigator.userAgent || '';
+  if(/iPhone/i.test(ua)) return 'iPhone';
+  if(/iPad/i.test(ua)) return 'iPad';
+  if(/Android/i.test(ua)) return 'Android';
+  if(/Macintosh/i.test(ua)) return 'Mac';
+  if(/Windows/i.test(ua)) return 'PC';
+  return 'un appareil';
+}
+const DEVICE_LABEL = detectDeviceLabel();
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
@@ -1771,6 +1835,12 @@ const playlistsRef = db.collection("musicPlaylists");
 // membres et mis en avant dans la section "Extraits" de la page d'accueil.
 const extractsRef = db.collection("musicExtracts");
 
+// Synchronisation de la lecture entre appareils d'un même compte : un seul
+// document par utilisateur (id = uid), mis à jour à chaque changement de
+// titre / lecture / pause / avance, pour pouvoir reprendre l'écoute
+// facilement sur un autre appareil (voir bloc "SYNCHRO MULTI-APPAREILS").
+const playbackSyncRef = db.collection("musicPlayback");
+
 /* =========================================================
    UTILITAIRES
    ========================================================= */
@@ -1865,6 +1935,13 @@ let allPlaylists = [];     // playlists de l'utilisateur connecté (onSnapshot f
 let playlistsUnsub = null;
 let currentPlaylistId = null; // playlist affichée en vue détail
 let editingPlaylistId = null; // playlist en cours de modification dans playlist-form-overlay
+
+// --- Synchro multi-appareils (voir bloc "SYNCHRO MULTI-APPAREILS") ---
+let playbackSyncUnsub = null;
+let ignoreNextPlaybackSyncWrite = false; // vrai pendant qu'on applique un état distant (évite de le réécrire aussitôt)
+let lastPlaybackSyncWriteAt = 0;         // throttle des écritures périodiques pendant la lecture
+let lastAppliedRemoteUpdatedAtMs = 0;    // évite de re-proposer la même bannière plusieurs fois
+let pendingSyncState = null;             // état distant en attente d'action de l'utilisateur (bannière)
 let playlistFormCoverDataUrl = null;
 let pickerTrackId = null;  // titre ciblé par la modale "Ajouter à une playlist"
 
@@ -2143,6 +2220,7 @@ auth.onAuthStateChanged(async (user)=>{
       subscribeToProfile(realUser.uid);
     }catch(err){ console.error("Profil partagé indisponible :", err); }
     subscribeToPlaylists(realUser.uid);
+    subscribeToPlaybackSync(realUser.uid);
   }else{
     accountBtn.style.display = 'flex';
     userChip.classList.remove('visible');
@@ -2153,6 +2231,8 @@ auth.onAuthStateChanged(async (user)=>{
     if(typeof setConcertMode === 'function') setConcertMode(false, { save:false });
     if(playlistsUnsub){ playlistsUnsub(); playlistsUnsub = null; }
     allPlaylists = [];
+    if(playbackSyncUnsub){ playbackSyncUnsub(); playbackSyncUnsub = null; }
+    hideSyncBanner();
     if(currentView === 'playlists' || currentView === 'playlist-detail'){ switchView('library'); }
     renderPlaylistsGrid();
   }
@@ -4396,6 +4476,7 @@ function stopPlayback(){
   renderTracks();
   updateHeroPlayState();
   closeOverlay('nowplaying-overlay');
+  pushPlaybackState({ stopped:true });
 }
 function playAdjacent(delta){
   if(!currentQueue.length) return;
@@ -4542,14 +4623,17 @@ audioEl.addEventListener('play', ()=>{
   npPlayIcon.innerHTML = pPlayIcon.innerHTML;
   if(!eqRAF) animateEq();
   updateHeroPlayState();
+  pushPlaybackState();
 });
 audioEl.addEventListener('pause', ()=>{
   pPlayIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
   npPlayIcon.innerHTML = pPlayIcon.innerHTML;
   stopEq();
   updateHeroPlayState();
+  pushPlaybackState();
 });
 audioEl.addEventListener('ended', ()=> playAdjacent(1));
+audioEl.addEventListener('seeked', ()=> pushPlaybackState());
 // Affiche la durée totale du lecteur : celle de l'extrait en cours si un
 // extrait est actif, sinon celle du titre complet.
 function updateClipDurationDisplay(){
@@ -4602,7 +4686,120 @@ audioEl.addEventListener('timeupdate', ()=>{
     crossfadeTriggered = true;
     playAdjacent(1);
   }
+  // Écriture périodique (throttlée) de la position, pour que la reprise sur
+  // un autre appareil retombe proche de l'endroit réel, même sans pause.
+  pushPlaybackState({ periodic:true });
 });
+/* =========================================================
+   SYNCHRO MULTI-APPAREILS — permet de reprendre l'écoute d'un
+   compte sur un autre appareil : à chaque lecture/pause/avance/
+   changement de titre, on écrit l'état courant dans Firestore
+   (musicPlayback/{uid}). Les autres appareils connectés au même
+   compte écoutent ce document et proposent une bannière "Reprendre
+   ici" dès qu'un état plus récent, venant d'un autre appareil,
+   arrive. Rien n'est automatique (pas de lecture forcée) : c'est
+   toujours l'utilisateur qui clique pour reprendre, ce qui respecte
+   aussi les restrictions de lecture automatique des navigateurs.
+   ========================================================= */
+const PLAYBACK_SYNC_PERIODIC_MS = 4000; // fréquence max des écritures pendant la lecture
+
+function currentPlaybackSnapshot(){
+  const clipActive = activeClipStart !== null && activeClipEnd !== null;
+  return {
+    trackId: currentTrackId,
+    position: clipActive ? Math.max(0, audioEl.currentTime - activeClipStart) : (audioEl.currentTime || 0),
+    isPlaying: !!(currentTrackId && audioEl.src && !audioEl.paused)
+  };
+}
+
+async function pushPlaybackState(opts){
+  opts = opts || {};
+  const user = auth.currentUser;
+  if(!user || user.isAnonymous) return; // synchro réservée aux comptes réels
+  if(ignoreNextPlaybackSyncWrite) return; // état qu'on vient nous-même d'appliquer depuis un autre appareil
+  if(opts.stopped && !currentTrackId){
+    // Rien n'était en cours : pas la peine d'écrire un état "arrêté" vide.
+  }
+  const now = Date.now();
+  if(opts.periodic){
+    if(!currentTrackId || audioEl.paused) return; // écriture périodique inutile hors lecture active
+    if(now - lastPlaybackSyncWriteAt < PLAYBACK_SYNC_PERIODIC_MS) return;
+  }
+  lastPlaybackSyncWriteAt = now;
+  const snap = currentPlaybackSnapshot();
+  const track = snap.trackId ? allTracks.find(t => t.id === snap.trackId) : null;
+  try{
+    await playbackSyncRef.doc(user.uid).set({
+      trackId: opts.stopped ? null : snap.trackId,
+      trackTitle: track ? (track.title || 'Sans titre') : null,
+      trackArtist: track ? (track.artist || 'Artiste inconnu') : null,
+      trackCover: track ? (track.coverURL || null) : null,
+      position: opts.stopped ? 0 : snap.position,
+      isPlaying: opts.stopped ? false : snap.isPlaying,
+      deviceId: DEVICE_ID,
+      deviceLabel: DEVICE_LABEL,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge:true });
+  }catch(err){
+    console.error("Impossible de synchroniser la lecture entre appareils :", err);
+  }
+}
+
+function subscribeToPlaybackSync(uid){
+  if(playbackSyncUnsub) playbackSyncUnsub();
+  playbackSyncUnsub = playbackSyncRef.doc(uid).onSnapshot((snap)=>{
+    const data = snap.data();
+    if(!data || !data.trackId || data.deviceId === DEVICE_ID) return;
+    const updatedAtMs = data.updatedAt && data.updatedAt.toMillis ? data.updatedAt.toMillis() : Date.now();
+    // Évite de reproposer la même bannière plusieurs fois pour un même état.
+    if(updatedAtMs <= lastAppliedRemoteUpdatedAtMs) return;
+    // Si ce même titre est déjà celui en cours localement, inutile de
+    // proposer une reprise (on suit déjà, ou c'est notre propre lecture).
+    if(data.trackId === currentTrackId) { lastAppliedRemoteUpdatedAtMs = updatedAtMs; return; }
+    lastAppliedRemoteUpdatedAtMs = updatedAtMs;
+    pendingSyncState = data;
+    showSyncBanner(data);
+  }, (err)=>{
+    console.error("Erreur de synchronisation de lecture :", err);
+  });
+}
+
+function showSyncBanner(data){
+  const banner = document.getElementById('sync-banner');
+  document.getElementById('sync-banner-cover-img').src = data.trackCover || fallbackCoverSvg();
+  document.getElementById('sync-banner-title').textContent = data.trackTitle || 'Sans titre';
+  document.getElementById('sync-banner-sub').textContent = (data.trackArtist || 'Artiste inconnu') + ' · ' + formatTime(data.position || 0);
+  document.getElementById('sync-banner-eyebrow-text').textContent = data.isPlaying
+    ? `En cours sur ${data.deviceLabel || 'un autre appareil'}`
+    : `En pause sur ${data.deviceLabel || 'un autre appareil'}`;
+  banner.classList.toggle('above-player', playerBar.classList.contains('visible') && !playerBar.classList.contains('user-hidden'));
+  banner.classList.add('visible');
+}
+function hideSyncBanner(){
+  document.getElementById('sync-banner').classList.remove('visible');
+  pendingSyncState = null;
+}
+document.getElementById('sync-banner-dismiss').addEventListener('click', hideSyncBanner);
+document.getElementById('sync-banner-resume').addEventListener('click', async ()=>{
+  if(!pendingSyncState) { hideSyncBanner(); return; }
+  const data = pendingSyncState;
+  const targetTime = data.position || 0;
+  hideSyncBanner();
+  // On applique l'état distant sans le réécrire aussitôt dans Firestore
+  // (sinon on court-circuiterait la lecture en cours sur l'autre appareil).
+  ignoreNextPlaybackSyncWrite = true;
+  await playTrackById(data.trackId);
+  const applyTime = ()=>{ try{ audioEl.currentTime = targetTime; }catch(e){} };
+  if(audioEl.readyState >= 1) applyTime();
+  else audioEl.addEventListener('loadedmetadata', applyTime, { once:true });
+  if(!data.isPlaying){
+    // L'autre appareil était en pause : on charge le titre à la bonne
+    // position mais on ne force pas la lecture.
+    setTimeout(()=>{ if(!audioEl.paused) audioEl.pause(); }, 200);
+  }
+  setTimeout(()=>{ ignoreNextPlaybackSyncWrite = false; }, 800);
+});
+
 /* =========================================================
    BARRE DE PROGRESSION — glisser pour avancer/reculer dans le
    morceau (au clic simple ET en maintenant le curseur/doigt).
