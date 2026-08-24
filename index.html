@@ -559,6 +559,7 @@ input,textarea{ font-family:inherit; }
 .np-strobe-corner{
   position:absolute; bottom:0; width:65vw; height:55vh; max-width:520px; max-height:460px;
   opacity:0; pointer-events:none; will-change:opacity;
+  transition:opacity .18s ease-out;
 }
 .np-strobe-corner-left{
   left:0;
@@ -5201,17 +5202,11 @@ const npCoverEl = document.getElementById('np-cover');
 const concertMobileMQ = window.matchMedia('(max-width:760px)');
 const concertLitePerf = concertMobileMQ.matches || ('ontouchstart' in window);
 let concertFrameCounter = 0;
-// Détection des coups de basse (pour le flash) : on suit un niveau de
-// fond de la basse (moyenne mobile lente, "enveloppe") et on déclenche un
-// coup quand la valeur instantanée dépasse nettement cette enveloppe.
-// Contrairement à une simple comparaison à une moyenne + seuil fixe, ça
-// s'adapte automatiquement au volume/mastering du morceau : ça marche
-// aussi bien sur un titre à basse discrète que sur un titre à basse
-// constamment forte (l'enveloppe monte avec le fond sonore, donc seuls
-// les vrais pics au-dessus de ce fond continuent de déclencher un flash).
-let concertBassEnvelope = 0;
-let concertLastHitTime = 0;
-let concertStrobeLevel = 0;
+// Flash de basse : même principe que les faisceaux (médiums/aigus) —
+// pas de détection de "coup" isolé, mais une intensité qui suit en
+// continu le niveau de basse, avec une hystérésis pour apparaître/
+// disparaître nettement plutôt que de scintiller autour du seuil.
+let concertBassOn = false;
 // Faisceaux : état ON/OFF (avec hystérésis) piloté par les médiums et les
 // aigus, pour qu'ils apparaissent/disparaissent nettement au lieu de
 // varier en continu.
@@ -5235,9 +5230,7 @@ function resetConcertLights(){
   if(concertStrobeLeft) concertStrobeLeft.style.opacity = 0;
   if(concertStrobeRight) concertStrobeRight.style.opacity = 0;
   if(npCoverEl) npCoverEl.style.transform = '';
-  concertBassEnvelope = 0;
-  concertLastHitTime = 0;
-  concertStrobeLevel = 0;
+  concertBassOn = false;
   concertMidOn = false;
   concertTrebleOn = false;
   concertShakeMag = 0;
@@ -5349,38 +5342,21 @@ function updateConcertLights(data){
     if(concertBeams[4]) concertBeams[4].style.opacity = trebleOpacity; // droite
   }
 
-  // Flashs en dégradé (angles bas de l'écran) : déclenchés sur un vrai
-  // "coup" de basse plutôt que sur un niveau de basse simplement élevé.
-  // On suit une enveloppe (moyenne mobile lente) du niveau de basse ; un
-  // coup est détecté quand la valeur instantanée dépasse nettement cette
-  // enveloppe, avec un plancher minimal pour ignorer le bruit de fond en
-  // silence et un temps mini entre deux flashs pour éviter le stroboscope
-  // permanent. L'enveloppe elle-même monte lentement, donc pendant les
-  // passages où la basse reste forte en continu, elle rattrape le niveau
-  // ambiant et seuls les nouveaux pics au-dessus continuent de flasher —
-  // au lieu de ne plus jamais se déclencher comme avec un seuil fixe.
-  const envelopeAttack = 0.10;  // vitesse à laquelle l'enveloppe suit une hausse du fond sonore
-  const envelopeRelease = 0.045; // légèrement plus lent à la baisse, pour ne pas "suivre" les pics eux-mêmes
-  concertBassEnvelope += (bass - concertBassEnvelope) * (bass > concertBassEnvelope ? envelopeAttack : envelopeRelease);
-  const now = performance.now();
-  const bassDelta = bass - concertBassEnvelope;
-  const isHit = bass > 0.14 && bassDelta > Math.max(0.07, concertBassEnvelope * 0.55) && (now - concertLastHitTime) > 190;
-  if(isHit){
-    concertLastHitTime = now;
-    concertStrobeLevel = clamp(0.6 + bassDelta * 1.7);
-  }else{
-    concertStrobeLevel *= 0.72; // extinction rapide façon flash, pas un fondu
-  }
-  const strobeOpacity = concertStrobeLevel < 0.03 ? 0 : concertStrobeLevel;
-  if(concertStrobeLeft) concertStrobeLeft.style.opacity = strobeOpacity;
-  if(concertStrobeRight) concertStrobeRight.style.opacity = strobeOpacity;
+  // Flashs en dégradé (angles bas de l'écran) : même logique que les
+  // faisceaux ci-dessus — pas de détection de "coup" isolé, l'intensité
+  // suit en direct le niveau de basse (avec hystérésis pour apparaître/
+  // disparaître nettement), donc le flash reste allumé tant qu'il y a de
+  // la basse et devient plus ou moins intense avec elle, sans jamais
+  // rester bloqué allumé ou éteint.
+  concertBassOn = concertBassOn ? (bass > offT) : (bass > onT);
+  const bassOpacity = concertBassOn ? clamp(0.1 + bass * 0.95) : 0;
+  if(concertStrobeLeft) concertStrobeLeft.style.opacity = bassOpacity;
+  if(concertStrobeRight) concertStrobeRight.style.opacity = bassOpacity;
 
   // Tremblement de la pochette : suit le niveau de basse en direct, avec
   // une petite rémanence (décroissance) pour un mouvement plus organique
-  // qu'un bruit brut, et une pointe supplémentaire sur chaque coup détecté
-  // (isHit) pour un effet plus "percussif".
+  // qu'un bruit brut.
   concertShakeMag = Math.max(bass, concertShakeMag * 0.82);
-  if(isHit) concertShakeMag = clamp(concertShakeMag + 0.3);
   if(npCoverEl){
     const amt = clamp(concertShakeMag);
     if(amt > 0.05){
