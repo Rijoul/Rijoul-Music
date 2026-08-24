@@ -555,7 +555,10 @@ input,textarea{ font-family:inherit; }
 @keyframes npBeamSweep5{ 0%,100%{ transform:rotate(18deg); } 50%{ transform:rotate(-2deg); } }
 /* Flash de basse : au lieu d'un flash blanc plein écran derrière la
    pochette, deux flashs en dégradé posés dans les angles bas de l'écran
-   (façon éclairage de scène au sol), qui pulsent sur les coups de basse. */
+   (façon éclairage de scène au sol), qui pulsent sur les coups de basse.
+   Couleur pilotée en JS (--strobe-color / --strobe-color-2) pour reprendre
+   la couleur dominante de la pochette affichée au centre ; les valeurs
+   ci-dessous ne servent que de repli tant qu'aucune couleur n'est extraite. */
 .np-strobe-corner{
   position:absolute; bottom:0; width:65vw; height:55vh; max-width:520px; max-height:460px;
   opacity:0; pointer-events:none; will-change:opacity;
@@ -563,11 +566,11 @@ input,textarea{ font-family:inherit; }
 }
 .np-strobe-corner-left{
   left:0;
-  background:radial-gradient(circle at 0% 100%, rgba(255,176,32,.9) 0%, rgba(255,90,200,.45) 40%, transparent 72%);
+  background:radial-gradient(circle at 0% 100%, var(--strobe-color, rgba(255,176,32,.92)) 0%, var(--strobe-color-2, rgba(255,176,32,.4)) 40%, transparent 72%);
 }
 .np-strobe-corner-right{
   right:0;
-  background:radial-gradient(circle at 100% 100%, rgba(120,190,255,.9) 0%, rgba(255,90,200,.45) 40%, transparent 72%);
+  background:radial-gradient(circle at 100% 100%, var(--strobe-color, rgba(255,176,32,.92)) 0%, var(--strobe-color-2, rgba(255,176,32,.4)) 40%, transparent 72%);
 }
 /* Affichage mobile du mode concert : au lieu de faisceaux balayants
    (bureau) ou d'une simple lueur rectangulaire, la pochette est entourée
@@ -5288,6 +5291,45 @@ function extractConcertBeamColors(imgEl){
     return null; // image cross-origin non autorisée pour le canevas : on garde les couleurs par défaut
   }
 }
+function extractDominantCoverColor(imgEl){
+  // Contrairement à extractConcertBeamColors (qui privilégie une couleur
+  // claire pour un rendu "faisceau de scène"), on veut ici la vraie
+  // couleur dominante de la pochette, telle quelle, pour que le flash
+  // reprenne fidèlement la couleur de l'image affichée au centre.
+  try{
+    if(!imgEl || !imgEl.complete || !imgEl.naturalWidth) return null;
+    const size = 24;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(imgEl, 0, 0, size, size);
+    const data = ctx.getImageData(0, 0, size, size).data; // lève une erreur si l'image est cross-origin sans CORS
+    const buckets = new Map();
+    for(let i = 0; i < data.length; i += 4){
+      if(data[i + 3] < 128) continue; // pixels transparents ignorés
+      const r = quantizeChannel(data[i]), g = quantizeChannel(data[i + 1]), b = quantizeChannel(data[i + 2]);
+      const key = r + ',' + g + ',' + b;
+      const entry = buckets.get(key);
+      if(entry) entry.count++;
+      else buckets.set(key, { r, g, b, count: 1 });
+    }
+    const sorted = Array.from(buckets.values()).sort((a, b) => b.count - a.count);
+    if(!sorted.length) return null;
+    let dominant = sorted[0];
+    // Si la couleur dominante est presque noire, elle serait invisible en
+    // flash : on remonte légèrement sa luminosité sans changer sa teinte
+    // (pas de remplacement par une couleur générique, contrairement aux
+    // faisceaux, pour rester fidèle à l'image).
+    const luminance = c => 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+    if(luminance(dominant) < 40){
+      const boost = 80;
+      dominant = { r: Math.min(255, dominant.r + boost), g: Math.min(255, dominant.g + boost), b: Math.min(255, dominant.b + boost) };
+    }
+    return dominant;
+  }catch(err){
+    return null; // image cross-origin non autorisée pour le canevas : on garde la couleur par défaut
+  }
+}
 function applyConcertBeamColors(){
   if(!npCoverEl || !concertBeams.length) return;
   const run = () => {
@@ -5301,6 +5343,18 @@ function applyConcertBeamColors(){
       if(color) beam.style.setProperty('--beam-color', color);
       else beam.style.removeProperty('--beam-color'); // retombe sur les couleurs par défaut du CSS
     });
+    // Flashs de basse (angles bas) : couleur dominante réelle de la
+    // pochette (pas la couleur "claire" utilisée pour les faisceaux), pour
+    // que le flash reprenne fidèlement la couleur de l'image au centre.
+    const dominant = extractDominantCoverColor(npCoverEl);
+    const strobeColor = dominant ? `rgba(${dominant.r},${dominant.g},${dominant.b},.92)` : null;
+    const strobeColorSoft = dominant ? `rgba(${dominant.r},${dominant.g},${dominant.b},.4)` : null;
+    if(npConcertLightsEl){
+      if(strobeColor) npConcertLightsEl.style.setProperty('--strobe-color', strobeColor);
+      else npConcertLightsEl.style.removeProperty('--strobe-color');
+      if(strobeColorSoft) npConcertLightsEl.style.setProperty('--strobe-color-2', strobeColorSoft);
+      else npConcertLightsEl.style.removeProperty('--strobe-color-2');
+    }
   };
   if(npCoverEl.complete && npCoverEl.naturalWidth) run();
   else npCoverEl.addEventListener('load', run, { once: true });
