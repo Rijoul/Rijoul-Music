@@ -330,6 +330,24 @@ input,textarea{ font-family:inherit; }
 .extract-card-label{ font-weight:700; font-size:13.5px; margin:0 0 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .extract-card-track{ font-size:11.5px; color:var(--text-dim); margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
+/* =========================================================
+   PLAYLISTS — section page d'accueil (rangée horizontale avec la
+   playlist auto-générée "Pour vous" en tête, suivie des playlists
+   de l'utilisateur connecté).
+   ========================================================= */
+.home-playlists-section{ margin-bottom:8px; }
+.home-pl-row{ display:flex; gap:18px; overflow-x:auto; padding:2px 2px 14px; margin-bottom:8px; scrollbar-width:thin; }
+.home-pl-row::-webkit-scrollbar{ height:8px; }
+.home-pl-row .card{ flex:0 0 190px; width:190px; margin-bottom:0; }
+.home-pl-card-foryou .card-cover{ background:linear-gradient(145deg, rgba(255,176,32,0.35), rgba(255,211,122,0.12)); }
+.home-pl-card-foryou .card-cover-badge{
+  position:absolute; left:8px; top:8px; z-index:1; font-size:10.5px; font-weight:700;
+  padding:3px 8px; border-radius:20px; background:rgba(0,0,0,0.55); color:var(--copper-bright);
+  letter-spacing:.02em; backdrop-filter:blur(6px);
+}
+.home-pl-see-all{ font-family:var(--mono); font-size:12px; color:var(--text-dim); background:none; border:0; cursor:pointer; padding:0; }
+.home-pl-see-all:hover{ color:var(--copper-bright); }
+
 /* --- Modale de création d'extrait --- */
 .extract-form-track{ display:flex; align-items:center; gap:12px; margin-bottom:16px; padding:10px; background:var(--panel); border:1px solid var(--line); border-radius:16px; }
 .extract-form-cover{ width:52px; height:52px; border-radius:11px; overflow:hidden; flex-shrink:0; background:var(--panel-solid); }
@@ -937,6 +955,8 @@ input,textarea{ font-family:inherit; }
   .extract-card{ flex:0 0 118px; width:118px; }
   .extract-card-label{ font-size:12px; }
   .extract-card-track{ font-size:10.5px; }
+  .home-pl-row{ gap:11px; padding:2px 2px 10px; }
+  .home-pl-row .card{ flex:0 0 148px; width:148px; }
 
   /* Modales plein écran sur mobile, plus faciles à utiliser au doigt. */
   .overlay{ padding:0; align-items:flex-end; }
@@ -1053,6 +1073,17 @@ input,textarea{ font-family:inherit; }
       <span class="section-count" id="extracts-count">0 extrait</span>
     </div>
     <div class="extract-row" id="extract-row"></div>
+  </section>
+
+  <!-- PLAYLISTS — section mise en avant sur la page d'accueil : la
+       playlist auto-générée "Pour vous" apparaît toujours en premier,
+       suivie des playlists du membre connecté. -->
+  <section class="home-playlists-section" id="home-playlists-section" style="display:none;">
+    <div class="section-head">
+      <h2 class="section-title">Playlists</h2>
+      <button class="home-pl-see-all" id="home-pl-see-all">Tout voir →</button>
+    </div>
+    <div class="home-pl-row" id="home-pl-row"></div>
   </section>
 
   <!-- BIBLIOTHÈQUE -->
@@ -2057,6 +2088,8 @@ let uploadCoverDataUrl = null;
 let allPlaylists = [];     // playlists de l'utilisateur connecté (onSnapshot filtré par ownerId)
 let playlistsUnsub = null;
 let currentPlaylistId = null; // playlist affichée en vue détail
+const FOR_YOU_PLAYLIST_ID = 'for-you'; // playlist virtuelle générée pour l'utilisateur, affichée sur l'accueil
+const FOR_YOU_TRACK_LIMIT = 30; // nombre de titres retenus dans la playlist "Pour vous"
 let editingPlaylistId = null; // playlist en cours de modification dans playlist-form-overlay
 
 // --- Synchro multi-appareils (voir bloc "SYNCHRO MULTI-APPAREILS") ---
@@ -2421,6 +2454,9 @@ function openPlaylistDetail(id){
   renderTracks();
 }
 document.getElementById('playlist-detail-back').addEventListener('click', ()=>{
+  // La playlist "Pour vous" est toujours ouverte depuis l'accueil : on y
+  // revient directement plutôt que d'aller vers l'onglet "Playlists".
+  if(currentPlaylistId === FOR_YOU_PLAYLIST_ID){ switchView('library'); return; }
   // Une playlist partagée ouverte via un lien n'appartient pas forcément à
   // l'utilisateur courant : on revient à la bibliothèque plutôt que
   // d'imposer une connexion pour accéder à l'onglet "Playlists".
@@ -2911,6 +2947,7 @@ function subscribeToPlaylists(uid){
       return { id: d.id, ...data, createdAtMs: (data.createdAt && data.createdAt.toMillis) ? data.createdAt.toMillis() : 0 };
     });
     renderPlaylistsGrid();
+    renderHomePlaylistsSection();
     if(currentView === 'playlist-detail') renderTracks();
     if(document.getElementById('add-to-playlist-overlay').classList.contains('open')) renderAddToPlaylistList();
     if(document.getElementById('add-tracks-overlay').classList.contains('open')){
@@ -3038,13 +3075,16 @@ function paintPlaylistHeader(pl, list, isOwner){
 
   // Seul le propriétaire peut modifier / supprimer / partager sa playlist ;
   // un visiteur arrivé via un lien de partage peut seulement l'écouter et
-  // l'enregistrer dans sa propre bibliothèque.
+  // l'enregistrer dans sa propre bibliothèque. La playlist "Pour vous" est
+  // générée automatiquement : ni modifiable/partageable, ni "partagée avec
+  // toi" au sens d'un lien reçu.
+  const isAuto = pl.id === FOR_YOU_PLAYLIST_ID;
   document.getElementById('pl-detail-add-tracks').style.display = isOwner ? '' : 'none';
   document.getElementById('pl-detail-edit').style.display = isOwner ? '' : 'none';
   document.getElementById('pl-detail-delete').style.display = isOwner ? '' : 'none';
   document.getElementById('pl-detail-share').style.display = isOwner ? '' : 'none';
-  document.getElementById('pl-detail-save').style.display = isOwner ? 'none' : '';
-  document.getElementById('pl-detail-shared-badge').style.display = isOwner ? 'none' : '';
+  document.getElementById('pl-detail-save').style.display = (isOwner || isAuto) ? 'none' : '';
+  document.getElementById('pl-detail-shared-badge').style.display = (isOwner || isAuto) ? 'none' : '';
   updateOfflinePlaylistButton();
 }
 
@@ -3589,6 +3629,114 @@ function sortByRecommendation(list, uid){
     .map(x => x.t);
 }
 
+/* =========================================================
+   PLAYLIST "POUR VOUS" — playlist virtuelle (non stockée dans
+   Firestore) recalculée à la volée à partir du même moteur de
+   recommandation que la bibliothèque : elle met en avant les
+   titres que l'utilisateur a le plus de chances d'aimer (déjà
+   likés/écoutés, artistes proches de ses goûts, ou à défaut les
+   titres les plus populaires de RIJOUL MUSIC pour les nouveaux
+   membres / visiteurs non connectés).
+   ========================================================= */
+function buildForYouPlaylist(){
+  const uid = auth.currentUser ? auth.currentUser.uid : null;
+  const ranked = sortByRecommendation(allTracks, uid);
+  const trackIds = ranked.slice(0, FOR_YOU_TRACK_LIMIT).map(t => t.id);
+  const first = ranked[0];
+  const pl = {
+    id: FOR_YOU_PLAYLIST_ID,
+    name: '✨ Pour vous',
+    description: uid
+      ? "Une sélection sur mesure, basée sur les titres que tu likes et écoutes le plus."
+      : "Les titres les plus populaires de RIJOUL MUSIC en ce moment. Connecte-toi pour une sélection sur mesure.",
+    trackIds,
+    coverURL: first ? first.coverURL : null,
+    isAuto: true
+  };
+  sharedPlaylistCache[FOR_YOU_PLAYLIST_ID] = pl;
+  return pl;
+}
+function playForYouPlaylist(){
+  const pl = buildForYouPlaylist();
+  const list = pl.trackIds.map(id => allTracks.find(t => t.id === id)).filter(Boolean);
+  if(!list.length){ showToast("Pas encore assez de titres pour te proposer une sélection."); return; }
+  currentQueue = list;
+  currentTrackIndex = 0;
+  playTrackById(list[0].id);
+}
+function openForYouPlaylist(){
+  buildForYouPlaylist();
+  openPlaylistDetail(FOR_YOU_PLAYLIST_ID);
+}
+function renderHomePlaylistsSection(){
+  const section = document.getElementById('home-playlists-section');
+  if(currentView !== 'library' || !allTracks.length){
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+  const row = document.getElementById('home-pl-row');
+  const forYou = buildForYouPlaylist();
+  const forYouCover = forYou.coverURL || fallbackCoverSvg();
+  const ownedPlaylists = [...allPlaylists].sort((a,b)=> (b.createdAtMs || 0) - (a.createdAtMs || 0));
+
+  let html = `
+    <div class="card home-pl-card-foryou" data-for-you="1">
+      <div class="card-cover">
+        <span class="card-cover-badge">AUTO</span>
+        <img src="${escapeHtml(forYouCover)}" alt="">
+        <button class="card-play" data-play-for-you aria-label="Lire la playlist Pour vous">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+      </div>
+      <p class="card-title">✨ Pour vous</p>
+      <p class="card-artist">${forYou.trackIds.length} ${forYou.trackIds.length > 1 ? 'titres' : 'titre'} • Fait pour toi</p>
+    </div>`;
+
+  html += ownedPlaylists.map(pl=>{
+    const trackIds = Array.isArray(pl.trackIds) ? pl.trackIds : [];
+    const firstTrack = trackIds.map(id=> allTracks.find(t=>t.id===id)).find(Boolean);
+    const cover = pl.coverURL || (firstTrack && firstTrack.coverURL) || fallbackCoverSvg();
+    return `
+    <div class="card" data-playlist-id="${pl.id}">
+      <div class="card-cover">
+        <img src="${escapeHtml(cover)}" alt="">
+        <button class="card-play" data-play-playlist="${pl.id}" aria-label="Lire la playlist">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+      </div>
+      <p class="card-title">${escapeHtml(pl.name || 'Playlist sans nom')}</p>
+      <p class="card-artist">${trackIds.length} ${trackIds.length > 1 ? 'titres' : 'titre'}</p>
+    </div>`;
+  }).join('');
+
+  row.innerHTML = html;
+
+  const forYouCard = row.querySelector('[data-for-you]');
+  if(forYouCard){
+    forYouCard.querySelector('.card-cover').addEventListener('click', (e)=>{
+      if(e.target.closest('[data-play-for-you]')) return;
+      openForYouPlaylist();
+    });
+    forYouCard.querySelector('.card-title').addEventListener('click', openForYouPlaylist);
+  }
+  row.querySelectorAll('[data-play-for-you]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); playForYouPlaylist(); });
+  });
+  row.querySelectorAll('.card[data-playlist-id]').forEach(card=>{
+    const id = card.dataset.playlistId;
+    card.querySelector('.card-cover').addEventListener('click', (e)=>{
+      if(e.target.closest('[data-play-playlist]')) return;
+      openPlaylistDetail(id);
+    });
+    card.querySelector('.card-title').addEventListener('click', ()=> openPlaylistDetail(id));
+  });
+  row.querySelectorAll('[data-play-playlist]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); playPlaylistById(btn.dataset.playPlaylist); });
+  });
+}
+document.getElementById('home-pl-see-all').addEventListener('click', ()=> switchView('playlists'));
+
 function renderTracks(){
   const uid = auth.currentUser ? auth.currentUser.uid : null;
   if(currentView === 'library'){
@@ -3612,6 +3760,7 @@ function renderTracks(){
   }else if(currentView === 'historique'){
     renderHistory();
   }
+  renderHomePlaylistsSection();
   // Garde les pochettes précédente/suivante du grand lecteur à jour si la
   // liste affichée change (recherche, ajout/suppression d'un titre…),
   // sans rejouer l'animation de glissement.
