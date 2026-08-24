@@ -2481,25 +2481,22 @@ document.getElementById('brand-home').addEventListener('click', (e)=>{ e.prevent
   }
 })();
 /* =========================================================
-   MODE HORS CONNEXION (Service Worker)
-   Met en cache la "coquille" de l'app (cette page + les scripts/polices
-   externes dont elle dépend : SDK Firebase, Google Fonts, lamejs) afin de
-   pouvoir OUVRIR l'app même sans connexion internet, au lieu de l'erreur
-   "pas de connexion" du navigateur. Les DONNÉES (titres, playlists) sont
-   gérées séparément : par la persistance hors-ligne Firestore activée
-   plus haut (db.enablePersistence) pour ce qui a déjà été chargé, et par
-   le téléchargement explicite (OFFLINE_DB_NAME, IndexedDB) pour l'écoute
-   garantie hors-ligne d'une playlist entière.
-   Le fichier sw.js doit être déposé À CÔTÉ de cette page (même dossier)
-   pour que l'enregistrement ci-dessous fonctionne.
+   HORS CONNEXION — sans Service Worker
+   Un vrai fichier sw.js (nécessaire pour que l'app puisse s'OUVRIR à froid
+   sans connexion, avant même que le HTML ait pu être chargé) ne peut pas
+   être remplacé par du code intégré ici : les navigateurs refusent
+   d'enregistrer un service worker dont le script vient d'une Blob/data URL
+   générée en JS plutôt que d'un vrai fichier .js servi par l'hébergement
+   (restriction de sécurité, pas une limite technique contournable).
+   Sans ce fichier séparé, l'app reste donc dépendante du réseau pour son
+   tout premier chargement. En revanche, une fois la page chargée, elle
+   continue de fonctionner si la connexion tombe en cours d'utilisation
+   grâce à deux mécanismes qui, eux, tiennent dans ce seul fichier :
+   - db.enablePersistence() plus haut : Firestore garde en cache local
+     (IndexedDB) les titres/playlists déjà reçus ;
+   - le téléchargement explicite d'une playlist (OFFLINE_DB_NAME,
+     IndexedDB) pour une écoute garantie hors-ligne de ces titres-là.
    ========================================================= */
-if('serviceWorker' in navigator){
-  window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('./sw.js').catch((err)=>{
-      console.warn("Mode hors connexion indisponible (service worker non installé) :", err);
-    });
-  });
-}
 
 let deferredInstallPrompt = null;
 const installAppBtn = document.getElementById('install-app-btn');
