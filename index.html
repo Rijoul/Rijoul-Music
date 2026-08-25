@@ -6027,13 +6027,24 @@ async function playTrackById(trackId, direction, opts){
   // Doit fonctionner pour TOUT visiteur (connecté ou non) — si ça échoue,
   // c'est presque toujours une règle de sécurité Firestore trop stricte
   // sur le champ "plays" (log conservé pour diagnostic).
-  tracksRef.doc(trackId).update({ plays: firebase.firestore.FieldValue.increment(1) })
-    .catch(err => console.error('Échec incrément "plays" (vérifier les règles Firestore) :', err));
-  // Horodate cette écoute dans le journal global (utilisé par le Classement
-  // "Semaine"/"Mois"/"Année"). Doit fonctionner pour TOUT visiteur, comme
-  // l'incrément de "plays" ci-dessus.
-  playLogsRef.add({ trackId, playedAt: firebase.firestore.FieldValue.serverTimestamp() })
-    .catch(err => console.error('Échec écriture "musicPlayLogs" (vérifier les règles Firestore) :', err));
+  // IMPORTANT : en mode Radio Direct (opts.radio === true), on NE fait PAS
+  // cet incrément individuel ici, car chaque auditeur appelle cette fonction
+  // en parallèle sur son propre appareil quand la radio enchaîne un titre.
+  // Le crédit des vues radio est déjà géré une seule fois, de façon groupée
+  // et anti-doublon, par tryLogRadioPlay() (voir plus bas / radioTick).
+  // Sans cette exclusion, les deux mécanismes s'additionnent : chaque
+  // auditeur ajoute +1 via playTrackById ET le crédit radio ajoute encore
+  // +listeners, ce qui gonfle artificiellement le compteur de vues.
+  if(!(opts && opts.radio)){
+    tracksRef.doc(trackId).update({ plays: firebase.firestore.FieldValue.increment(1) })
+      .catch(err => console.error('Échec incrément "plays" (vérifier les règles Firestore) :', err));
+    // Horodate cette écoute dans le journal global (utilisé par le Classement
+    // "Semaine"/"Mois"/"Année"). Doit fonctionner pour TOUT visiteur, comme
+    // l'incrément de "plays" ci-dessus. Idem : exclu en mode radio, déjà géré
+    // par tryLogRadioPlay() via playLogsRef.add({ ..., source:'radio' }).
+    playLogsRef.add({ trackId, playedAt: firebase.firestore.FieldValue.serverTimestamp() })
+      .catch(err => console.error('Échec écriture "musicPlayLogs" (vérifier les règles Firestore) :', err));
+  }
   recordListenHistory(trackId);
   document.getElementById('p-cover').src = track.coverURL || fallbackCoverSvg();
   document.getElementById('p-title').textContent = track.title || 'Sans titre';
