@@ -367,6 +367,31 @@ input,textarea{ font-family:inherit; }
 .home-pl-see-all{ font-family:var(--mono); font-size:12px; color:var(--text-dim); background:none; border:0; cursor:pointer; padding:0; }
 .home-pl-see-all:hover{ color:var(--copper-bright); }
 
+/* --- Carte "Radio Direct" : même emplacement que "Pour vous", badge rouge
+   "EN DIRECT" avec point pulsant au lieu du badge "AUTO". --- */
+.home-pl-card-radio .card-cover{ background:linear-gradient(145deg, rgba(255,92,92,0.32), rgba(255,92,92,0.08)); }
+.card-cover-badge.live{
+  position:absolute; left:8px; top:8px; z-index:1; font-size:10.5px; font-weight:700;
+  padding:3px 8px 3px 7px; border-radius:20px; background:rgba(0,0,0,0.6); color:#ff6b6b;
+  letter-spacing:.02em; backdrop-filter:blur(6px); display:inline-flex; align-items:center; gap:5px;
+}
+.live-dot{ width:6px; height:6px; border-radius:50%; background:#ff5c5c; box-shadow:0 0 0 0 rgba(255,92,92,0.6); animation:live-pulse 1.6s infinite; flex-shrink:0; }
+@keyframes live-pulse{
+  0%{ box-shadow:0 0 0 0 rgba(255,92,92,0.55); }
+  70%{ box-shadow:0 0 0 6px rgba(255,92,92,0); }
+  100%{ box-shadow:0 0 0 0 rgba(255,92,92,0); }
+}
+.radio-listener-count{ display:inline-flex; align-items:center; gap:5px; color:#ff8080; font-weight:600; }
+
+/* --- Lecteur en mode "Radio Direct" : précédent/suivant désactivés
+   visuellement (la diffusion est la même pour tout le monde). --- */
+.is-radio-live #p-prev, .is-radio-live #p-next,
+.is-radio-live #np-prev, .is-radio-live #np-next,
+.is-radio-live #np-art-prev, .is-radio-live #np-art-next{
+  opacity:.28; cursor:not-allowed;
+}
+.np-radio-info{ display:flex; align-items:center; gap:6px; margin-top:4px; font-size:12.5px; font-weight:700; color:#ff6b6b; }
+
 /* --- Modale de création d'extrait --- */
 .extract-form-track{ display:flex; align-items:center; gap:12px; margin-bottom:16px; padding:10px; background:var(--panel); border:1px solid var(--line); border-radius:16px; }
 .extract-form-cover{ width:52px; height:52px; border-radius:11px; overflow:hidden; flex-shrink:0; background:var(--panel-solid); }
@@ -1315,6 +1340,7 @@ input,textarea{ font-family:inherit; }
         <p class="pl-detail-desc" id="pl-detail-desc" style="display:none;"></p>
         <span class="section-count" id="pl-detail-count">0 titre</span>
         <span class="section-count" id="pl-detail-shared-badge" style="display:none; margin-left:8px;">🔗 Partagée avec toi</span>
+        <span class="section-count radio-listener-count" id="pl-detail-radio-info" style="display:none; margin-left:8px;"></span>
         <div class="pl-detail-actions">
           <button class="btn btn-gold" id="pl-detail-play">▶ Lire</button>
           <button class="btn btn-ghost" id="pl-detail-shuffle" aria-label="Lecture aléatoire">
@@ -1507,6 +1533,9 @@ input,textarea{ font-family:inherit; }
         <div class="np-meta-text">
           <div class="np-title" id="np-title">—</div>
           <div class="np-artist" id="np-artist">—</div>
+          <div class="np-radio-info" id="np-radio-info" style="display:none;">
+            <span class="live-dot"></span><span id="np-radio-info-text">En direct</span>
+          </div>
         </div>
         <button class="np-like" id="np-like-btn" aria-label="Aimer ce titre">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.6-10-9.1C.5 8.6 2 5 5.6 5c2 0 3.4 1 4.9 3 1.5-2 2.9-3 4.9-3 3.6 0 5.1 3.6 3.6 6.9C19.5 16.4 12 21 12 21z"/></svg>
@@ -2205,6 +2234,27 @@ function musicHistoryEntriesRef(uid){
 // sur cette collection pour tout visiteur (comme pour le champ "plays").
 const playLogsRef = db.collection("musicPlayLogs");
 
+// =========================================================
+// RADIO DIRECT — playlist virtuelle diffusée EN MÊME TEMPS pour tout le
+// monde (comme une vraie radio), construite à partir du classement de la
+// semaine. Trois collections dédiées :
+// - musicRadioState/current : document UNIQUE contenant la liste ordonnée
+//   des titres actuellement diffusés (partagée par tous les visiteurs, pour
+//   que chacun calcule exactement le même programme).
+// - musicRadioListeners : un document par auditeur actuellement branché sur
+//   la radio (présence), rafraîchi périodiquement (battement de cœur) et
+//   supprimé en quittant la radio, pour savoir combien de personnes
+//   écoutent en direct.
+// - musicRadioLogs : un document par "diffusion" précise d'un titre
+//   (id = trackId + horodatage de créneau), qui ne peut être créé qu'UNE
+//   SEULE FOIS (la règle Firestore refuse toute réécriture) : le premier
+//   auditeur à le créer comptabilise alors le nombre d'auditeurs présents à
+//   cet instant comme nouvelles vues pour ce titre.
+// =========================================================
+const radioStateRef = db.collection("musicRadioState").doc("current");
+const radioListenersRef = db.collection("musicRadioListeners");
+const radioLogsRef = db.collection("musicRadioLogs");
+
 /* =========================================================
    UTILITAIRES
    ========================================================= */
@@ -2303,6 +2353,26 @@ let playlistsUnsub = null;
 let currentPlaylistId = null; // playlist affichée en vue détail
 const FOR_YOU_PLAYLIST_ID = 'for-you'; // playlist virtuelle générée pour l'utilisateur, affichée sur l'accueil
 const FOR_YOU_TRACK_LIMIT = 30; // nombre de titres retenus dans la playlist "Pour vous"
+
+// --- Radio Direct : état ---
+const RADIO_PLAYLIST_ID = 'radio-direct';
+const RADIO_TRACK_LIMIT = 30; // nombre de titres du classement de la semaine repris dans le programme
+const RADIO_DEFAULT_TRACK_SECONDS = 180; // durée de repli si un titre n'a pas encore de métadonnée "duration"
+const RADIO_STATE_REFRESH_MS = 10 * 60 * 1000; // le programme partagé est recalculé toutes les 10 minutes
+const RADIO_LISTENER_HEARTBEAT_MS = 20 * 1000; // fréquence d'écriture de présence
+const RADIO_LISTENER_STALE_MS = 45 * 1000;      // au-delà, un auditeur est considéré parti
+const RADIO_EPOCH_MS = Date.UTC(2024, 0, 1, 0, 0, 0); // origine fixe du "planning" radio (identique pour tous)
+let radioStateRawIds = [];      // ids tels que reçus du document partagé musicRadioState/current
+let radioTrackIds = [];         // mêmes ids, filtrés sur les titres réellement disponibles
+let radioTracksCache = [];      // objets titres correspondants, dans l'ordre de diffusion
+let radioStateRefreshing = false;
+let radioModeActive = false;    // vrai tant que la Radio Direct est la source de lecture en cours
+let radioListenerId = null;     // identifiant (stable) de CET appareil dans musicRadioListeners
+let radioListenersUnsub = null;
+let radioListenerCount = 0;
+let radioHeartbeatInterval = null;
+let radioTickInterval = null;
+let radioLastLoggedSlotKey = null; // évite de retenter une écriture déjà effectuée par CET appareil
 let editingPlaylistId = null; // playlist en cours de modification dans playlist-form-overlay
 
 // --- Synchro multi-appareils (voir bloc "SYNCHRO MULTI-APPAREILS") ---
@@ -2673,9 +2743,10 @@ function openPlaylistDetail(id){
   renderTracks();
 }
 document.getElementById('playlist-detail-back').addEventListener('click', ()=>{
-  // La playlist "Pour vous" est toujours ouverte depuis l'accueil : on y
-  // revient directement plutôt que d'aller vers l'onglet "Playlists".
-  if(currentPlaylistId === FOR_YOU_PLAYLIST_ID){ switchView('library'); return; }
+  // La playlist "Pour vous" (et la Radio Direct) est toujours ouverte
+  // depuis l'accueil : on y revient directement plutôt que d'aller vers
+  // l'onglet "Playlists".
+  if(currentPlaylistId === FOR_YOU_PLAYLIST_ID || currentPlaylistId === RADIO_PLAYLIST_ID){ switchView('library'); return; }
   // Une playlist partagée ouverte via un lien n'appartient pas forcément à
   // l'utilisateur courant : on revient à la bibliothèque plutôt que
   // d'imposer une connexion pour accéder à l'onglet "Playlists".
@@ -2845,11 +2916,19 @@ tracksRef.orderBy('createdAt', 'desc').onSnapshot((snap)=>{
   renderTracks();
   renderExtractsSection();
   scheduleInitialRecommendations();
+  applyRadioTrackIds(radioStateRawIds); // le catalogue a changé : on refiltre le programme radio dessus
   openSharedTrackFromURL();
 }, (err)=>{
   console.error('Erreur de chargement de la musique :', err);
   showToast("Impossible de charger la musique pour le moment.");
 });
+
+/* =========================================================
+   RADIO DIRECT — abonnements globaux (actifs pour tout visiteur, connecté
+   ou non, comme le catalogue et les extraits ci-dessus).
+   ========================================================= */
+subscribeRadioState();
+subscribeRadioListeners();
 
 /* =========================================================
    EXTRAITS (Firestore, collection "musicExtracts")
@@ -3300,14 +3379,23 @@ function paintPlaylistHeader(pl, list, isOwner){
   // l'enregistrer dans sa propre bibliothèque. La playlist "Pour vous" est
   // générée automatiquement : ni modifiable/partageable, ni "partagée avec
   // toi" au sens d'un lien reçu.
-  const isAuto = pl.id === FOR_YOU_PLAYLIST_ID;
+  const isRadio = pl.id === RADIO_PLAYLIST_ID;
+  const isAuto = pl.id === FOR_YOU_PLAYLIST_ID || isRadio;
   document.getElementById('pl-detail-add-tracks').style.display = isOwner ? '' : 'none';
   document.getElementById('pl-detail-edit').style.display = isOwner ? '' : 'none';
   document.getElementById('pl-detail-delete').style.display = isOwner ? '' : 'none';
   document.getElementById('pl-detail-share').style.display = isOwner ? '' : 'none';
   document.getElementById('pl-detail-save').style.display = (isOwner || isAuto) ? 'none' : '';
   document.getElementById('pl-detail-shared-badge').style.display = (isOwner || isAuto) ? 'none' : '';
-  updateOfflinePlaylistButton();
+  // La Radio Direct n'a ni lecture aléatoire (l'ordre de diffusion est le
+  // même pour tout le monde) ni téléchargement hors-ligne (son contenu
+  // change au fil du classement) : ces boutons n'ont pas de sens ici.
+  document.getElementById('pl-detail-shuffle').style.display = isRadio ? 'none' : '';
+  document.getElementById('pl-detail-offline').style.display = isRadio ? 'none' : '';
+  document.getElementById('pl-detail-play').textContent = isRadio ? '🔴 Écouter en direct' : '▶ Lire';
+  document.getElementById('pl-detail-radio-info').style.display = isRadio ? '' : 'none';
+  if(isRadio) updateRadioListenerUI();
+  if(!isRadio) updateOfflinePlaylistButton();
 }
 
 function paintPlaylistRows(list, isOwner){
@@ -3348,6 +3436,9 @@ function paintPlaylistRows(list, isOwner){
   wrap.querySelectorAll('.pl-row').forEach(row=>{
     row.addEventListener('click', (e)=>{
       if(e.target.closest('button')) return;
+      // Dans la Radio Direct, on ne peut pas choisir un titre précis : on
+      // ne fait que rejoindre le direct, là où en est le programme.
+      if(currentPlaylistId === RADIO_PLAYLIST_ID){ joinRadioLive(); return; }
       playTrackById(row.dataset.trackId);
     });
   });
@@ -3425,7 +3516,11 @@ document.getElementById('create-playlist-btn').addEventListener('click', ()=> op
 document.getElementById('playlists-empty-create-btn').addEventListener('click', ()=> openPlaylistForm(null));
 document.getElementById('pl-detail-edit').addEventListener('click', ()=> openPlaylistForm(currentPlaylistId));
 document.getElementById('pl-detail-delete').addEventListener('click', ()=>{ if(currentPlaylistId) deletePlaylist(currentPlaylistId); });
-document.getElementById('pl-detail-play').addEventListener('click', ()=>{ if(currentPlaylistId) playPlaylistById(currentPlaylistId); });
+document.getElementById('pl-detail-play').addEventListener('click', ()=>{
+  if(!currentPlaylistId) return;
+  if(currentPlaylistId === RADIO_PLAYLIST_ID){ joinRadioLive(); return; }
+  playPlaylistById(currentPlaylistId);
+});
 document.getElementById('pl-detail-shuffle').addEventListener('click', ()=>{
   const pl = currentPlaylist();
   if(pl) shufflePlaylistTracks(pl);
@@ -3960,6 +4055,304 @@ function openForYouPlaylist(){
   getForYouPlaylist();
   openPlaylistDetail(FOR_YOU_PLAYLIST_ID);
 }
+
+/* =========================================================
+   RADIO DIRECT — voir le bloc de commentaires plus haut (définition des
+   collections musicRadioState / musicRadioListeners / musicRadioLogs) pour
+   le principe général. Résumé :
+   1) Le programme (liste ordonnée de titres = classement de la semaine)
+      est partagé par tous via musicRadioState/current.
+   2) La position de lecture "en direct" (quel titre, à quelle seconde) est
+      calculée localement par CHAQUE appareil à partir de l'heure actuelle
+      et de ce programme, donc rigoureusement identique pour tout le monde
+      sans le moindre échange réseau supplémentaire (comme une horloge).
+   3) Le nombre d'auditeurs vient de musicRadioListeners (présence).
+   4) À chaque nouveau titre diffusé, UN SEUL auditeur (le premier à écrire
+      dans musicRadioLogs pour ce créneau précis) crédite le titre du
+      nombre d'auditeurs présents à cet instant, à la fois sur son
+      compteur total "plays" et dans le journal "musicPlayLogs" (afin que
+      le Classement — et le programme radio de demain — en tiennent
+      compte).
+   ========================================================= */
+function radioRankingCutoffDate(){
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  return d;
+}
+// Classement de la semaine, à partir du journal global des écoutes (les
+// entrées "radio" portent un champ "count" = nombre d'auditeurs au moment
+// de la diffusion, les écoutes normales comptent pour 1).
+async function computeWeeklyRankedTrackIds(){
+  try{
+    const cutoff = radioRankingCutoffDate();
+    const snap = await playLogsRef.where('playedAt', '>=', cutoff).get();
+    const counts = {};
+    snap.forEach(doc=>{
+      const data = doc.data();
+      if(!data || !data.trackId) return;
+      counts[data.trackId] = (counts[data.trackId] || 0) + (data.count || 1);
+    });
+    return Object.keys(counts)
+      .sort((a,b)=> counts[b] - counts[a])
+      .slice(0, RADIO_TRACK_LIMIT);
+  }catch(err){
+    console.error("Radio Direct : impossible de calculer le classement de la semaine :", err);
+    return [];
+  }
+}
+// Recalcule le programme partagé si besoin et l'enregistre dans
+// musicRadioState/current (lu par tout le monde). Peut être déclenché par
+// n'importe quel appareil : en cas d'écritures concurrentes, la dernière
+// gagne simplement, ce qui reste cohérent (même classement pour tous).
+async function refreshRadioState(){
+  if(radioStateRefreshing) return;
+  radioStateRefreshing = true;
+  try{
+    let ids = await computeWeeklyRankedTrackIds();
+    if(!ids.length){
+      // Repli : pas encore d'écoutes cette semaine (nouvelle installation) ->
+      // on démarre la radio avec le Top "Depuis toujours" en attendant.
+      ids = allTracks.slice()
+        .filter(t => (t.plays || 0) > 0)
+        .sort((a,b)=> (b.plays||0) - (a.plays||0))
+        .slice(0, RADIO_TRACK_LIMIT)
+        .map(t=> t.id);
+    }
+    if(ids.length){
+      await radioStateRef.set({ trackIds: ids, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    }
+  }catch(err){
+    console.error("Radio Direct : rafraîchissement du programme impossible :", err);
+  }finally{
+    radioStateRefreshing = false;
+  }
+}
+function applyRadioTrackIds(ids){
+  radioStateRawIds = Array.isArray(ids) ? ids : [];
+  radioTrackIds = radioStateRawIds.filter(id => allTracks.some(t=> t.id === id));
+  radioTracksCache = radioTrackIds.map(id=> allTracks.find(t=> t.id === id)).filter(Boolean);
+  sharedPlaylistCache[RADIO_PLAYLIST_ID] = getRadioPlaylist();
+  if(currentView === 'library') renderHomePlaylistsSection();
+  if(currentPlaylistId === RADIO_PLAYLIST_ID) renderPlaylistDetailTracks();
+}
+function subscribeRadioState(){
+  radioStateRef.onSnapshot((doc)=>{
+    const data = doc.exists ? doc.data() : null;
+    const ids = data && Array.isArray(data.trackIds) ? data.trackIds : [];
+    const updatedAtMs = data && data.updatedAt && data.updatedAt.toMillis ? data.updatedAt.toMillis() : 0;
+    applyRadioTrackIds(ids);
+    const stale = !data || !ids.length || (Date.now() - updatedAtMs) > RADIO_STATE_REFRESH_MS;
+    if(stale) refreshRadioState();
+  }, (err)=>{
+    console.error("Radio Direct : lecture de musicRadioState impossible :", err);
+  });
+}
+function getRadioPlaylist(){
+  const list = radioTracksCache;
+  return {
+    id: RADIO_PLAYLIST_ID,
+    name: '🔴 Radio Direct',
+    description: "Le Top de la semaine de RIJOUL MUSIC, diffusé en direct et en même temps pour tout le monde.",
+    trackIds: list.map(t=> t.id),
+    coverURL: list[0] ? list[0].coverURL : null,
+    isRadio: true
+  };
+}
+// Calcule, à l'instant présent, quel titre du programme est "à l'antenne"
+// et à quelle seconde — de façon purement déterministe (mêmes titres +
+// mêmes durées + même horloge = même résultat pour tout le monde, sans
+// écriture réseau). slotStart identifie de façon unique CETTE diffusion
+// précise de ce titre (sert à ne créditer les vues qu'une seule fois).
+function computeRadioSchedule(){
+  const list = radioTracksCache;
+  if(!list.length) return null;
+  const durations = list.map(t => (t.duration && isFinite(t.duration) && t.duration > 3) ? t.duration : RADIO_DEFAULT_TRACK_SECONDS);
+  const totalSec = durations.reduce((a,b)=> a+b, 0);
+  if(!(totalSec > 0)) return null;
+  const totalMs = totalSec * 1000;
+  const now = Date.now();
+  const elapsedMs = now - RADIO_EPOCH_MS;
+  const cycleIndex = Math.floor(elapsedMs / totalMs);
+  const cycleStartMs = RADIO_EPOCH_MS + cycleIndex * totalMs;
+  let elapsedSec = (now - cycleStartMs) / 1000;
+  let idx = 0, acc = 0;
+  for(; idx < durations.length - 1; idx++){
+    if(elapsedSec < acc + durations[idx]) break;
+    acc += durations[idx];
+  }
+  const offset = Math.max(0, elapsedSec - acc);
+  return {
+    index: idx,
+    track: list[idx],
+    offset,
+    slotStart: Math.round(cycleStartMs + acc * 1000)
+  };
+}
+// Identifiant stable de CET appareil/visiteur pour la présence radio :
+// l'UID Firebase pour un compte connecté, sinon un identifiant local
+// généré une fois et conservé dans le stockage du navigateur.
+function getRadioListenerId(){
+  if(auth.currentUser) return 'u_' + auth.currentUser.uid;
+  try{
+    let id = localStorage.getItem('rijoulRadioListenerId');
+    if(!id){
+      id = 'a_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem('rijoulRadioListenerId', id);
+    }
+    return id;
+  }catch(e){
+    return 'a_' + Math.random().toString(36).slice(2);
+  }
+}
+function radioListenerHeartbeatWrite(){
+  if(!radioListenerId) return;
+  radioListenersRef.doc(radioListenerId).set({
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(err=> console.error("Radio Direct : présence impossible à écrire :", err));
+}
+function startRadioListenerPresence(){
+  radioListenerId = getRadioListenerId();
+  radioListenerHeartbeatWrite();
+  if(radioHeartbeatInterval) clearInterval(radioHeartbeatInterval);
+  radioHeartbeatInterval = setInterval(radioListenerHeartbeatWrite, RADIO_LISTENER_HEARTBEAT_MS);
+}
+function stopRadioListenerPresence(){
+  if(radioHeartbeatInterval){ clearInterval(radioHeartbeatInterval); radioHeartbeatInterval = null; }
+  if(radioListenerId){
+    radioListenersRef.doc(radioListenerId).delete().catch(()=>{});
+  }
+}
+// Écoute en continu (indépendamment du fait qu'on écoute soi-même la
+// radio) le nombre de personnes actuellement branchées dessus, pour
+// pouvoir l'afficher sur la carte d'accueil même avant de la lancer.
+function subscribeRadioListeners(){
+  radioListenersUnsub = radioListenersRef.onSnapshot((snap)=>{
+    const now = Date.now();
+    let count = 0;
+    snap.forEach(doc=>{
+      const data = doc.data();
+      const ms = data && data.updatedAt && data.updatedAt.toMillis ? data.updatedAt.toMillis() : 0;
+      if(ms && (now - ms) <= RADIO_LISTENER_STALE_MS) count++;
+    });
+    radioListenerCount = count;
+    updateRadioListenerUI();
+  }, (err)=>{
+    console.error("Radio Direct : lecture des auditeurs impossible :", err);
+  });
+  // Purge visuelle périodique : un auditeur dont l'onglet a été fermé
+  // brutalement (sans que la suppression n'ait pu s'exécuter) doit quand
+  // même finir par disparaître du compteur au bout de RADIO_LISTENER_STALE_MS.
+  setInterval(()=>{ if(radioListenersUnsub) updateRadioListenerUI(); }, 10000);
+}
+function radioListenerLabel(n){
+  return n + (n > 1 ? ' auditeurs' : ' auditeur') + ' en direct';
+}
+function updateRadioListenerUI(){
+  const homeSub = document.getElementById('home-pl-radio-sub');
+  if(homeSub) homeSub.textContent = radioListenerLabel(radioListenerCount);
+  const detailInfo = document.getElementById('pl-detail-radio-info');
+  if(detailInfo && currentPlaylistId === RADIO_PLAYLIST_ID){
+    detailInfo.textContent = '🔴 ' + radioListenerLabel(radioListenerCount);
+  }
+  const npInfo = document.getElementById('np-radio-info-text');
+  if(npInfo && radioModeActive) npInfo.textContent = radioListenerLabel(radioListenerCount);
+}
+// Ne journalise (et ne crédite les vues) qu'une seule fois par créneau de
+// diffusion : la première écriture réussie dans musicRadioLogs "gagne", les
+// règles Firestore refusant toute réécriture du même identifiant.
+async function tryLogRadioPlay(sched){
+  if(!sched) return;
+  const key = sched.track.id + '_' + sched.slotStart;
+  if(radioLastLoggedSlotKey === key) return;
+  radioLastLoggedSlotKey = key;
+  const listeners = radioListenerCount;
+  if(listeners <= 0) return; // personne à l'écoute -> +0 vue, comme demandé
+  try{
+    await radioLogsRef.doc(key).set({
+      trackId: sched.track.id,
+      slotStart: sched.slotStart,
+      listeners,
+      loggedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    // Cet appareil est le premier à journaliser cette diffusion précise :
+    // on crédite le titre du nombre d'auditeurs actuels.
+    tracksRef.doc(sched.track.id).update({ plays: firebase.firestore.FieldValue.increment(listeners) })
+      .catch(err=> console.error('Radio Direct : incrément "plays" impossible :', err));
+    playLogsRef.add({ trackId: sched.track.id, playedAt: firebase.firestore.FieldValue.serverTimestamp(), count: listeners, source: 'radio' })
+      .catch(err=> console.error('Radio Direct : écriture "musicPlayLogs" impossible :', err));
+  }catch(err){
+    // Un autre auditeur a déjà journalisé cette diffusion avant nous : rien
+    // à faire, c'est le fonctionnement normal (une seule vue "groupée" par
+    // diffusion, pas une par auditeur).
+  }
+}
+function enterRadioMode(){
+  if(radioModeActive) return;
+  radioModeActive = true;
+  document.getElementById('player').classList.add('is-radio-live');
+  document.getElementById('nowplaying-overlay').classList.add('is-radio-live');
+  document.getElementById('np-radio-info').style.display = '';
+  startRadioListenerPresence();
+  updateRadioListenerUI();
+  if(!radioTickInterval) radioTickInterval = setInterval(radioTick, 4000);
+}
+function leaveRadioMode(){
+  if(!radioModeActive) return;
+  radioModeActive = false;
+  document.getElementById('player').classList.remove('is-radio-live');
+  document.getElementById('nowplaying-overlay').classList.remove('is-radio-live');
+  document.getElementById('np-radio-info').style.display = 'none';
+  stopRadioListenerPresence();
+  if(radioTickInterval){ clearInterval(radioTickInterval); radioTickInterval = null; }
+}
+// Lance (ou rejoint) le titre actuellement "à l'antenne", puis se recale
+// précisément sur la seconde exacte du direct une fois le titre chargé.
+async function playRadioTrack(sched){
+  currentQueue = radioTracksCache;
+  currentTrackIndex = sched.index;
+  await playTrackById(sched.track.id, 1, { radio:true });
+  const applyOffset = ()=>{
+    if(currentTrackId !== sched.track.id) return;
+    const fresh = computeRadioSchedule();
+    const offset = (fresh && fresh.track.id === sched.track.id) ? fresh.offset : sched.offset;
+    try{ audioEl.currentTime = Math.min(offset, (isFinite(audioEl.duration) ? audioEl.duration : offset)); }catch(e){}
+  };
+  if(audioEl.readyState >= 1) applyOffset();
+  else audioEl.addEventListener('loadedmetadata', applyOffset, { once:true });
+  tryLogRadioPlay(sched);
+}
+// Rejoint la Radio Direct pile à l'instant présent (bouton "Lire" / carte
+// d'accueil / ligne d'un titre dans le détail de la playlist Radio).
+async function joinRadioLive(){
+  if(!radioTracksCache.length){ showToast("La Radio Direct n'a pas encore de titres à diffuser."); return; }
+  const sched = computeRadioSchedule();
+  if(!sched){ showToast("La Radio Direct n'a pas encore de titres à diffuser."); return; }
+  enterRadioMode();
+  await playRadioTrack(sched);
+}
+// Appelé toutes les quelques secondes tant que la radio joue : fait
+// avancer au titre suivant dès que le programme change de morceau, et
+// corrige une éventuelle petite dérive de synchronisation.
+function radioTick(){
+  if(!radioModeActive) return;
+  const sched = computeRadioSchedule();
+  if(!sched) return;
+  if(sched.track.id !== currentTrackId){
+    playRadioTrack(sched);
+  }else if(isFinite(audioEl.duration) && Math.abs(audioEl.currentTime - sched.offset) > 3){
+    try{ audioEl.currentTime = Math.min(sched.offset, audioEl.duration); }catch(e){}
+  }
+  updateRadioListenerUI();
+}
+// Appelé quand le morceau en cours se termine (ou juste avant, via le
+// fondu enchaîné) alors que la Radio Direct est active : au lieu du
+// "suivant" habituel (qui casserait la synchronisation), on se recale
+// simplement sur ce que dit le programme à cet instant précis.
+function radioAdvanceOnEnd(){
+  const sched = computeRadioSchedule();
+  if(sched) playRadioTrack(sched);
+}
+
 function renderHomePlaylistsSection(){
   const section = document.getElementById('home-playlists-section');
   if(currentView !== 'library' || !allTracks.length){
@@ -3983,6 +4376,21 @@ function renderHomePlaylistsSection(){
       </div>
       <p class="card-title">✨ Pour vous</p>
       <p class="card-artist">${forYou.trackIds.length} ${forYou.trackIds.length > 1 ? 'titres' : 'titre'} • Fait pour toi</p>
+    </div>`;
+
+  const radio = getRadioPlaylist();
+  const radioCover = radio.coverURL || fallbackCoverSvg();
+  html += `
+    <div class="card home-pl-card-radio" data-radio="1">
+      <div class="card-cover">
+        <span class="card-cover-badge live"><span class="live-dot"></span>EN DIRECT</span>
+        <img src="${escapeHtml(radioCover)}" alt="">
+        <button class="card-play" data-play-radio aria-label="Écouter la Radio Direct">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+      </div>
+      <p class="card-title">🔴 Radio Direct</p>
+      <p class="card-artist" id="home-pl-radio-sub">${radioListenerLabel(radioListenerCount)}</p>
     </div>`;
 
   html += ownedPlaylists.map(pl=>{
@@ -4014,6 +4422,17 @@ function renderHomePlaylistsSection(){
   }
   row.querySelectorAll('[data-play-for-you]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); playForYouPlaylist(); });
+  });
+  const radioCard = row.querySelector('[data-radio]');
+  if(radioCard){
+    radioCard.querySelector('.card-cover').addEventListener('click', (e)=>{
+      if(e.target.closest('[data-play-radio]')) return;
+      openPlaylistDetail(RADIO_PLAYLIST_ID);
+    });
+    radioCard.querySelector('.card-title').addEventListener('click', ()=> openPlaylistDetail(RADIO_PLAYLIST_ID));
+  }
+  row.querySelectorAll('[data-play-radio]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); joinRadioLive(); });
   });
   row.querySelectorAll('.card[data-playlist-id]').forEach(card=>{
     const id = card.dataset.playlistId;
@@ -4175,9 +4594,12 @@ async function loadRankingPeriod(period){
     if(token !== rankingPeriodLoadToken) return; // une autre période a été demandée entre-temps
     const counts = {};
     snap.forEach(doc=>{
-      const trackId = doc.data().trackId;
+      const data = doc.data();
+      const trackId = data.trackId;
       if(!trackId) return;
-      counts[trackId] = (counts[trackId] || 0) + 1;
+      // Une écoute normale compte pour 1 ; une diffusion Radio Direct porte
+      // un champ "count" = nombre d'auditeurs présents à ce moment-là.
+      counts[trackId] = (counts[trackId] || 0) + (data.count || 1);
     });
     rankingPeriodPlays = counts;
   }catch(err){
@@ -5560,9 +5982,17 @@ function stopEq(){
 async function playTrackById(trackId, direction, opts){
   const track = allTracks.find(t => t.id === trackId);
   if(!track) return;
+  // Toute lecture qui n'est pas un enchaînement interne de la Radio Direct
+  // (rejoindre, avancer au titre suivant du programme...) fait quitter le
+  // mode radio : les boutons précédent/suivant redeviennent utilisables.
+  if(!(opts && opts.radio) && radioModeActive) leaveRadioMode();
   const idxInQueue = currentQueue.findIndex(t => t.id === trackId);
   currentTrackIndex = idxInQueue >= 0 ? idxInQueue : 0;
   if(currentTrackId === trackId){
+    // En direct, on ne met jamais en pause/relance en rejouant le même
+    // titre (ce qui swap juste play/pause normalement) : rejoindre la
+    // radio doit toujours reprendre depuis la position live exacte.
+    if(opts && opts.radio) return;
     togglePlayPause();
     return;
   }
@@ -5670,6 +6100,10 @@ function stopPlayback(){
   pushPlaybackState({ stopped:true });
 }
 function playAdjacent(delta, opts){
+  if(radioModeActive){
+    showToast("Radio Direct : diffusion en direct, en même temps pour tout le monde. 🔴");
+    return;
+  }
   if(!currentQueue.length) return;
   let idx = currentTrackIndex + delta;
   if(idx < 0) idx = currentQueue.length - 1;
@@ -5892,6 +6326,7 @@ audioEl.addEventListener('ended', ()=>{
   // fois d'un coup (ce qui sautait un titre / faisait défiler plusieurs
   // pochettes avant de se stabiliser sur le mauvais morceau).
   if(trackChangeInFlight) return;
+  if(radioModeActive){ radioAdvanceOnEnd(); return; }
   playAdjacent(1);
 });
 audioEl.addEventListener('seeked', ()=> pushPlaybackState());
@@ -5945,7 +6380,7 @@ audioEl.addEventListener('timeupdate', ()=>{
      && audioEl.duration > (CROSSFADE_MS/1000) * 1.3
      && (audioEl.duration - audioEl.currentTime) <= (CROSSFADE_MS/1000)){
     crossfadeTriggered = true;
-    playAdjacent(1);
+    if(radioModeActive) radioAdvanceOnEnd(); else playAdjacent(1);
   }
   // Écriture périodique (throttlée) de la position, pour que la reprise sur
   // un autre appareil retombe proche de l'endroit réel, même sans pause.
