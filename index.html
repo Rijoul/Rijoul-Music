@@ -466,6 +466,18 @@ input,textarea{ font-family:inherit; }
 .ranking-plays{ font-family:var(--mono); font-size:12px; color:var(--text-faint); white-space:nowrap; display:flex; align-items:center; gap:5px; }
 .ranking-more-wrap{ display:flex; justify-content:center; margin-bottom:40px; }
 
+/* --- Filtre de période du Classement (Semaine / Mois / Année / Toujours) --- */
+.ranking-period-tabs{ display:flex; gap:8px; overflow-x:auto; margin-bottom:16px; scrollbar-width:none; }
+.ranking-period-tabs::-webkit-scrollbar{ display:none; }
+.ranking-period-btn{
+  border:1px solid var(--line); background:var(--panel); color:var(--text-dim);
+  padding:7px 15px; border-radius:999px; font-size:12.5px; font-weight:700;
+  white-space:nowrap; flex-shrink:0; transition:.2s cubic-bezier(.4,0,.2,1);
+}
+.ranking-period-btn:hover{ color:var(--text); border-color:var(--glass-border-strong); }
+.ranking-period-btn.active{ background:var(--copper); border-color:var(--copper); color:#241a06; box-shadow:0 2px 10px -2px rgba(255,176,32,0.5); }
+.ranking-loading{ text-align:center; padding:40px 20px; color:var(--text-faint); font-size:13px; }
+
 .empty-state{ text-align:center; padding:60px 20px; color:var(--text-faint); border:1px dashed var(--glass-border-strong); border-radius:var(--radius); background:rgba(255,255,255,0.02); }
 .empty-state h3{ font-family:var(--display); color:var(--text); font-size:19px; margin:0 0 6px; font-weight:800; }
 .empty-state p{ font-size:13.5px; max-width:360px; margin:0 auto 16px; }
@@ -1247,6 +1259,12 @@ input,textarea{ font-family:inherit; }
     <div class="section-head">
       <h2 class="section-title">Classement</h2>
       <span class="section-count" id="classement-count">0 titre</span>
+    </div>
+    <div class="ranking-period-tabs" id="ranking-period-tabs">
+      <button class="ranking-period-btn" data-period="week">Semaine</button>
+      <button class="ranking-period-btn" data-period="month">Mois</button>
+      <button class="ranking-period-btn" data-period="year">Année</button>
+      <button class="ranking-period-btn active" data-period="all">Depuis toujours</button>
     </div>
     <div class="ranking-list" id="ranking-list"></div>
     <div class="ranking-more-wrap" id="ranking-more-wrap" style="display:none;">
@@ -2151,6 +2169,14 @@ function musicHistoryEntriesRef(uid){
   return db.collection("musicHistory").doc(uid).collection("entries");
 }
 
+// Journal GLOBAL de toutes les écoutes (tous visiteurs confondus, connectés
+// ou non), une entrée horodatée par lecture. Sert uniquement à calculer le
+// Classement filtré par période (Semaine/Mois/Année) : contrairement au
+// champ "plays" (compteur total), on a ici besoin de savoir QUAND chaque
+// écoute a eu lieu. Nécessite que les règles Firestore autorisent l'écriture
+// sur cette collection pour tout visiteur (comme pour le champ "plays").
+const playLogsRef = db.collection("musicPlayLogs");
+
 /* =========================================================
    UTILITAIRES
    ========================================================= */
@@ -2237,6 +2263,9 @@ let currentView = 'library'; // 'library' | 'mine' | 'playlists' | 'playlist-det
 let searchTerm = '';
 let currentTrackId = null;
 let rankingVisibleCount = 20; // Top20 -> Top50 -> Top100 via le bouton "Voir plus"
+let rankingPeriod = 'all';    // 'week' | 'month' | 'year' | 'all' — période affichée dans le Classement
+let rankingPeriodPlays = null; // null si période 'all' (on utilise t.plays), sinon { trackId: écoutes sur la période }
+let rankingPeriodLoadToken = 0; // évite qu'une requête de période périmée n'écrase un résultat plus récent
 let currentTrackIndex = -1;
 let uploadAudioFile = null;
 let uploadCoverDataUrl = null;
@@ -2587,8 +2616,7 @@ function switchView(view){
   document.getElementById('view-historique').style.display = view === 'historique' ? '' : 'none';
   document.getElementById('view-playlist-detail').style.display = 'none';
   if(view === 'classement'){
-    rankingVisibleCount = 20;
-    renderRanking();
+    loadRankingPeriod(rankingPeriod);
   }
   if(view === 'historique'){
     renderHistory();
@@ -4078,6 +4106,67 @@ function paintGrid(gridId, emptyId, countId, list, texts){
 /* =========================================================
    CLASSEMENT — Top20 / Top50 / Top100 des titres les plus écoutés
    ========================================================= */
+// Renvoie la date de début de la période choisie (utilisée pour filtrer le
+// journal "musicPlayLogs" côté requête Firestore).
+function rankingPeriodCutoffDate(period){
+  const d = new Date();
+  if(period === 'week') d.setDate(d.getDate() - 7);
+  else if(period === 'month') d.setMonth(d.getMonth() - 1);
+  else if(period === 'year') d.setFullYear(d.getFullYear() - 1);
+  return d;
+}
+
+// Change la période affichée dans le Classement (Semaine/Mois/Année/Toujours).
+// Pour "Depuis toujours" on réutilise directement le compteur "plays" déjà
+// présent sur chaque titre. Pour les autres périodes, on interroge le
+// journal global "musicPlayLogs" et on compte les écoutes par titre.
+async function loadRankingPeriod(period){
+  rankingPeriod = period;
+  rankingVisibleCount = 20; // repart du Top20 à chaque changement de période
+  document.querySelectorAll('.ranking-period-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.period === period);
+  });
+
+  if(period === 'all'){
+    rankingPeriodPlays = null;
+    renderRanking();
+    return;
+  }
+
+  const token = ++rankingPeriodLoadToken; // identifie cette requête précise
+  const list = document.getElementById('ranking-list');
+  const empty = document.getElementById('classement-empty');
+  const moreWrap = document.getElementById('ranking-more-wrap');
+  list.innerHTML = '<div class="ranking-loading">Chargement du classement…</div>';
+  empty.style.display = 'none';
+  moreWrap.style.display = 'none';
+
+  try{
+    const cutoff = rankingPeriodCutoffDate(period);
+    const snap = await playLogsRef.where('playedAt', '>=', cutoff).get();
+    if(token !== rankingPeriodLoadToken) return; // une autre période a été demandée entre-temps
+    const counts = {};
+    snap.forEach(doc=>{
+      const trackId = doc.data().trackId;
+      if(!trackId) return;
+      counts[trackId] = (counts[trackId] || 0) + 1;
+    });
+    rankingPeriodPlays = counts;
+  }catch(err){
+    console.error('Impossible de charger le classement pour cette période :', err);
+    if(token !== rankingPeriodLoadToken) return;
+    rankingPeriodPlays = {};
+    showToast("Impossible de charger le classement pour cette période.");
+  }
+  renderRanking();
+}
+document.querySelectorAll('.ranking-period-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    if(btn.dataset.period === rankingPeriod) return;
+    loadRankingPeriod(btn.dataset.period);
+  });
+});
+
 function renderRanking(){
   const list = document.getElementById('ranking-list');
   const empty = document.getElementById('classement-empty');
@@ -4085,9 +4174,15 @@ function renderRanking(){
   const moreWrap = document.getElementById('ranking-more-wrap');
   const moreBtn = document.getElementById('ranking-more-btn');
 
+  // "Depuis toujours" : on trie sur le compteur total "plays" de chaque
+  // titre. Sur une période (Semaine/Mois/Année) : on trie sur les écoutes
+  // comptabilisées dans le journal pour cette période, et seuls les titres
+  // réellement écoutés pendant cette période apparaissent.
+  const getPeriodPlays = (t) => rankingPeriodPlays ? (rankingPeriodPlays[t.id] || 0) : (t.plays || 0);
   const ranked = allTracks
     .slice()
-    .sort((a, b) => (b.plays || 0) - (a.plays || 0));
+    .filter(t => rankingPeriodPlays ? getPeriodPlays(t) > 0 : true)
+    .sort((a, b) => getPeriodPlays(b) - getPeriodPlays(a));
 
   if(!ranked.length){
     list.innerHTML = '';
@@ -4104,7 +4199,7 @@ function renderRanking(){
   const visible = ranked.slice(0, Math.min(rankingVisibleCount, total));
   list.innerHTML = visible.map((t, i)=>{
     const isPlaying = t.id === currentTrackId;
-    const plays = t.plays || 0;
+    const plays = getPeriodPlays(t);
     // Top 3 : traitement "podium" doré / argent / bronze.
     const rankClass = i === 0 ? 'rank-gold' : i === 1 ? 'rank-silver' : i === 2 ? 'rank-bronze' : '';
     const medal = i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
@@ -5254,6 +5349,11 @@ async function playTrackById(trackId, direction, opts){
   // sur le champ "plays" (log conservé pour diagnostic).
   tracksRef.doc(trackId).update({ plays: firebase.firestore.FieldValue.increment(1) })
     .catch(err => console.error('Échec incrément "plays" (vérifier les règles Firestore) :', err));
+  // Horodate cette écoute dans le journal global (utilisé par le Classement
+  // "Semaine"/"Mois"/"Année"). Doit fonctionner pour TOUT visiteur, comme
+  // l'incrément de "plays" ci-dessus.
+  playLogsRef.add({ trackId, playedAt: firebase.firestore.FieldValue.serverTimestamp() })
+    .catch(err => console.error('Échec écriture "musicPlayLogs" (vérifier les règles Firestore) :', err));
   recordListenHistory(trackId);
   document.getElementById('p-cover').src = track.coverURL || fallbackCoverSvg();
   document.getElementById('p-title').textContent = track.title || 'Sans titre';
