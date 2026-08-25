@@ -383,12 +383,13 @@ input,textarea{ font-family:inherit; }
 }
 .radio-listener-count{ display:inline-flex; align-items:center; gap:5px; color:#ff8080; font-weight:600; }
 
-/* --- Lecteur en mode "Radio Direct" : précédent/suivant désactivés
-   visuellement (la diffusion est la même pour tout le monde). --- */
+/* --- Lecteur en mode "Radio Direct" : précédent/suivant retirés
+   visuellement (la diffusion est la même pour tout le monde, on ne peut
+   ni sauter un titre ni revenir en arrière). --- */
 .is-radio-live #p-prev, .is-radio-live #p-next,
 .is-radio-live #np-prev, .is-radio-live #np-next,
 .is-radio-live #np-art-prev, .is-radio-live #np-art-next{
-  opacity:.28; cursor:not-allowed;
+  display:none !important;
 }
 .np-radio-info{ display:flex; align-items:center; gap:6px; margin-top:4px; font-size:12.5px; font-weight:700; color:#ff6b6b; }
 
@@ -6078,6 +6079,10 @@ function togglePlayPause(){
     if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     audioEl.play().then(()=> fadeGainTo(getEffectiveVolume())).catch(()=>{});
   }else{
+    // En Radio Direct, impossible de mettre en pause : la diffusion
+    // continue pour tout le monde, on ne peut que la rejoindre ou la
+    // quitter (en lançant autre chose).
+    if(radioModeActive){ showToast("Radio Direct : diffusion en direct, impossible de mettre en pause. 🔴"); return; }
     fadeGainTo(0, 140);
     setTimeout(()=>{ if(audioEl && !audioEl.ended) audioEl.pause(); }, 150);
   }
@@ -6152,9 +6157,20 @@ function setupMediaSessionHandlers(){
   safeSetHandler('nexttrack', ()=> playAdjacent(1, { crossfade:false }));
   safeSetHandler('previoustrack', ()=> playAdjacent(-1, { crossfade:false }));
   safeSetHandler('play', ()=>{ if(audioEl.src) audioEl.play().catch(()=>{}); });
-  safeSetHandler('pause', ()=>{ audioEl.pause(); });
-  safeSetHandler('seekbackward', (details)=>{ audioEl.currentTime = Math.max(0, audioEl.currentTime - (details.seekOffset || 10)); });
-  safeSetHandler('seekforward', (details)=>{ audioEl.currentTime = Math.min(audioEl.duration || Infinity, audioEl.currentTime + (details.seekOffset || 10)); });
+  safeSetHandler('pause', ()=>{
+    // Radio Direct : la pause n'est pas autorisée, même depuis l'écran de
+    // verrouillage / les commandes du casque.
+    if(radioModeActive) return;
+    audioEl.pause();
+  });
+  safeSetHandler('seekbackward', (details)=>{
+    if(radioModeActive) return;
+    audioEl.currentTime = Math.max(0, audioEl.currentTime - (details.seekOffset || 10));
+  });
+  safeSetHandler('seekforward', (details)=>{
+    if(radioModeActive) return;
+    audioEl.currentTime = Math.min(audioEl.duration || Infinity, audioEl.currentTime + (details.seekOffset || 10));
+  });
 }
 setupMediaSessionHandlers();
 // Filet de sécurité pour les claviers/télécommandes qui envoient les touches
@@ -6528,6 +6544,9 @@ function wireSeekBar(barId, fillId, labelId, otherFillId, otherLabelId){
   }
   bar.addEventListener('pointerdown', (e)=>{
     if(!audioEl.duration) return;
+    // En Radio Direct, la position de lecture est imposée par le direct :
+    // impossible d'avancer/reculer dans le morceau.
+    if(radioModeActive){ showToast("Radio Direct : diffusion en direct, impossible de déplacer la lecture. 🔴"); return; }
     isScrubbing = true;
     bar.setPointerCapture(e.pointerId);
     applyRatio(ratioFromEvent(e));
