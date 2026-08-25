@@ -326,7 +326,6 @@ input,textarea{ font-family:inherit; }
 /* =========================================================
    EXTRAITS — section page d'accueil + cartes de passages courts
    ========================================================= */
-.extracts-section{ margin-bottom:8px; }
 .extract-row{ display:flex; gap:16px; overflow-x:auto; padding:2px 2px 14px; margin-bottom:8px; scrollbar-width:thin; }
 .extract-row::-webkit-scrollbar{ height:8px; }
 .extract-card{ flex:0 0 160px; width:160px; cursor:pointer; }
@@ -882,6 +881,8 @@ input,textarea{ font-family:inherit; }
 .field label{ display:block; font-size:12px; color:var(--text-dim); margin-bottom:6px; font-weight:600; }
 .field input{ width:100%; background:rgba(255,255,255,0.07); border:1px solid var(--line); color:var(--text); border-radius:14px; padding:11px 13px; font-size:14px; transition:.2s; }
 .field input:focus{ border-color:var(--glass-border-strong); background:rgba(255,255,255,0.11); }
+.field textarea{ width:100%; background:rgba(255,255,255,0.07); border:1px solid var(--line); color:var(--text); border-radius:14px; padding:11px 13px; font-size:14px; line-height:1.6; transition:.2s; resize:vertical; }
+.field textarea:focus{ border-color:var(--glass-border-strong); background:rgba(255,255,255,0.11); }
 .field-check{ display:flex; align-items:flex-start; gap:8px; font-size:12px; color:var(--text-dim); margin:14px 0; }
 .field-check input{ margin-top:2px; accent-color:var(--copper); }
 .auth-error{ display:none; background:rgba(255,92,92,0.12); border:1px solid rgba(255,92,92,0.35); color:#ffb3b3; font-size:12.5px; padding:9px 11px; border-radius:12px; margin-bottom:12px; }
@@ -1083,6 +1084,7 @@ input,textarea{ font-family:inherit; }
     <button class="tab-btn active" data-view="library">Bibliothèque</button>
     <button class="tab-btn" data-view="mine">Mes ajouts</button>
     <button class="tab-btn" data-view="playlists">Playlists</button>
+    <button class="tab-btn" data-view="extraits">Extraits</button>
     <button class="tab-btn" data-view="classement">Classement</button>
     <button class="tab-btn" data-view="historique">Historique</button>
   </div>
@@ -1153,15 +1155,6 @@ input,textarea{ font-family:inherit; }
     </div>
   </section>
 
-  <!-- EXTRAITS — passages courts marqués par les membres, mis en avant sur la page d'accueil -->
-  <section class="extracts-section" id="extracts-section" style="display:none;">
-    <div class="section-head">
-      <h2 class="section-title">Extraits</h2>
-      <span class="section-count" id="extracts-count">0 extrait</span>
-    </div>
-    <div class="extract-row" id="extract-row"></div>
-  </section>
-
   <!-- PLAYLISTS — section mise en avant sur la page d'accueil : la
        playlist auto-générée "Pour vous" apparaît toujours en premier,
        suivie des playlists du membre connecté. -->
@@ -1215,6 +1208,21 @@ input,textarea{ font-family:inherit; }
       <h3>Aucune playlist</h3>
       <p>Crée ta première playlist pour organiser tes titres préférés.</p>
       <button class="btn btn-gold" id="playlists-empty-create-btn">+ Nouvelle playlist</button>
+    </div>
+  </section>
+
+  <!-- EXTRAITS — passages courts marqués par les membres, désormais dans
+       leur propre onglet (accessible via le bouton "Extraits" de la barre
+       du haut, entre "Playlists" et "Classement") plutôt que sur l'accueil. -->
+  <section id="view-extraits" style="display:none;">
+    <div class="section-head">
+      <h2 class="section-title">Extraits</h2>
+      <span class="section-count" id="extracts-count">0 extrait</span>
+    </div>
+    <div class="extract-row" id="extract-row"></div>
+    <div class="empty-state" id="extraits-empty" style="display:none;">
+      <h3>Aucun extrait pour l'instant</h3>
+      <p>Les passages courts créés depuis un titre apparaîtront ici.</p>
     </div>
   </section>
 
@@ -1689,7 +1697,33 @@ input,textarea{ font-family:inherit; }
       </div>
     </div>
 
+    <!-- Paroles du titre : ouvre une modale dédiée avec un simple champ
+         texte libre. Pas de synchronisation avec la lecture pour le
+         moment — juste le stockage du texte des paroles sur le titre. -->
+    <button type="button" class="btn btn-ghost btn-sm edit-concert-toggle" id="edit-lyrics-open" style="margin-top:10px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;">
+      <span>📝</span>
+      <span id="edit-lyrics-open-label">Ajouter les paroles</span>
+    </button>
+
     <button class="btn btn-gold btn-block" id="edit-submit" style="margin-top:16px;">Enregistrer</button>
+  </div>
+</div>
+
+<!-- Réservé à l'admin : édition des paroles d'un titre (texte libre, sans
+     synchronisation avec la lecture pour le moment). S'ouvre depuis la
+     modale "Modifier le titre" ci-dessus. -->
+<div class="overlay" id="lyrics-overlay">
+  <div class="modal modal-wide">
+    <div class="modal-head">
+      <h3 class="modal-title">Paroles du titre</h3>
+      <button class="modal-close" data-close="lyrics-overlay">✕</button>
+    </div>
+    <div class="auth-error" id="lyrics-error"></div>
+    <div class="field" style="margin-top:16px;">
+      <label>Paroles</label>
+      <textarea id="lyrics-textarea" rows="14" placeholder="Colle ou écris les paroles du titre ici…"></textarea>
+    </div>
+    <button class="btn btn-gold btn-block" id="lyrics-submit" style="margin-top:16px;">Enregistrer les paroles</button>
   </div>
 </div>
 
@@ -2532,6 +2566,7 @@ function switchView(view){
   document.getElementById('view-library').style.display = view === 'library' ? '' : 'none';
   document.getElementById('view-mine').style.display = view === 'mine' ? '' : 'none';
   document.getElementById('view-playlists').style.display = view === 'playlists' ? '' : 'none';
+  document.getElementById('view-extraits').style.display = view === 'extraits' ? '' : 'none';
   document.getElementById('view-classement').style.display = view === 'classement' ? '' : 'none';
   document.getElementById('view-historique').style.display = view === 'historique' ? '' : 'none';
   document.getElementById('view-playlist-detail').style.display = 'none';
@@ -2542,13 +2577,14 @@ function switchView(view){
   if(view === 'historique'){
     renderHistory();
   }
+  if(view === 'extraits'){
+    renderExtractsSection();
+  }
   renderTracks();
   renderPlaylistsGrid();
-  // Le classement et l'historique s'affichent seuls : on masque le bloc
-  // "musique de l'événement" (hero) et la section "Extraits" créés par
-  // les membres.
+  // Le classement, l'historique et les extraits s'affichent seuls : on
+  // masque le bloc "musique de l'événement" (hero) sur ces vues dédiées.
   renderHero();
-  renderExtractsSection();
 }
 
 /* =========================================================
@@ -2754,15 +2790,16 @@ extractsRef.orderBy('createdAt', 'desc').onSnapshot((snap)=>{
 });
 
 function renderExtractsSection(){
-  const section = document.getElementById('extracts-section');
   const row = document.getElementById('extract-row');
   const count = document.getElementById('extracts-count');
-  if(currentView === 'classement' || currentView === 'historique' || currentView === 'mine' || currentView === 'playlists' || currentView === 'playlist-detail' || !allExtracts.length){
-    section.style.display = 'none';
+  const empty = document.getElementById('extraits-empty');
+  if(!allExtracts.length){
     row.innerHTML = '';
+    empty.style.display = '';
+    count.textContent = '0 extrait';
     return;
   }
-  section.style.display = '';
+  empty.style.display = 'none';
   count.textContent = allExtracts.length + (allExtracts.length > 1 ? ' extraits' : ' extrait');
   const uid = auth.currentUser ? auth.currentUser.uid : null;
   row.innerHTML = allExtracts.map(ex=>{
@@ -4601,6 +4638,46 @@ document.getElementById('edit-submit').addEventListener('click', async ()=>{
     showEditError("Impossible d'enregistrer les modifications.");
   }finally{
     btn.disabled = false; btn.textContent = 'Enregistrer';
+  }
+});
+
+/* =========================================================
+   PAROLES D'UN TITRE — texte libre saisi par l'admin depuis la modale
+   "Modifier le titre". Pour le moment il ne s'agit que du stockage du
+   texte (champ "lyrics" sur le titre) : aucune synchronisation avec la
+   lecture en cours n'est faite ici.
+   ========================================================= */
+let lyricsTrackId = null;
+document.getElementById('edit-lyrics-open').addEventListener('click', ()=>{
+  if(!isAdmin || !editingTrackId) return;
+  const track = allTracks.find(t => t.id === editingTrackId);
+  if(!track) return;
+  lyricsTrackId = editingTrackId;
+  document.getElementById('lyrics-error').style.display = 'none';
+  document.getElementById('lyrics-textarea').value = track.lyrics || '';
+  closeOverlay('edit-overlay');
+  openOverlay('lyrics-overlay');
+});
+document.getElementById('lyrics-submit').addEventListener('click', async ()=>{
+  if(!isAdmin || !lyricsTrackId) return;
+  const errEl = document.getElementById('lyrics-error');
+  errEl.style.display = 'none';
+  const text = document.getElementById('lyrics-textarea').value.trim();
+  const btn = document.getElementById('lyrics-submit');
+  btn.disabled = true; btn.textContent = 'Enregistrement…';
+  try{
+    await tracksRef.doc(lyricsTrackId).update({
+      lyrics: text || firebase.firestore.FieldValue.delete()
+    });
+    showToast('Paroles enregistrées.');
+    closeOverlay('lyrics-overlay');
+    lyricsTrackId = null;
+  }catch(err){
+    console.error(err);
+    errEl.textContent = "Impossible d'enregistrer les paroles.";
+    errEl.style.display = 'block';
+  }finally{
+    btn.disabled = false; btn.textContent = 'Enregistrer les paroles';
   }
 });
 
