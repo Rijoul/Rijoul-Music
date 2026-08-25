@@ -542,12 +542,21 @@ input,textarea{ font-family:inherit; }
 .p-like.liked svg{ fill:var(--copper); }
 
 .p-center{ display:flex; flex-direction:column; align-items:center; gap:6px; min-width:0; }
-.p-controls{ display:flex; align-items:center; gap:18px; }
-.p-btn{ background:transparent; border:0; color:var(--text-dim); display:flex; transition:.15s; }
-.p-btn:hover{ color:var(--text); transform:scale(1.08); }
-.p-play-wrap{ position:relative; width:38px; height:38px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.p-play{ position:relative; z-index:1; width:38px; height:38px; border-radius:50%; background:var(--text); color:#000; display:flex; align-items:center; justify-content:center; transition:.15s; }
-.p-play:hover{ transform:scale(1.06); color:#000; }
+.p-controls{ display:flex; align-items:center; gap:4px; }
+.p-btn{ position:relative; width:34px; height:34px; border-radius:50%; background:transparent; border:0; color:var(--text-dim); display:flex; align-items:center; justify-content:center; transition:color .2s, transform .2s cubic-bezier(.34,1.56,.64,1); }
+.p-btn::before{ content:''; position:absolute; inset:0; border-radius:50%; background:rgba(255,255,255,0.09); border:1px solid rgba(255,255,255,0.08); opacity:0; transform:scale(.7); transition:opacity .2s, transform .2s cubic-bezier(.34,1.56,.64,1); }
+.p-btn:hover{ color:var(--text); }
+.p-btn:hover::before{ opacity:1; transform:scale(1); }
+.p-btn:active{ transform:scale(.86); }
+.p-btn svg{ position:relative; z-index:1; }
+.p-play-wrap{ position:relative; width:44px; height:44px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin:0 2px; }
+.p-play-wrap::before{ content:''; position:absolute; inset:-4px; border-radius:50%; background:conic-gradient(from 0deg, var(--copper-bright), var(--copper), var(--copper-bright)); opacity:0; filter:blur(7px); transition:opacity .35s; pointer-events:none; }
+.p-play-wrap.is-playing::before{ opacity:.5; animation:p-ring-spin 5s linear infinite; }
+.p-play{ position:relative; z-index:1; width:40px; height:40px; border-radius:50%; background:linear-gradient(155deg, var(--copper-bright), var(--copper) 65%); color:#241a06; display:flex; align-items:center; justify-content:center; box-shadow:inset 0 1px 1px rgba(255,255,255,.55), inset 0 -6px 10px -6px rgba(0,0,0,.25), 0 8px 20px -7px rgba(255,176,32,.7); transition:transform .22s cubic-bezier(.34,1.56,.64,1), box-shadow .22s; }
+.p-play:hover{ transform:scale(1.07); color:#241a06; box-shadow:inset 0 1px 1px rgba(255,255,255,.55), 0 10px 26px -6px rgba(255,176,32,.85); }
+.p-play:active{ transform:scale(.9); }
+.p-play svg{ position:relative; z-index:1; }
+@keyframes p-ring-spin{ to{ transform:rotate(360deg); } }
 .p-progress-row{ display:flex; align-items:center; gap:8px; width:100%; max-width:520px; }
 .p-time{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); width:34px; flex-shrink:0; }
 .p-time.end{ text-align:right; }
@@ -811,11 +820,18 @@ input,textarea{ font-family:inherit; }
 #np-bar{ height:5px; }
 #np-bar-fill::after{ width:13px; height:13px; }
 .np-time-row{ display:flex; justify-content:space-between; font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-top:7px; }
-.np-controls{ display:flex; align-items:center; justify-content:center; gap:32px; flex-shrink:0; padding-bottom:4px; }
-.np-side-btn{ background:transparent; border:0; color:var(--text); display:flex; transition:.15s; }
-.np-side-btn:hover{ transform:scale(1.08); }
-.np-play{ width:70px; height:70px; border-radius:50%; background:var(--text); color:#000; display:flex; align-items:center; justify-content:center; box-shadow:0 14px 30px -10px rgba(0,0,0,0.6); transition:.15s; }
-.np-play:hover{ transform:scale(1.05); color:#000; }
+.np-controls{ display:flex; align-items:center; justify-content:center; gap:18px; flex-shrink:0; padding-bottom:4px; }
+.np-side-btn{ position:relative; width:52px; height:52px; border-radius:50%; background:transparent; border:0; color:var(--text); display:flex; align-items:center; justify-content:center; transition:transform .2s cubic-bezier(.34,1.56,.64,1); }
+.np-side-btn::before{ content:''; position:absolute; inset:0; border-radius:50%; background:rgba(255,255,255,0.08); border:1px solid var(--glass-border); opacity:0; transform:scale(.7); transition:opacity .2s, transform .2s cubic-bezier(.34,1.56,.64,1); }
+.np-side-btn:hover::before{ opacity:1; transform:scale(1); }
+.np-side-btn:active{ transform:scale(.88); }
+.np-side-btn svg{ position:relative; z-index:1; }
+.np-play{ position:relative; width:76px; height:76px; border-radius:50%; background:linear-gradient(155deg, var(--copper-bright), var(--copper) 65%); color:#241a06; display:flex; align-items:center; justify-content:center; box-shadow:inset 0 1px 1px rgba(255,255,255,.55), inset 0 -8px 14px -8px rgba(0,0,0,.25), 0 16px 34px -12px rgba(255,176,32,.7); transition:transform .22s cubic-bezier(.34,1.56,.64,1), box-shadow .22s; }
+.np-play::before{ content:''; position:absolute; inset:-6px; border-radius:50%; background:conic-gradient(from 0deg, var(--copper-bright), var(--copper), var(--copper-bright)); opacity:0; filter:blur(9px); z-index:-1; transition:opacity .35s; }
+.np-play.is-playing::before{ opacity:.55; animation:p-ring-spin 5s linear infinite; }
+.np-play:hover{ transform:scale(1.05); color:#241a06; }
+.np-play:active{ transform:scale(.92); }
+.np-play svg{ position:relative; z-index:1; }
 .np-eq-backdrop{ position:absolute; inset:0; background:rgba(0,0,0,0.5); z-index:9; opacity:0; pointer-events:none; transition:opacity .2s; }
 .np-eq-backdrop.open{ opacity:1; pointer-events:auto; }
 .np-eq{
@@ -5502,6 +5518,8 @@ const npPlayIcon = document.getElementById('np-play-icon');
 audioEl.addEventListener('play', ()=>{
   pPlayIcon.innerHTML = '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>';
   npPlayIcon.innerHTML = pPlayIcon.innerHTML;
+  document.getElementById('p-play').closest('.p-play-wrap').classList.add('is-playing');
+  document.getElementById('np-play').classList.add('is-playing');
   if(!eqRAF) animateEq();
   updateHeroPlayState();
   pushPlaybackState();
@@ -5510,6 +5528,8 @@ audioEl.addEventListener('play', ()=>{
 audioEl.addEventListener('pause', ()=>{
   pPlayIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
   npPlayIcon.innerHTML = pPlayIcon.innerHTML;
+  document.getElementById('p-play').closest('.p-play-wrap').classList.remove('is-playing');
+  document.getElementById('np-play').classList.remove('is-playing');
   stopEq();
   updateHeroPlayState();
   pushPlaybackState();
