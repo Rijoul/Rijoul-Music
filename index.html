@@ -750,6 +750,12 @@ input,textarea{ font-family:inherit; }
 .np-toggle-input:checked + .np-toggle-switch{ background:var(--copper); border-color:var(--copper); }
 .np-toggle-input:checked + .np-toggle-switch::after{ transform:translateX(15px); background:#241a06; }
 .np-toggle-input:focus-visible + .np-toggle-switch{ outline:2px solid var(--copper-bright); outline-offset:2px; }
+/* Amélioration audio IA : grisée + verrouillée automatiquement sur les
+   titres certifiés "mode concert" (le rendu du mode concert est déjà
+   calibré par un admin, l'IA ne doit pas venir le modifier). */
+.np-menu-item-toggle.is-disabled{ cursor:not-allowed; opacity:.45; }
+.np-menu-item-toggle.is-disabled .np-toggle-switch{ pointer-events:none; }
+.np-menu-item-toggle-hint{ display:block; font-size:10.5px; font-weight:500; color:var(--text-faint); margin-top:1px; }
 .np-art-wrap{ position:relative; flex:1; display:flex; align-items:center; justify-content:center; min-height:0; padding:20px 0; overflow:hidden; }
 .np-art-track{ display:flex; align-items:center; justify-content:center; gap:12px; width:100%; }
 .np-art{ width:min(56vw,260px); height:min(56vw,260px); max-width:100%; max-height:100%; object-fit:cover; border-radius:22px; box-shadow:0 30px 70px -20px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.08); flex-shrink:0; will-change:transform; transition:transform .09s linear; }
@@ -1360,6 +1366,15 @@ input,textarea{ font-family:inherit; }
               Partager
             </button>
             <div class="np-menu-sep"></div>
+            <label class="np-menu-item np-menu-item-toggle" for="np-menu-ai-enhance-toggle" id="np-menu-ai-enhance-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3.2"/></svg>
+              <span class="np-menu-item-label">
+                Amélioration audio IA
+                <span class="np-menu-item-toggle-hint" id="np-menu-ai-enhance-hint"></span>
+              </span>
+              <input type="checkbox" id="np-menu-ai-enhance-toggle" class="np-toggle-input">
+              <span class="np-toggle-switch" aria-hidden="true"></span>
+            </label>
             <label class="np-menu-item np-menu-item-toggle" for="np-menu-concert-toggle">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4L12 2z"/></svg>
               <span class="np-menu-item-label">Mode concert</span>
@@ -4800,6 +4815,13 @@ document.addEventListener('keydown', (e)=>{
 
 let audioCtx = null, analyser = null, analyserSource = null, eqBars = [], eqRAF = null;
 let eqLow = null, eqMid = null, eqHigh = null, masterGain = null;
+// Amélioration audio IA : compresseur + rehaussement des aigus branchés en
+// permanence dans la chaîne (voir ensureAnalyser), mais neutres (bypass)
+// tant que le réglage n'est pas actif — évite de devoir reconstruire le
+// graphe Web Audio à chaque bascule.
+let aiEnhanceComp = null, aiEnhanceShelf = null;
+let aiEnhanceOn = false; // état voulu par l'utilisateur (persisté)
+let aiEnhanceLockedOff = false; // vrai quand le titre en cours est certifié "mode concert"
 // Réglages d'égaliseur liés au compte (sauvegardés dans usersRef) afin de se
 // retrouver identiques sur n'importe quel appareil une fois connecté.
 let savedEq = { bass: 0, mid: 0, treble: 0 };
@@ -4857,15 +4879,27 @@ function ensureAnalyser(){
     masterGain = audioCtx.createGain();
     masterGain.gain.value = perceptualGain(getEffectiveVolume());
 
+    // Amélioration audio IA : un compresseur (resserre la dynamique, fait
+    // ressortir les détails discrets) suivi d'un léger rehaussement des
+    // aigus (clarté/présence). Neutre par défaut (bypass) ; réglé par
+    // applyAiEnhanceParams() selon aiEnhanceOn/aiEnhanceLockedOff.
+    aiEnhanceComp = audioCtx.createDynamicsCompressor();
+    aiEnhanceShelf = audioCtx.createBiquadFilter();
+    aiEnhanceShelf.type = 'highshelf';
+    aiEnhanceShelf.frequency.value = 6500;
+
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 64;
 
     analyserSource.connect(eqLow);
     eqLow.connect(eqMid);
     eqMid.connect(eqHigh);
-    eqHigh.connect(masterGain);
+    eqHigh.connect(aiEnhanceComp);
+    aiEnhanceComp.connect(aiEnhanceShelf);
+    aiEnhanceShelf.connect(masterGain);
     masterGain.connect(analyser);
     analyser.connect(audioCtx.destination);
+    applyAiEnhanceParams();
 
     // Le volume réel est désormais géré par le noeud de gain ; l'élément
     // <audio> reste à 1 pour laisser le Web Audio API tout contrôler.
@@ -5072,6 +5106,7 @@ async function playTrackById(trackId, direction, opts){
   activeClipStart = null; // lecture normale : plus de bornes d'extrait
   activeClipEnd = null;
   updateVolumeUIForTrack(track); // applique/retire le volume verrouillé de ce titre
+  updateAiEnhanceUIForTrack(track); // coupe/grise l'amélioration IA si ce titre est certifié "mode concert"
   // Incrémente le compteur d'écoutes du titre (utilisé par le Classement).
   // Doit fonctionner pour TOUT visiteur (connecté ou non) — si ça échoue,
   // c'est presque toujours une règle de sécurité Firestore trop stricte
@@ -5136,6 +5171,7 @@ function stopPlayback(){
   activeClipStart = null;
   activeClipEnd = null;
   updateVolumeUIForTrack(null); // plus de titre en cours : déverrouille le curseur de volume
+  updateAiEnhanceUIForTrack(null); // plus de titre en cours : redonne la main sur l'amélioration IA
   playerBar.classList.remove('visible');
   renderTracks();
   updateHeroPlayState();
@@ -6009,6 +6045,77 @@ document.getElementById('np-menu-concert-toggle').addEventListener('change', fun
   setConcertMode(this.checked);
 });
 
+/* Amélioration audio IA : compression douce (fait ressortir les détails
+   discrets) + léger rehaussement des aigus (clarté/présence), branchés en
+   permanence dans la chaîne Web Audio (voir ensureAnalyser) mais neutres
+   (bypass) tant que ce n'est pas activé — pas besoin de reconstruire le
+   graphe à chaque bascule. */
+function applyAiEnhanceParams(){
+  if(!aiEnhanceComp || !aiEnhanceShelf || !audioCtx) return;
+  const active = aiEnhanceOn && !aiEnhanceLockedOff;
+  const t = audioCtx.currentTime;
+  if(active){
+    aiEnhanceComp.threshold.setTargetAtTime(-28, t, 0.05);
+    aiEnhanceComp.knee.setTargetAtTime(24, t, 0.05);
+    aiEnhanceComp.ratio.setTargetAtTime(3.5, t, 0.05);
+    aiEnhanceComp.attack.setTargetAtTime(0.01, t, 0.05);
+    aiEnhanceComp.release.setTargetAtTime(0.28, t, 0.05);
+    aiEnhanceShelf.gain.setTargetAtTime(4.5, t, 0.05);
+  }else{
+    // Bypass : seuil au plafond -> le compresseur n'agit jamais, et aucun
+    // rehaussement des aigus.
+    aiEnhanceComp.threshold.setTargetAtTime(0, t, 0.05);
+    aiEnhanceComp.knee.setTargetAtTime(0, t, 0.05);
+    aiEnhanceComp.ratio.setTargetAtTime(1, t, 0.05);
+    aiEnhanceShelf.gain.setTargetAtTime(0, t, 0.05);
+  }
+}
+function refreshAiEnhanceMenuUI(){
+  const item = document.getElementById('np-menu-ai-enhance-item');
+  const toggle = document.getElementById('np-menu-ai-enhance-toggle');
+  const hint = document.getElementById('np-menu-ai-enhance-hint');
+  if(!item || !toggle) return;
+  toggle.checked = aiEnhanceOn && !aiEnhanceLockedOff;
+  toggle.disabled = aiEnhanceLockedOff;
+  item.classList.toggle('is-disabled', aiEnhanceLockedOff);
+  if(hint) hint.textContent = aiEnhanceLockedOff ? 'Indisponible en mode concert' : '';
+}
+// Active/désactive l'amélioration IA (checkbox + variable d'état + effets
+// audio) et, en option, mémorise le choix sur cet appareil. `save:false`
+// sert quand on ne fait qu'appliquer une valeur déjà connue (restauration
+// au chargement) sans la réécrire aussitôt.
+function setAiEnhance(enabled, opts){
+  const save = !opts || opts.save !== false;
+  aiEnhanceOn = !!enabled;
+  applyAiEnhanceParams();
+  refreshAiEnhanceMenuUI();
+  if(save) saveAiEnhanceSetting(aiEnhanceOn);
+}
+// Réglage purement local à l'appareil (comme le volume) : pas besoin de le
+// synchroniser sur le compte Firestore.
+function saveAiEnhanceSetting(enabled){
+  try{ localStorage.setItem('aiEnhanceOn', enabled ? '1' : '0'); }catch(e){}
+}
+// Verrouille/déverrouille l'amélioration IA selon le titre en cours : un
+// titre certifié "mode concert" a déjà un rendu calibré manuellement par un
+// admin, donc l'IA se coupe automatiquement et le bouton se grise dans le
+// menu (le réglage choisi par l'utilisateur est conservé et repris dès que
+// ce titre certifié n'est plus en cours de lecture).
+function updateAiEnhanceUIForTrack(track){
+  aiEnhanceLockedOff = !!(track && track.concertCertified);
+  applyAiEnhanceParams();
+  refreshAiEnhanceMenuUI();
+}
+document.getElementById('np-menu-ai-enhance-toggle').addEventListener('change', function(){
+  if(aiEnhanceLockedOff){ this.checked = false; return; } // ceinture et bretelles : le bouton est déjà disabled
+  setAiEnhance(this.checked);
+});
+// Restaure le dernier réglage choisi sur cet appareil.
+(function initAiEnhance(){
+  try{ aiEnhanceOn = localStorage.getItem('aiEnhanceOn') === '1'; }catch(e){}
+  refreshAiEnhanceMenuUI();
+})();
+
 function openEqPanel(){
   npEqPanel.classList.add('open');
   npEqBackdrop.classList.add('open');
@@ -6058,6 +6165,7 @@ tracksRef.onSnapshot(()=>{
       const wasLocked = lockedConcertVolume;
       updateVolumeUIForTrack(t);
       if(lockedConcertVolume !== wasLocked) fadeGainTo(getEffectiveVolume(), 300);
+      updateAiEnhanceUIForTrack(t);
     }
   }
 });
