@@ -4195,6 +4195,14 @@ document.querySelectorAll('.ranking-period-btn').forEach(btn=>{
   });
 });
 
+// Nombre maximum de titres affichés dans le Classement, selon la période :
+// Semaine -> Top 50, Mois et Année -> Top 20, Depuis toujours -> Top 10.
+function rankingPeriodMaxTracks(period){
+  if(period === 'week') return 50;
+  if(period === 'month' || period === 'year') return 20;
+  return 10; // 'all' (Depuis toujours)
+}
+
 function renderRanking(){
   const list = document.getElementById('ranking-list');
   const empty = document.getElementById('classement-empty');
@@ -4221,7 +4229,9 @@ function renderRanking(){
   }
   empty.style.display = 'none';
 
-  const total = Math.min(ranked.length, 50); // seuls les 50 titres les plus écoutés apparaissent
+  // Nombre maximum de titres affichés, différent selon la période : 50
+  // pour la Semaine, 20 pour le Mois et l'Année, 10 pour Depuis toujours.
+  const total = Math.min(ranked.length, rankingPeriodMaxTracks(rankingPeriod));
   countEl.textContent = total + (total > 1 ? ' titres classés' : ' titre classé');
 
   const visible = ranked.slice(0, Math.min(rankingVisibleCount, total));
@@ -4269,8 +4279,8 @@ function renderRanking(){
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); openRankingHistory(btn.dataset.history); });
   });
 
-  // Bouton "Voir plus" : Top20 -> Top50, puis disparaît (seuls les 50
-  // titres les plus écoutés sont affichés, quelle que soit la période).
+  // Bouton "Voir plus" : Top20 -> Top max, puis disparaît (le maximum
+  // affiché dépend de la période, voir rankingPeriodMaxTracks).
   if(rankingVisibleCount < total){
     moreWrap.style.display = '';
     moreBtn.textContent = `Voir plus (Top ${total})`;
@@ -4279,7 +4289,7 @@ function renderRanking(){
   }
 }
 document.getElementById('ranking-more-btn').addEventListener('click', ()=>{
-  rankingVisibleCount = 50;
+  rankingVisibleCount = rankingPeriodMaxTracks(rankingPeriod);
   renderRanking();
 });
 
@@ -4316,21 +4326,58 @@ function rankingHistoryWeekKey(date){
 function rankingHistoryMonthKey(date){ return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; }
 function rankingHistoryYearKey(date){ return `${date.getFullYear()}`; }
 
+// Bornes calendaires réelles (début/fin) d'une clé de période, utilisées
+// UNIQUEMENT pour mesurer la durée réelle d'une période déjà terminée (cas
+// "est resté" ci-dessous) — jamais pour deviner une date de début fictive.
+function rankingHistoryWeekBounds(key){
+  const [yearStr, weekStr] = key.split('-W');
+  const year = parseInt(yearStr, 10);
+  const week = parseInt(weekStr, 10);
+  const simple = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7));
+  const dow = simple.getUTCDay() || 7;
+  const start = new Date(simple);
+  start.setUTCDate(simple.getUTCDate() - dow + 1);
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(start.getTime() + 7 * 86400000 - 1);
+  return { start, end };
+}
+function rankingHistoryMonthBounds(key){
+  const [yearStr, monthStr] = key.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10) - 1;
+  const start = new Date(year, month, 1, 0, 0, 0, 0);
+  const end = new Date(year, month + 1, 0, 23, 59, 59, 999);
+  return { start, end };
+}
+function rankingHistoryYearBounds(key){
+  const year = parseInt(key, 10);
+  const start = new Date(year, 0, 1, 0, 0, 0, 0);
+  const end = new Date(year, 11, 31, 23, 59, 59, 999);
+  return { start, end };
+}
+
 // Regroupe une liste d'écoutes {trackId, date} par clé de période (semaine,
-// mois ou année), puis calcule le Top 50 de chaque période, triées de la
-// plus ancienne à la plus récente.
-function rankingHistoryBuildBuckets(logs, keyFn){
+// mois ou année), calcule le Top 50 de chaque période, et conserve la date
+// RÉELLE de la toute première écoute de chaque titre dans cette période
+// précise (utilisée ensuite pour dater précisément une entrée au classement,
+// plutôt que de supposer que le titre y est depuis le tout début de la
+// période calendaire). Triées de la plus ancienne à la plus récente.
+function rankingHistoryBuildBuckets(logs, keyFn, boundsFn){
   const byKey = {};
   logs.forEach(l=>{
     const k = keyFn(l.date);
-    if(!byKey[k]) byKey[k] = {};
-    byKey[k][l.trackId] = (byKey[k][l.trackId] || 0) + 1;
+    if(!byKey[k]) byKey[k] = { counts: {}, firstSeen: {} };
+    byKey[k].counts[l.trackId] = (byKey[k].counts[l.trackId] || 0) + 1;
+    if(!byKey[k].firstSeen[l.trackId] || l.date < byKey[k].firstSeen[l.trackId]){
+      byKey[k].firstSeen[l.trackId] = l.date;
+    }
   });
   return Object.keys(byKey).sort().map(k=>{
+    const { start, end } = boundsFn(k);
     const top50 = new Set(
-      Object.entries(byKey[k]).sort((a, b)=> b[1] - a[1]).slice(0, 50).map(e=> e[0])
+      Object.entries(byKey[k].counts).sort((a, b)=> b[1] - a[1]).slice(0, 50).map(e=> e[0])
     );
-    return { key: k, top50 };
+    return { key: k, start, end, top50, firstSeen: byKey[k].firstSeen };
   });
 }
 
@@ -4352,9 +4399,9 @@ async function buildRankingHistoryCache(){
     });
     const cache = {
       computedAt: Date.now(),
-      weekly: rankingHistoryBuildBuckets(logs, rankingHistoryWeekKey),
-      monthly: rankingHistoryBuildBuckets(logs, rankingHistoryMonthKey),
-      yearly: rankingHistoryBuildBuckets(logs, rankingHistoryYearKey),
+      weekly: rankingHistoryBuildBuckets(logs, rankingHistoryWeekKey, rankingHistoryWeekBounds),
+      monthly: rankingHistoryBuildBuckets(logs, rankingHistoryMonthKey, rankingHistoryMonthBounds),
+      yearly: rankingHistoryBuildBuckets(logs, rankingHistoryYearKey, rankingHistoryYearBounds),
     };
     rankingHistoryCache = cache;
     return cache;
@@ -4367,33 +4414,40 @@ async function buildRankingHistoryCache(){
 }
 
 // Pour une série de périodes donnée (semaine, mois OU année), détermine si
-// le titre est actuellement dans le Top 50 (auquel cas on compte la série
-// de périodes consécutives jusqu'à maintenant) ou s'il y a figuré par le
-// passé sans y être encore (auquel cas on compte le total de périodes où
-// il y a figuré).
-function rankingHistoryStatusForTrack(buckets, trackId){
+// le titre est actuellement dans le Top 50 et calcule une durée en JOURS
+// RÉELS (jamais une durée devinée à partir du nombre de périodes) :
+// - s'il y est encore ("depuis") : depuis l'instant précis de sa toute
+//   première écoute dans la période la plus ancienne de sa série
+//   ininterrompue jusqu'à maintenant ;
+// - s'il n'y est plus ("resté") : la somme des durées réelles (calendaires)
+//   des périodes, déjà terminées, où il a figuré dans le Top 50.
+function rankingHistoryStatusForTrack(buckets, trackId, now){
   if(!buckets.length) return null;
   const lastIndex = buckets.length - 1;
   const isCurrent = buckets[lastIndex].top50.has(trackId);
   if(isCurrent){
-    let streak = 0;
+    let earliestIdx = lastIndex;
     for(let i = lastIndex; i >= 0; i--){
-      if(buckets[i].top50.has(trackId)) streak++;
+      if(buckets[i].top50.has(trackId)) earliestIdx = i;
       else break;
     }
-    return { status: 'depuis', count: streak };
+    const sinceDate = buckets[earliestIdx].firstSeen[trackId] || buckets[earliestIdx].start;
+    const days = Math.max(0, (now - sinceDate) / 86400000);
+    return { status: 'depuis', days };
   }
-  let total = 0;
-  buckets.forEach(b=>{ if(b.top50.has(trackId)) total++; });
-  if(total === 0) return { status: null, count: 0 };
-  return { status: 'reste', count: total };
+  let totalDays = 0;
+  buckets.forEach(b=>{
+    if(b.top50.has(trackId)) totalDays += (b.end - b.start) / 86400000;
+  });
+  if(totalDays <= 0) return null;
+  return { status: 'reste', days: totalDays };
 }
 
-// Convertit un nombre de périodes (dans l'unité "periodDays") en une durée
-// lisible, exprimée en jours, semaines ou années selon ce qui convient le
-// mieux (comme demandé : "X jour/semaines/année").
-function rankingHistoryFormatDuration(count, periodDays){
-  const totalDays = Math.max(1, count * periodDays);
+// Convertit une durée réelle en jours en un texte lisible, exprimé en
+// jours, semaines ou années selon ce qui convient le mieux (comme demandé :
+// "X jour/semaines/année").
+function rankingHistoryFormatDuration(days){
+  const totalDays = Math.max(1, days);
   if(totalDays < 14){
     const n = Math.max(1, Math.round(totalDays));
     return `${n} ${n > 1 ? 'jours' : 'jour'}`;
@@ -4408,17 +4462,18 @@ function rankingHistoryFormatDuration(count, periodDays){
 
 // Construit les 3 lignes du menu (Semaine / Mois / Année) pour un titre.
 function rankingHistoryBuildLines(trackId, cache){
+  const now = new Date();
   const periods = [
-    { buckets: cache.weekly, days: 7, label: 'classement Semaine' },
-    { buckets: cache.monthly, days: 30, label: 'classement Mois' },
-    { buckets: cache.yearly, days: 365, label: 'classement Année' },
+    { buckets: cache.weekly, label: 'classement Semaine' },
+    { buckets: cache.monthly, label: 'classement Mois' },
+    { buckets: cache.yearly, label: 'classement Année' },
   ];
   return periods.map(p=>{
-    const res = rankingHistoryStatusForTrack(p.buckets, trackId);
+    const res = rankingHistoryStatusForTrack(p.buckets, trackId, now);
     if(!res || !res.status){
       return `Ce titre n'est jamais entré dans le Top 50 du <b>${p.label}</b>.`;
     }
-    const duration = rankingHistoryFormatDuration(res.count, p.days);
+    const duration = rankingHistoryFormatDuration(res.days);
     const verb = res.status === 'depuis' ? 'est depuis' : 'est resté';
     return `Ce titre ${verb} <b>${duration}</b> dans le <b>${p.label}</b>.`;
   });
