@@ -253,7 +253,10 @@ input,textarea{ font-family:inherit; }
 .card:hover .card-owner-actions{ opacity:1; }
 /* Badge "CONCERT" : affiché sur la pochette des titres certifiés (via le
    bouton réservé aux modos dans le modal "Modifier le titre"). Le survol
-   révèle une bulle expliquant la certification — voir data-tooltip. */
+   révèle une bulle expliquant la certification — via #floating-tooltip
+   (voir JS bindConcertBadgeTooltip), en position:fixed pour ne jamais être
+   coupée par les bords arrondis/overflow:hidden de la pochette qui la
+   porte, quel que soit l'endroit où le badge est affiché. */
 .concert-badge{
   position:absolute; top:8px; left:8px; z-index:2;
   display:flex; align-items:center; gap:4px;
@@ -264,18 +267,35 @@ input,textarea{ font-family:inherit; }
   font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:.08em;
   line-height:1; cursor:default;
 }
-.concert-badge::after{
-  content:attr(data-tooltip);
-  position:absolute; top:calc(100% + 8px); left:0; width:190px;
+/* Version réduite du badge CONCERT : utilisée là où la pochette est trop
+   petite pour accueillir la version pleine taille (ex. classement,
+   historique). Juste l'icône, sans texte ni info-bulle au survol —
+   pointer-events:none désactive tout survol/focus dessus. */
+.concert-badge-mini{
+  position:absolute; top:2px; left:2px; z-index:2;
+  display:flex; align-items:center; justify-content:center;
+  width:15px; height:15px; border-radius:5px;
+  background:rgba(10,8,4,0.78); backdrop-filter:blur(6px);
+  border:1px solid rgba(255,176,32,0.55);
+  color:var(--copper-bright, #ffce6a);
+  font-size:8.5px; line-height:1; cursor:default; pointer-events:none;
+}
+/* Info-bulle flottante partagée (badges CONCERT pleine taille uniquement) :
+   un seul élément réutilisé, positionné en JS relativement au badge survolé
+   (voir showFloatingTooltip). Étant position:fixed et rattaché à <body>,
+   elle n'est jamais rognée par un parent à overflow:hidden (pochette de
+   carte, carrousel du grand lecteur, etc.). */
+.floating-tooltip{
+  position:fixed; z-index:200; max-width:210px;
   padding:8px 10px; border-radius:10px;
   background:rgba(14,11,7,0.97); border:1px solid rgba(255,176,32,0.35);
-  color:var(--text); font-family:inherit; font-size:11.5px; font-weight:500;
+  color:var(--text); font-family:var(--mono); font-size:11.5px; font-weight:500;
   letter-spacing:normal; line-height:1.4; text-transform:none;
   opacity:0; pointer-events:none; transform:translateY(-4px);
-  transition:opacity .15s, transform .15s; z-index:6;
+  transition:opacity .15s, transform .15s;
   box-shadow:0 14px 32px -10px rgba(0,0,0,0.75);
 }
-.concert-badge:hover::after, .concert-badge:focus-visible::after{ opacity:1; transform:translateY(0); }
+.floating-tooltip.visible{ opacity:1; transform:translateY(0); }
 /* Badge "HD" : affiché en bas à gauche de la pochette des titres marqués
    par un modo (haute qualité audio) via le modal "Modifier le titre". */
 .hd-badge{
@@ -759,6 +779,14 @@ input,textarea{ font-family:inherit; }
 .np-art-wrap{ position:relative; flex:1; display:flex; align-items:center; justify-content:center; min-height:0; padding:20px 0; overflow:hidden; }
 .np-art-track{ display:flex; align-items:center; justify-content:center; gap:12px; width:100%; }
 .np-art{ width:min(56vw,260px); height:min(56vw,260px); max-width:100%; max-height:100%; object-fit:cover; border-radius:22px; box-shadow:0 30px 70px -20px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.08); flex-shrink:0; will-change:transform; transition:transform .09s linear; }
+/* Enveloppe uniquement la pochette principale (pas les vignettes voisines)
+   pour pouvoir y poser les badges HD/CONCERT à des coordonnées fixes,
+   alignées sur les coins de l'image quelle que soit sa taille responsive
+   (mêmes valeurs min() que .np-art ci-dessus, y compris en media query). */
+.np-art-cover-wrap{ position:relative; flex-shrink:0; width:min(56vw,260px); height:min(56vw,260px); }
+.np-art-cover-wrap .np-art{ width:100%; height:100%; }
+.np-art-cover-wrap .concert-badge{ top:10px; left:10px; }
+.np-art-cover-wrap .hd-badge{ bottom:10px; left:10px; }
 .np-art-side{
   flex-shrink:0; width:min(20vw,110px); height:min(20vw,110px);
   object-fit:cover; border-radius:16px; cursor:pointer;
@@ -816,6 +844,7 @@ input,textarea{ font-family:inherit; }
   .np-title{ font-size:19px; }
   .np-controls{ gap:26px; }
   .np-art{ width:min(50vw,240px); height:min(50vw,240px); }
+  .np-art-cover-wrap{ width:min(50vw,240px); height:min(50vw,240px); }
   .np-art-side{ width:min(17vw,90px); height:min(17vw,90px); }
   .np-art-track{ gap:8px; }
   /* Mode concert optimisé mobile : on remplace entièrement les 5 faisceaux
@@ -1036,6 +1065,11 @@ input,textarea{ font-family:inherit; }
 </style>
 </head>
 <body>
+
+<!-- Info-bulle flottante partagée par les badges CONCERT pleine taille
+     (voir showFloatingTooltip/bindConcertBadgeTooltip) : position:fixed,
+     jamais rognée par le overflow:hidden d'une pochette ou d'un carrousel. -->
+<div class="floating-tooltip" id="floating-tooltip" role="tooltip"></div>
 
 <!-- =========================================================
      NAV
@@ -1385,7 +1419,7 @@ input,textarea{ font-family:inherit; }
         </div>
       </div>
 
-      <div class="np-art-wrap">
+      <div class="np-art-wrap" id="np-art-wrap">
         <!-- Mode concert (mobile uniquement) : 8 faisceaux qui partent du
              centre de la pochette et rayonnent vers l'extérieur (4 vers ses
              angles = aigus, 4 vers le milieu de ses bordures = médiums),
@@ -1405,7 +1439,11 @@ input,textarea{ font-family:inherit; }
         <span class="np-concert-bass-glow" id="np-concert-bass-glow" aria-hidden="true"></span>
         <div class="np-art-track" id="np-art-track">
           <img class="np-art-side" id="np-art-prev" alt="" aria-hidden="true">
-          <img class="np-art" id="np-cover" alt="">
+          <div class="np-art-cover-wrap" id="np-cover-wrap">
+            <img class="np-art" id="np-cover" alt="">
+            <span class="concert-badge" tabindex="0" id="np-cover-concert-badge" data-tooltip="Ce titre est certifié pour être adapté au mode concert." style="display:none">🎤 CONCERT</span>
+            <span class="hd-badge" id="np-cover-hd-badge" style="display:none">HD</span>
+          </div>
           <img class="np-art-side" id="np-art-next" alt="" aria-hidden="true">
         </div>
       </div>
@@ -2373,6 +2411,10 @@ function subscribeToProfile(uid){
     // appareils. `save:false` car on applique ici ce qui vient déjà du
     // compte — on ne doit pas le réécrire immédiatement dessus.
     if(typeof setConcertMode === 'function') setConcertMode(data.concertMode === true, { save:false });
+    // Amélioration audio IA : même principe que le mode concert ci-dessus,
+    // synchronisée via le compte pour rester identique sur tous les
+    // appareils connectés au même compte.
+    if(typeof setAiEnhance === 'function') setAiEnhance(data.aiEnhance === true, { save:false });
   });
 }
 function updateProfilePreview(label, photoURL){
@@ -2459,6 +2501,7 @@ auth.onAuthStateChanged(async (user)=>{
     currentProfile = null;
     applyEqSettings(0, 0, 0);
     if(typeof setConcertMode === 'function') setConcertMode(false, { save:false });
+    if(typeof setAiEnhance === 'function') setAiEnhance(false, { save:false });
     if(playlistsUnsub){ playlistsUnsub(); playlistsUnsub = null; }
     allPlaylists = [];
     if(playbackSyncUnsub){ playbackSyncUnsub(); playbackSyncUnsub = null; }
@@ -3957,6 +4000,8 @@ function paintGrid(gridId, emptyId, countId, list, texts){
     </div>`;
   }).join('');
 
+  bindConcertBadgeTooltip(grid); // (re)lie l'info-bulle flottante des badges CONCERT fraîchement rendus
+
   grid.querySelectorAll('[data-add-to-playlist]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); openAddToPlaylistModal(btn.dataset.addToPlaylist); });
   });
@@ -4015,6 +4060,7 @@ function renderRanking(){
       <span class="ranking-rank">${medal ? `<span class="ranking-medal">${medal}</span>` : ''}${i + 1}</span>
       <div class="ranking-cover" data-play="${t.id}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
+        ${t.concertCertified ? `<span class="concert-badge-mini" aria-hidden="true">🎤</span>` : ''}
         ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
@@ -4129,6 +4175,7 @@ function renderHistory(){
     <div class="ranking-row ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
       <div class="ranking-cover" data-play="${t.id}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
+        ${t.concertCertified ? `<span class="concert-badge-mini" aria-hidden="true">🎤</span>` : ''}
         ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
@@ -5107,6 +5154,7 @@ async function playTrackById(trackId, direction, opts){
   activeClipEnd = null;
   updateVolumeUIForTrack(track); // applique/retire le volume verrouillé de ce titre
   updateAiEnhanceUIForTrack(track); // coupe/grise l'amélioration IA si ce titre est certifié "mode concert"
+  updateNpCoverBadges(track); // badges HD/CONCERT sur la pochette du grand lecteur
   // Incrémente le compteur d'écoutes du titre (utilisé par le Classement).
   // Doit fonctionner pour TOUT visiteur (connecté ou non) — si ça échoue,
   // c'est presque toujours une règle de sécurité Firestore trop stricte
@@ -5172,6 +5220,7 @@ function stopPlayback(){
   activeClipEnd = null;
   updateVolumeUIForTrack(null); // plus de titre en cours : déverrouille le curseur de volume
   updateAiEnhanceUIForTrack(null); // plus de titre en cours : redonne la main sur l'amélioration IA
+  updateNpCoverBadges(null); // plus de titre en cours : masque les badges de la pochette
   playerBar.classList.remove('visible');
   renderTracks();
   updateHeroPlayState();
@@ -6081,9 +6130,11 @@ function refreshAiEnhanceMenuUI(){
   if(hint) hint.textContent = aiEnhanceLockedOff ? 'Indisponible en mode concert' : '';
 }
 // Active/désactive l'amélioration IA (checkbox + variable d'état + effets
-// audio) et, en option, mémorise le choix sur cet appareil. `save:false`
-// sert quand on ne fait qu'appliquer une valeur déjà connue (restauration
-// au chargement) sans la réécrire aussitôt.
+// audio) et, en option, enregistre le réglage sur le profil du compte
+// connecté afin qu'il se retrouve identique sur les autres appareils et à
+// la réouverture de la page (même logique que setConcertMode ci-dessus).
+// `save:false` sert quand on ne fait qu'appliquer une valeur déjà connue
+// (snapshot Firestore, réinitialisation locale) sans la réécrire aussitôt.
 function setAiEnhance(enabled, opts){
   const save = !opts || opts.save !== false;
   aiEnhanceOn = !!enabled;
@@ -6091,10 +6142,16 @@ function setAiEnhance(enabled, opts){
   refreshAiEnhanceMenuUI();
   if(save) saveAiEnhanceSetting(aiEnhanceOn);
 }
-// Réglage purement local à l'appareil (comme le volume) : pas besoin de le
-// synchroniser sur le compte Firestore.
+// Sauvegarde le réglage de l'amélioration IA sur le profil du compte
+// connecté (aucun effet si personne n'est connecté, ex. session anonyme :
+// le réglage reste alors local à cet onglet pour la session en cours).
 function saveAiEnhanceSetting(enabled){
-  try{ localStorage.setItem('aiEnhanceOn', enabled ? '1' : '0'); }catch(e){}
+  const uid = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser.uid : null;
+  if(!uid) return;
+  usersRef.doc(uid).set({
+    aiEnhance: enabled,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge:true }).catch(err=> console.error("Impossible d'enregistrer l'amélioration audio IA :", err));
 }
 // Verrouille/déverrouille l'amélioration IA selon le titre en cours : un
 // titre certifié "mode concert" a déjà un rendu calibré manuellement par un
@@ -6110,11 +6167,64 @@ document.getElementById('np-menu-ai-enhance-toggle').addEventListener('change', 
   if(aiEnhanceLockedOff){ this.checked = false; return; } // ceinture et bretelles : le bouton est déjà disabled
   setAiEnhance(this.checked);
 });
-// Restaure le dernier réglage choisi sur cet appareil.
-(function initAiEnhance(){
-  try{ aiEnhanceOn = localStorage.getItem('aiEnhanceOn') === '1'; }catch(e){}
-  refreshAiEnhanceMenuUI();
-})();
+refreshAiEnhanceMenuUI(); // état par défaut (off) tant que le profil du compte n'est pas encore chargé
+
+/* =========================================================
+   BADGES HD / CONCERT — grand lecteur + info-bulle flottante
+   ========================================================= */
+// Affiche/masque les badges HD et CONCERT sur la pochette du grand lecteur
+// selon le titre en cours (même principe que updateVolumeUIForTrack /
+// updateAiEnhanceUIForTrack juste au-dessus).
+function updateNpCoverBadges(track){
+  const concertBadge = document.getElementById('np-cover-concert-badge');
+  const hdBadge = document.getElementById('np-cover-hd-badge');
+  if(concertBadge) concertBadge.style.display = (track && track.concertCertified) ? '' : 'none';
+  if(hdBadge) hdBadge.style.display = (track && track.hdCertified) ? '' : 'none';
+}
+// Info-bulle flottante partagée par tous les badges CONCERT "pleine
+// taille" (grand lecteur + pochettes de la bibliothèque) : un seul élément
+// réutilisé et positionné en JS selon le badge survolé, donc jamais rogné
+// par le overflow:hidden d'une pochette ou du carrousel du grand lecteur —
+// contrairement à une bulle CSS ::after classique. Les badges réduits
+// (.concert-badge-mini, classement/historique) n'y participent pas :
+// pointer-events:none les empêche d'être survolés/focus.
+const floatingTooltipEl = document.getElementById('floating-tooltip');
+let floatingTooltipHideTimer = null;
+function showFloatingTooltip(targetEl, text){
+  if(!floatingTooltipEl || !targetEl || !text) return;
+  clearTimeout(floatingTooltipHideTimer);
+  floatingTooltipEl.textContent = text;
+  floatingTooltipEl.classList.add('visible');
+  const rect = targetEl.getBoundingClientRect();
+  const margin = 8;
+  const tw = floatingTooltipEl.offsetWidth;
+  const th = floatingTooltipEl.offsetHeight;
+  let left = rect.left;
+  let top = rect.bottom + margin;
+  if(left + tw > window.innerWidth - margin) left = window.innerWidth - tw - margin; // évite le débordement à droite
+  if(left < margin) left = margin; // évite le débordement à gauche
+  if(top + th > window.innerHeight - margin) top = rect.top - th - margin; // pas de place en dessous : bascule au-dessus
+  floatingTooltipEl.style.left = left + 'px';
+  floatingTooltipEl.style.top = top + 'px';
+}
+function hideFloatingTooltip(){
+  floatingTooltipHideTimer = setTimeout(()=>{ if(floatingTooltipEl) floatingTooltipEl.classList.remove('visible'); }, 60);
+}
+// À appeler après chaque (ré)affichage de badges CONCERT pleine taille
+// (le contenu étant régénéré via innerHTML, les écouteurs précédents sont
+// perdus avec les anciens noeuds ; data-tooltip-bound évite les doublons).
+function bindConcertBadgeTooltip(root){
+  (root || document).querySelectorAll('.concert-badge[data-tooltip]').forEach(badge=>{
+    if(badge.dataset.tooltipBound) return;
+    badge.dataset.tooltipBound = '1';
+    badge.addEventListener('mouseenter', ()=> showFloatingTooltip(badge, badge.dataset.tooltip));
+    badge.addEventListener('mouseleave', hideFloatingTooltip);
+    badge.addEventListener('focus', ()=> showFloatingTooltip(badge, badge.dataset.tooltip));
+    badge.addEventListener('blur', hideFloatingTooltip);
+  });
+}
+bindConcertBadgeTooltip(); // lie le badge statique du grand lecteur dès le chargement
+
 
 function openEqPanel(){
   npEqPanel.classList.add('open');
@@ -6166,6 +6276,7 @@ tracksRef.onSnapshot(()=>{
       updateVolumeUIForTrack(t);
       if(lockedConcertVolume !== wasLocked) fadeGainTo(getEffectiveVolume(), 300);
       updateAiEnhanceUIForTrack(t);
+      updateNpCoverBadges(t);
     }
   }
 });
