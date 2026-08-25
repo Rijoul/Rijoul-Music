@@ -396,7 +396,7 @@ input,textarea{ font-family:inherit; }
    ========================================================= */
 .ranking-list{ display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
 .ranking-row{
-  position:relative; display:grid; grid-template-columns:40px 48px 1fr auto auto; align-items:center; gap:14px;
+  position:relative; display:grid; grid-template-columns:40px 48px 1fr auto auto auto; align-items:center; gap:14px;
   background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:9px 14px;
   transition:.18s cubic-bezier(.4,0,.2,1);
 }
@@ -465,6 +465,19 @@ input,textarea{ font-family:inherit; }
 .ranking-artist{ font-size:12px; color:var(--text-dim); margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ranking-plays{ font-family:var(--mono); font-size:12px; color:var(--text-faint); white-space:nowrap; display:flex; align-items:center; gap:5px; }
 .ranking-more-wrap{ display:flex; justify-content:center; margin-bottom:40px; }
+
+/* --- Bouton "Historique du classement" (uniquement sur l'onglet "Depuis
+   toujours") : ouvre un mini-menu indiquant depuis/pendant combien de temps
+   le titre s'est maintenu dans le Top 50 Semaine / Mois / Année. --- */
+.ranking-history-btn{ color:var(--text-faint); }
+.ranking-history-btn:hover{ color:var(--copper-bright); }
+.ranking-history-body{ display:flex; flex-direction:column; gap:10px; margin-top:4px; }
+.ranking-history-line{
+  margin:0; font-size:13.5px; line-height:1.5; color:var(--text-dim);
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 14px;
+}
+.ranking-history-line b{ color:var(--text); }
+.ranking-history-loading{ color:var(--text-faint); font-size:13px; padding:8px 2px; }
 
 /* --- Filtre de période du Classement (Semaine / Mois / Année / Toujours) --- */
 .ranking-period-tabs{ display:flex; gap:8px; overflow-x:auto; margin-bottom:16px; scrollbar-width:none; }
@@ -1758,6 +1771,21 @@ input,textarea{ font-family:inherit; }
       <textarea id="lyrics-textarea" rows="14" placeholder="Colle ou écris les paroles du titre ici…"></textarea>
     </div>
     <button class="btn btn-gold btn-block" id="lyrics-submit" style="margin-top:16px;">Enregistrer les paroles</button>
+  </div>
+</div>
+
+<!-- =========================================================
+     CLASSEMENT — HISTORIQUE (temps passé dans le Top 50 par période)
+     ========================================================= -->
+<div class="overlay" id="ranking-history-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 class="modal-title" id="ranking-history-title">Historique du classement</h3>
+      <button class="modal-close" data-close="ranking-history-overlay">✕</button>
+    </div>
+    <div class="ranking-history-body" id="ranking-history-body">
+      <div class="ranking-history-loading">Calcul de l'historique du classement…</div>
+    </div>
   </div>
 </div>
 
@@ -4193,7 +4221,7 @@ function renderRanking(){
   }
   empty.style.display = 'none';
 
-  const total = Math.min(ranked.length, 100);
+  const total = Math.min(ranked.length, 50); // seuls les 50 titres les plus écoutés apparaissent
   countEl.textContent = total + (total > 1 ? ' titres classés' : ' titre classé');
 
   const visible = ranked.slice(0, Math.min(rankingVisibleCount, total));
@@ -4222,6 +4250,9 @@ function renderRanking(){
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5v14l11-7z"/></svg>
         ${plays} ${plays > 1 ? 'écoutes' : 'écoute'}
       </span>
+      ${rankingPeriod === 'all' ? `<button class="like-btn ranking-history-btn" data-history="${t.id}" aria-label="Historique du classement">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5 7 4-14 2.5 7H21"/></svg>
+      </button>` : ''}
       <button class="like-btn addpl-btn" data-add-to-playlist="${t.id}" aria-label="Ajouter à une playlist">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       </button>
@@ -4234,20 +4265,183 @@ function renderRanking(){
   list.querySelectorAll('[data-add-to-playlist]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); openAddToPlaylistModal(btn.dataset.addToPlaylist); });
   });
+  list.querySelectorAll('[data-history]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); openRankingHistory(btn.dataset.history); });
+  });
 
-  // Bouton "Voir plus" : Top20 -> Top50 -> Top100, puis disparaît.
+  // Bouton "Voir plus" : Top20 -> Top50, puis disparaît (seuls les 50
+  // titres les plus écoutés sont affichés, quelle que soit la période).
   if(rankingVisibleCount < total){
     moreWrap.style.display = '';
-    const nextStep = rankingVisibleCount < 50 ? 50 : 100;
-    moreBtn.textContent = `Voir plus (Top ${Math.min(nextStep, total)})`;
+    moreBtn.textContent = `Voir plus (Top ${total})`;
   }else{
     moreWrap.style.display = 'none';
   }
 }
 document.getElementById('ranking-more-btn').addEventListener('click', ()=>{
-  rankingVisibleCount = rankingVisibleCount < 50 ? 50 : 100;
+  rankingVisibleCount = 50;
   renderRanking();
 });
+
+/* =========================================================
+   HISTORIQUE DU CLASSEMENT — pour un titre du Top "Depuis toujours",
+   calcule depuis/pendant combien de temps il s'est maintenu dans le
+   Top 50 du classement Semaine / Mois / Année, à partir du journal
+   global "musicPlayLogs" (une entrée horodatée par écoute, tous
+   visiteurs confondus). On regroupe les écoutes par semaine/mois/année
+   calendaire, on prend le Top 50 de chaque période, puis :
+   - si le titre figure dans le Top 50 de la période EN COURS, on
+     affiche "est depuis X..." et on compte les périodes consécutives
+     jusqu'à maintenant (le titre y est toujours) ;
+   - sinon, on affiche "est resté X..." et on compte le nombre total
+     de périodes passées où il a figuré dans ce Top 50 (il n'y est
+     plus actuellement).
+   Le résultat est mis en cache quelques minutes pour éviter de
+   retélécharger tout le journal à chaque clic sur le bouton.
+   ========================================================= */
+let rankingHistoryCache = null; // { computedAt, weekly:[...], monthly:[...], yearly:[...] }
+let rankingHistoryBuildPromise = null;
+const RANKING_HISTORY_CACHE_MS = 5 * 60 * 1000; // 5 minutes
+
+function rankingHistoryWeekKey(date){
+  // Clé "année-Wsemaine" au format ISO 8601 (semaine du lundi au dimanche).
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dayNum + 3);
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const fDayNum = (firstThursday.getUTCDay() + 6) % 7;
+  const week = 1 + Math.round(((d - firstThursday) / 86400000 - 3 + fDayNum) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+function rankingHistoryMonthKey(date){ return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; }
+function rankingHistoryYearKey(date){ return `${date.getFullYear()}`; }
+
+// Regroupe une liste d'écoutes {trackId, date} par clé de période (semaine,
+// mois ou année), puis calcule le Top 50 de chaque période, triées de la
+// plus ancienne à la plus récente.
+function rankingHistoryBuildBuckets(logs, keyFn){
+  const byKey = {};
+  logs.forEach(l=>{
+    const k = keyFn(l.date);
+    if(!byKey[k]) byKey[k] = {};
+    byKey[k][l.trackId] = (byKey[k][l.trackId] || 0) + 1;
+  });
+  return Object.keys(byKey).sort().map(k=>{
+    const top50 = new Set(
+      Object.entries(byKey[k]).sort((a, b)=> b[1] - a[1]).slice(0, 50).map(e=> e[0])
+    );
+    return { key: k, top50 };
+  });
+}
+
+// Télécharge (une seule fois, avec cache) tout le journal des écoutes et
+// construit les trois séries de périodes (semaine/mois/année).
+async function buildRankingHistoryCache(){
+  if(rankingHistoryCache && (Date.now() - rankingHistoryCache.computedAt) < RANKING_HISTORY_CACHE_MS){
+    return rankingHistoryCache;
+  }
+  if(rankingHistoryBuildPromise) return rankingHistoryBuildPromise;
+  rankingHistoryBuildPromise = (async ()=>{
+    const snap = await playLogsRef.get();
+    const logs = [];
+    snap.forEach(doc=>{
+      const d = doc.data();
+      if(d && d.trackId && d.playedAt && typeof d.playedAt.toDate === 'function'){
+        logs.push({ trackId: d.trackId, date: d.playedAt.toDate() });
+      }
+    });
+    const cache = {
+      computedAt: Date.now(),
+      weekly: rankingHistoryBuildBuckets(logs, rankingHistoryWeekKey),
+      monthly: rankingHistoryBuildBuckets(logs, rankingHistoryMonthKey),
+      yearly: rankingHistoryBuildBuckets(logs, rankingHistoryYearKey),
+    };
+    rankingHistoryCache = cache;
+    return cache;
+  })();
+  try{
+    return await rankingHistoryBuildPromise;
+  }finally{
+    rankingHistoryBuildPromise = null;
+  }
+}
+
+// Pour une série de périodes donnée (semaine, mois OU année), détermine si
+// le titre est actuellement dans le Top 50 (auquel cas on compte la série
+// de périodes consécutives jusqu'à maintenant) ou s'il y a figuré par le
+// passé sans y être encore (auquel cas on compte le total de périodes où
+// il y a figuré).
+function rankingHistoryStatusForTrack(buckets, trackId){
+  if(!buckets.length) return null;
+  const lastIndex = buckets.length - 1;
+  const isCurrent = buckets[lastIndex].top50.has(trackId);
+  if(isCurrent){
+    let streak = 0;
+    for(let i = lastIndex; i >= 0; i--){
+      if(buckets[i].top50.has(trackId)) streak++;
+      else break;
+    }
+    return { status: 'depuis', count: streak };
+  }
+  let total = 0;
+  buckets.forEach(b=>{ if(b.top50.has(trackId)) total++; });
+  if(total === 0) return { status: null, count: 0 };
+  return { status: 'reste', count: total };
+}
+
+// Convertit un nombre de périodes (dans l'unité "periodDays") en une durée
+// lisible, exprimée en jours, semaines ou années selon ce qui convient le
+// mieux (comme demandé : "X jour/semaines/année").
+function rankingHistoryFormatDuration(count, periodDays){
+  const totalDays = Math.max(1, count * periodDays);
+  if(totalDays < 14){
+    const n = Math.max(1, Math.round(totalDays));
+    return `${n} ${n > 1 ? 'jours' : 'jour'}`;
+  }
+  if(totalDays < 365){
+    const n = Math.max(1, Math.round(totalDays / 7));
+    return `${n} ${n > 1 ? 'semaines' : 'semaine'}`;
+  }
+  const n = Math.max(1, Math.round(totalDays / 365));
+  return `${n} ${n > 1 ? 'années' : 'année'}`;
+}
+
+// Construit les 3 lignes du menu (Semaine / Mois / Année) pour un titre.
+function rankingHistoryBuildLines(trackId, cache){
+  const periods = [
+    { buckets: cache.weekly, days: 7, label: 'classement Semaine' },
+    { buckets: cache.monthly, days: 30, label: 'classement Mois' },
+    { buckets: cache.yearly, days: 365, label: 'classement Année' },
+  ];
+  return periods.map(p=>{
+    const res = rankingHistoryStatusForTrack(p.buckets, trackId);
+    if(!res || !res.status){
+      return `Ce titre n'est jamais entré dans le Top 50 du <b>${p.label}</b>.`;
+    }
+    const duration = rankingHistoryFormatDuration(res.count, p.days);
+    const verb = res.status === 'depuis' ? 'est depuis' : 'est resté';
+    return `Ce titre ${verb} <b>${duration}</b> dans le <b>${p.label}</b>.`;
+  });
+}
+
+// Ouvre le menu d'historique du classement pour un titre (bouton affiché
+// uniquement sur l'onglet "Depuis toujours").
+async function openRankingHistory(trackId){
+  const t = allTracks.find(tr=> tr.id === trackId);
+  const titleEl = document.getElementById('ranking-history-title');
+  const body = document.getElementById('ranking-history-body');
+  titleEl.textContent = t ? (t.title || 'Historique du classement') : 'Historique du classement';
+  body.innerHTML = '<div class="ranking-history-loading">Calcul de l\'historique du classement…</div>';
+  openOverlay('ranking-history-overlay');
+  try{
+    const cache = await buildRankingHistoryCache();
+    const lines = rankingHistoryBuildLines(trackId, cache);
+    body.innerHTML = lines.map(l=> `<p class="ranking-history-line">${l}</p>`).join('');
+  }catch(err){
+    console.error("Impossible de calculer l'historique du classement :", err);
+    body.innerHTML = '<p class="ranking-history-line">Impossible de calculer cet historique pour le moment.</p>';
+  }
+}
 
 /* =========================================================
    HISTORIQUE — titres déjà écoutés par le membre connecté, du
