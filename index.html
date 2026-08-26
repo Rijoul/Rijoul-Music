@@ -4708,6 +4708,40 @@ function radioAdvanceOnEnd(){
   const sched = computeRadioSchedule();
   if(sched) playRadioTrack(sched);
 }
+// Quand la page redevient visible (retour au premier plan, écran rallumé)
+// après avoir été masquée pendant l'écoute de la Radio Direct, le
+// navigateur a fortement ralenti voire complètement gelé les timers JS
+// (setInterval du radioTick, "timeupdate"...) pendant qu'elle était cachée.
+// Sans ce correctif, le changement de titre en fin de morceau ne peut pas
+// s'exécuter à temps : le lecteur audio finit par s'arrêter tout seul et,
+// au bout d'un moment sans rien jouer, le système retire la notification /
+// barre de contrôle média. On se resynchronise donc immédiatement sur
+// l'antenne dès que la page redevient visible, pour que la Radio Direct ne
+// s'arrête jamais et que la notification reste affichée en continu.
+function resyncRadioAfterWake(){
+  if(!radioModeActive) return;
+  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  const sched = computeRadioSchedule();
+  if(!sched) return;
+  if(sched.track.id === currentTrackId){
+    // Le bon titre est déjà chargé mais la lecture s'est arrêtée (audio
+    // terminé ou mis en pause par le système pendant que la page était
+    // gelée, sans que le code ait pu enchaîner à temps) : on relance et on
+    // se recale sur l'instant exact du direct.
+    if(audioEl.paused || audioEl.ended){
+      try{ audioEl.currentTime = Math.min(sched.offset, isFinite(audioEl.duration) ? audioEl.duration : sched.offset); }catch(e){}
+      audioEl.play().then(()=> fadeGainTo(getEffectiveVolume(), FADE_MS)).catch(()=>{});
+    }
+  }else{
+    // Le programme a avancé d'un ou plusieurs titres pendant qu'on était en
+    // arrière-plan : on rejoint directement le titre actuellement à l'antenne.
+    playRadioTrack(sched);
+  }
+  updateRadioListenerUI();
+}
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) resyncRadioAfterWake(); });
+window.addEventListener('pageshow', resyncRadioAfterWake);
+window.addEventListener('focus', resyncRadioAfterWake);
 
 function renderHomePlaylistsSection(){
   const section = document.getElementById('home-playlists-section');
@@ -6433,11 +6467,33 @@ async function playTrackById(trackId, direction, opts){
     if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     if(masterGain) masterGain.gain.setValueAtTime(0.0001, audioCtx.currentTime); // silence net avant le fondu d'entrée
     else audioEl.volume = 0;
-    audioEl.play().then(()=> fadeGainTo(getEffectiveVolume(), outgoingSrc ? CROSSFADE_MS : FADE_MS)).catch(()=>{});
+    audioEl.play().then(()=> fadeGainTo(getEffectiveVolume(), outgoingSrc ? CROSSFADE_MS : FADE_MS)).catch(()=>{
+      // .play() peut être refusé juste après un changement de source pendant
+      // que la page est en arrière-plan (contexte audio pas encore repris,
+      // etc.). En Radio Direct, on retente une fois peu après au lieu de
+      // laisser le direct silencieux avec une notification bloquée.
+      if(opts && opts.radio){
+        setTimeout(()=>{
+          if(currentTrackId === trackId && audioEl.paused){
+            if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            audioEl.play().then(()=> fadeGainTo(getEffectiveVolume(), FADE_MS)).catch(()=>{});
+          }
+        }, 800);
+      }
+    });
     syncNowPlayingUI();
   }catch(e){
     trackChangeInFlight = false;
     console.error(e);
+    if(opts && opts.radio){
+      // Radio Direct : on ne coupe jamais le direct sur un simple accroc de
+      // chargement (réseau en pointillé pendant que le site est en
+      // arrière-plan, etc.) — la notification/session média doit rester
+      // active. On retente automatiquement quelques secondes plus tard, en
+      // se recalant sur l'antenne au moment du nouvel essai.
+      setTimeout(()=>{ if(radioModeActive) radioAdvanceOnEnd(); }, 3000);
+      return;
+    }
     showToast(e && e.message === "Ce titre n'est pas téléchargé et tu es hors connexion."
       ? "Hors connexion : ce titre n'a pas été téléchargé. 📴"
       : "Impossible de charger ce morceau.");
