@@ -1781,6 +1781,22 @@ input,textarea{ font-family:inherit; }
     <div class="field" style="margin-top:14px;"><label>Titre</label><input type="text" id="edit-title" placeholder="Nom du morceau"></div>
     <div class="field"><label>Artiste</label><input type="text" id="edit-artist" placeholder="Nom de l'artiste"></div>
 
+    <!-- Réservé à l'admin : remplace le fichier audio du titre, quel que
+         soit le membre qui l'a envoyé à l'origine. Action indépendante du
+         bouton "Enregistrer" plus bas : elle se lance dès le choix du
+         fichier, avec sa propre barre de progression (le ré-envoi —
+         suppression des anciens morceaux puis découpage/upload du
+         nouveau fichier — peut prendre un moment). -->
+    <div class="field" style="margin-top:14px;">
+      <label>Fichier audio</label>
+      <button type="button" class="btn btn-ghost btn-sm" id="edit-audio-choose" style="width:100%;">🎵 Remplacer le fichier audio</button>
+      <input type="file" id="edit-audio-input" accept="audio/*" class="visually-hidden">
+      <div class="upload-progress" id="edit-audio-progress" style="display:none;">
+        <div class="upload-progress-bar"><div class="upload-progress-fill" id="edit-audio-progress-fill"></div></div>
+        <div class="upload-progress-label" id="edit-audio-progress-label">Envoi…</div>
+      </div>
+    </div>
+
     <!-- Réservé aux modos : certifie que ce titre est adapté au mode
          concert (affiche un badge CONCERT sur la carte du titre). Se
          sauvegarde immédiatement au clic, indépendamment du bouton
@@ -5855,6 +5871,74 @@ document.getElementById('edit-submit').addEventListener('click', async ()=>{
     showEditError("Impossible d'enregistrer les modifications.");
   }finally{
     btn.disabled = false; btn.textContent = 'Enregistrer';
+  }
+});
+
+/* =========================================================
+   REMPLACEMENT DU FICHIER AUDIO (réservé à l'admin) — permet de
+   remplacer le fichier audio d'un titre déjà publié, quel que soit le
+   membre qui l'a envoyé à l'origine (ex. mauvais fichier, mauvaise
+   qualité, version à corriger…). Supprime d'abord tous les anciens
+   morceaux (sous-collection "audioChunks") avant d'envoyer les nouveaux,
+   pour ne jamais laisser de morceaux excédentaires si le nouveau fichier
+   est découpé différemment de l'ancien.
+   ========================================================= */
+document.getElementById('edit-audio-choose').addEventListener('click', ()=>{
+  if(!isAdmin){ showToast("Seul l'admin peut remplacer le fichier audio d'un titre."); return; }
+  document.getElementById('edit-audio-input').click();
+});
+document.getElementById('edit-audio-input').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  e.target.value = ''; // permet de resélectionner le même fichier plus tard si besoin
+  if(!file || !editingTrackId) return;
+  if(!isAdmin){ showToast("Seul l'admin peut remplacer le fichier audio d'un titre."); return; }
+  if(!confirm("Remplacer le fichier audio de ce titre ? L'ancien fichier sera définitivement supprimé.")) return;
+
+  const trackId = editingTrackId;
+  const chooseBtn = document.getElementById('edit-audio-choose');
+  const progressWrap = document.getElementById('edit-audio-progress');
+  const progressFill = document.getElementById('edit-audio-progress-fill');
+  const progressLabel = document.getElementById('edit-audio-progress-label');
+  chooseBtn.disabled = true;
+  progressWrap.style.display = 'block';
+  progressFill.style.width = '0%';
+  progressLabel.textContent = 'Envoi…';
+
+  try{
+    const duration = await readAudioDuration(file);
+    const trackRef = tracksRef.doc(trackId);
+    // Supprime d'abord les anciens morceaux : évite d'en laisser traîner
+    // si le nouveau fichier est découpé en moins de morceaux que l'ancien.
+    const oldChunksSnap = await trackRef.collection('audioChunks').get();
+    if(!oldChunksSnap.empty){
+      const batch = db.batch();
+      oldChunksSnap.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    }
+    const { chunkCount, mimeType } = await uploadAudioToFirestore(trackRef, file, auth.currentUser.uid, (pct)=>{
+      progressFill.style.width = pct + '%';
+      progressLabel.textContent = `Envoi… ${pct}%`;
+    });
+    await trackRef.update({ audioChunkCount: chunkCount, audioMimeType: mimeType, duration: duration || 0 });
+
+    // Le cache local (lecture en cours + copie hors-ligne éventuelle) doit
+    // être invalidé, sinon l'ancien fichier continuerait à être lu à la
+    // place du nouveau.
+    if(audioBlobCache.has(trackId)){
+      URL.revokeObjectURL(audioBlobCache.get(trackId));
+      audioBlobCache.delete(trackId);
+    }
+    try{ await offlineDbDelete(trackId); }catch(e){ /* pas de copie hors-ligne pour ce titre, rien à faire */ }
+    if(currentTrackId === trackId) stopPlayback();
+
+    progressLabel.textContent = 'Terminé !';
+    showToast('Fichier audio remplacé. 🎶');
+  }catch(err){
+    console.error(err);
+    showToast("Impossible de remplacer le fichier audio. (" + (err.message || 'erreur') + ")");
+  }finally{
+    chooseBtn.disabled = false;
+    setTimeout(()=>{ progressWrap.style.display = 'none'; }, 1200);
   }
 });
 
