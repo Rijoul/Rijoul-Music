@@ -1006,6 +1006,12 @@ input,textarea{ font-family:inherit; }
    (lecteur, cartes, lignes de playlist/classement…) : ouvre sa page. */
 .artist-link{ cursor:pointer; }
 .artist-link:hover{ text-decoration:underline; }
+/* Le nom d'artiste de la mini barre de lecture n'ouvre plus la page artiste
+   (voir la délégation de clic plus bas) : on retire l'aspect "cliquable"
+   pour ne pas induire en erreur, et on laisse le clic ouvrir le grand
+   lecteur comme le reste du bandeau. */
+#p-artist.artist-link{ cursor:pointer; }
+#p-artist.artist-link:hover{ text-decoration:none; }
 
 /* Résultats "artiste" de la recherche globale : vignettes cliquables. */
 .artist-results{ display:flex; flex-wrap:wrap; gap:10px; margin:0 0 22px; }
@@ -2674,13 +2680,15 @@ function subscribeToProfile(uid){
     );
     // Mode concert : réglage synchronisé avec le compte (Firestore), pour
     // retrouver le même état à la réouverture de la page et sur les autres
-    // appareils. `save:false` car on applique ici ce qui vient déjà du
-    // compte — on ne doit pas le réécrire immédiatement dessus.
-    if(typeof setConcertMode === 'function') setConcertMode(data.concertMode === true, { save:false });
+    // appareils. Activé PAR DÉFAUT pour tout le monde (tant que l'utilisateur
+    // ne l'a pas explicitement désactivé, auquel cas ce choix est respecté).
+    // `save:false` car on applique ici ce qui vient déjà du compte — on ne
+    // doit pas le réécrire immédiatement dessus.
+    if(typeof setConcertMode === 'function') setConcertMode(data.concertMode !== false, { save:false });
     // Amélioration audio IA : même principe que le mode concert ci-dessus,
-    // synchronisée via le compte pour rester identique sur tous les
-    // appareils connectés au même compte.
-    if(typeof setAiEnhance === 'function') setAiEnhance(data.aiEnhance === true, { save:false });
+    // activée par défaut et synchronisée via le compte pour rester
+    // identique sur tous les appareils connectés au même compte.
+    if(typeof setAiEnhance === 'function') setAiEnhance(data.aiEnhance !== false, { save:false });
   });
 }
 function updateProfilePreview(label, photoURL){
@@ -2766,8 +2774,10 @@ auth.onAuthStateChanged(async (user)=>{
     if(profileUnsub){ profileUnsub(); profileUnsub = null; }
     currentProfile = null;
     applyEqSettings(0, 0, 0);
-    if(typeof setConcertMode === 'function') setConcertMode(false, { save:false });
-    if(typeof setAiEnhance === 'function') setAiEnhance(false, { save:false });
+    // Visiteur non connecté : mode concert et amélioration audio IA activés
+    // par défaut également (comme pour un compte sans préférence enregistrée).
+    if(typeof setConcertMode === 'function') setConcertMode(true, { save:false });
+    if(typeof setAiEnhance === 'function') setAiEnhance(true, { save:false });
     if(playlistsUnsub){ playlistsUnsub(); playlistsUnsub = null; }
     allPlaylists = [];
     if(playbackSyncUnsub){ playbackSyncUnsub(); playbackSyncUnsub = null; }
@@ -2955,6 +2965,12 @@ document.getElementById('artist-detail-play').addEventListener('click', ()=>{
 document.addEventListener('click', (e)=>{
   const link = e.target.closest('.artist-link');
   if(!link) return;
+  // Exception : le nom d'artiste dans la MINI barre de lecture (en bas de
+  // l'écran) n'ouvre plus la page artiste. Cette zone est trop petite/proche
+  // du reste du bandeau, et interceptait le clic destiné à ouvrir le grand
+  // lecteur (voir playerBar.addEventListener('click', ...) plus bas) —
+  // rendant ce dernier compliqué à atteindre sans "tomber" sur le nom.
+  if(link.id === 'p-artist') return;
   const name = link.dataset.artistLink;
   if(!name) return;
   e.stopPropagation();
@@ -6120,7 +6136,7 @@ let eqLow = null, eqMid = null, eqHigh = null, masterGain = null;
 // tant que le réglage n'est pas actif — évite de devoir reconstruire le
 // graphe Web Audio à chaque bascule.
 let aiEnhanceComp = null, aiEnhanceShelf = null;
-let aiEnhanceOn = false; // état voulu par l'utilisateur (persisté)
+let aiEnhanceOn = true; // état voulu par l'utilisateur (persisté) — activé par défaut
 let aiEnhanceLockedOff = false; // vrai quand le titre en cours est certifié "mode concert"
 // Réglages d'égaliseur liés au compte (sauvegardés dans usersRef) afin de se
 // retrouver identiques sur n'importe quel appareil une fois connecté.
@@ -7094,7 +7110,7 @@ document.addEventListener('click', (e)=>{ if(!npMenuBtn.contains(e.target) && !n
    faisceaux de lumière + un flash (stroboscope léger) synchronisés sur les
    basses/médiums/aigus détectés par l'analyseur audio déjà utilisé pour
    l'égaliseur animé, façon éclairage de scène de concert. */
-let concertModeOn = false;
+let concertModeOn = true; // activé par défaut
 const npConcertLightsEl = document.getElementById('np-concert-lights');
 const concertBeams = Array.from(document.querySelectorAll('.np-beam'));
 // Mode concert mobile : 8 faisceaux qui partent de la pochette elle-même
