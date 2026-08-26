@@ -4190,6 +4190,11 @@ document.getElementById('pl-detail-delete').addEventListener('click', ()=>{ if(c
 document.getElementById('pl-detail-play').addEventListener('click', ()=>{
   if(!currentPlaylistId) return;
   if(currentPlaylistId === RADIO_PLAYLIST_ID){ joinRadioLive(); return; }
+  // La playlist "Pour vous" est virtuelle (elle n'est pas stockée dans
+  // allPlaylists, seulement dans sharedPlaylistCache) : playPlaylistById()
+  // ne la trouve pas et le bouton "Lire" ne faisait donc rien. Il faut
+  // passer par playForYouPlaylist(), qui sait la reconstruire.
+  if(currentPlaylistId === FOR_YOU_PLAYLIST_ID){ playForYouPlaylist(); return; }
   playPlaylistById(currentPlaylistId);
 });
 document.getElementById('pl-detail-shuffle').addEventListener('click', ()=>{
@@ -4616,10 +4621,27 @@ function getMillis(ts){
   const d = new Date(ts);
   return isNaN(d.getTime()) ? null : d.getTime();
 }
-function buildTasteProfile(uid){
+// Découpe une journée en 144 tranches de 10 minutes (24h * 6) et renvoie
+// l'index de la tranche correspondant à une date donnée, dans le fuseau
+// horaire local de l'utilisateur : 18h01, 18h05 et 18h09 tombent tous les
+// trois dans la tranche "18h00", tandis que 18h11 tombe dans la tranche
+// "18h10". Sert à faire correspondre l'heure des écoutes passées à l'heure
+// de connexion actuelle sans être sensible à la seconde/minute près.
+const RECO_TIME_SLOT_MINUTES = 10;
+function timeSlotIndex(d){
+  const flooredMinutes = Math.floor(d.getMinutes() / RECO_TIME_SLOT_MINUTES) * RECO_TIME_SLOT_MINUTES;
+  return d.getHours() * (60 / RECO_TIME_SLOT_MINUTES) + (flooredMinutes / RECO_TIME_SLOT_MINUTES);
+}
+function buildTasteProfile(uid, referenceDate){
   const artistScore = Object.create(null); // affinité par artiste, pondérée par la fraîcheur des écoutes
   const trackPlayScore = Object.create(null); // affinité directe par titre déjà écouté
+  const timeSlotScore = Object.create(null); // affinité pour un titre au moment de la journée où on se connecte
   const now = Date.now();
+  // Tranche horaire "actuelle" : celle de l'instant où la recommandation
+  // est (re)calculée — donc, en pratique, l'heure de connexion de
+  // l'utilisateur, puisque le calcul se fige à l'ouverture de l'app puis
+  // se rafraîchit au plus toutes les 10 minutes (voir scheduleInitialRecommendations).
+  const refSlot = timeSlotIndex(referenceDate || new Date());
   if(uid){
     allHistoryEntries.forEach(h=>{
       const playedAtMs = getMillis(h.playedAt);
@@ -4630,9 +4652,16 @@ function buildTasteProfile(uid){
       const track = allTracks.find(t => t.id === h.trackId);
       const artistKey = track && track.artist ? track.artist.trim().toLowerCase() : null;
       if(artistKey) artistScore[artistKey] = (artistScore[artistKey] || 0) + recencyWeight;
+      // Une écoute passée qui a eu lieu dans la même tranche de 10 minutes
+      // que "maintenant" (ex. plusieurs écoutes vers 18h00-18h09, et on se
+      // reconnecte un autre jour à 18h05) renforce ce titre pour ce
+      // moment précis de la journée.
+      if(playedAtMs !== null && timeSlotIndex(new Date(playedAtMs)) === refSlot){
+        timeSlotScore[h.trackId] = (timeSlotScore[h.trackId] || 0) + recencyWeight;
+      }
     });
   }
-  return { artistScore, trackPlayScore };
+  return { artistScore, trackPlayScore, timeSlotScore };
 }
 function trackRecommendationScore(t, profile, uid){
   let score = 0;
@@ -4655,10 +4684,14 @@ function trackRecommendationScore(t, profile, uid){
     const ageDays = Math.max(0, (Date.now() - createdMs) / 86400000);
     score += Math.max(0, 3 - ageDays / 10);
   }
+  // 6) Correspondance avec l'heure de connexion actuelle : un titre déjà
+  //    écouté par le passé au même moment de la journée (à 10 minutes
+  //    près) remonte dans la sélection.
+  score += (profile.timeSlotScore[t.id] || 0) * 8;
   return score;
 }
-function sortByRecommendation(list, uid){
-  const profile = buildTasteProfile(uid);
+function sortByRecommendation(list, uid, referenceDate){
+  const profile = buildTasteProfile(uid, referenceDate);
   return list
     .map(t => ({ t, s: trackRecommendationScore(t, profile, uid) }))
     .sort((a, b) => b.s - a.s)
@@ -4679,6 +4712,7 @@ let recommendationsScheduled = false;
 let recommendationsInitialized = false;
 let cachedLibraryOrderIds = [];
 let cachedForYouPlaylist = null;
+let recommendationsRefreshTimer = null; // rafraîchit "Pour vous" toutes les 10 min (voir plus bas)
 
 function buildForYouPlaylistData(rankedList, uid){
   const trackIds = rankedList.slice(0, FOR_YOU_TRACK_LIMIT).map(t => t.id);
@@ -4698,12 +4732,17 @@ function buildForYouPlaylistData(rankedList, uid){
 // bibliothèque et la playlist "Pour vous".
 function computeAndFreezeRecommendations(){
   const uid = auth.currentUser ? auth.currentUser.uid : null;
-  const ranked = sortByRecommendation(allTracks, uid);
+  // L'heure prise en compte est celle de cet instant : à l'ouverture de
+  // l'app c'est donc l'heure de connexion de l'utilisateur, et lors des
+  // rafraîchissements périodiques (toutes les 10 min, voir plus bas)
+  // c'est l'heure du rafraîchissement — jamais recalculée plus souvent.
+  const ranked = sortByRecommendation(allTracks, uid, new Date());
   cachedLibraryOrderIds = ranked.map(t => t.id);
   cachedForYouPlaylist = buildForYouPlaylistData(ranked, uid);
   sharedPlaylistCache[FOR_YOU_PLAYLIST_ID] = cachedForYouPlaylist;
   recommendationsInitialized = true;
   renderTracks();
+  startRecommendationsRefreshTimer();
 }
 // Déclenché au chargement du catalogue et de l'historique : ne calcule
 // qu'une seule fois (la première fois où assez de données sont
@@ -4715,6 +4754,15 @@ function scheduleInitialRecommendations(){
   if(!allTracks.length) return;
   recommendationsScheduled = true;
   setTimeout(computeAndFreezeRecommendations, 700);
+}
+// Rafraîchit la sélection "Pour vous" / l'ordre de la bibliothèque au
+// minimum toutes les 10 minutes, pour que la tranche horaire prise en
+// compte par le moteur de recommandation avance avec le temps — sans
+// jamais recalculer plus souvent (pas d'effet "ça change en permanence").
+const RECO_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
+function startRecommendationsRefreshTimer(){
+  if(recommendationsRefreshTimer) return; // déjà démarré, une seule minuterie pour toute la session
+  recommendationsRefreshTimer = setInterval(computeAndFreezeRecommendations, RECO_REFRESH_INTERVAL_MS);
 }
 // Ordre de la bibliothèque à afficher : l'ordre figé à l'ouverture une
 // fois disponible (les titres ajoutés depuis sont ajoutés à la suite,
