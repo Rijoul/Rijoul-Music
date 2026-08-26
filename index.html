@@ -417,9 +417,14 @@ input,textarea{ font-family:inherit; }
    ni sauter un titre ni revenir en arrière). --- */
 .is-radio-live #p-prev, .is-radio-live #p-next,
 .is-radio-live #np-prev, .is-radio-live #np-next,
-.is-radio-live #np-art-prev, .is-radio-live #np-art-next{
+.is-radio-live #np-art-prev, .is-radio-live #np-art-next,
+.is-radio-live #np-loop-btn, .is-radio-live #np-shuffle-btn{
   display:none !important;
 }
+/* Boucle/aléatoire retirés en Radio Direct : on recentre le groupe
+   prev/play/next (réduit à son réacteur emoji dans ce mode) dans la ligne
+   de contrôles, qui n'a alors plus qu'un seul élément visible. */
+.is-radio-live .np-controls{ justify-content:center; }
 /* En Radio Direct, le play/pause du mini-lecteur cède sa place au
    réacteur emoji (voir #p-emoji-react ci-dessous). */
 .is-radio-live #p-play-wrap{ display:none !important; }
@@ -1033,7 +1038,17 @@ input,textarea{ font-family:inherit; }
 #np-bar{ height:5px; }
 #np-bar-fill::after{ width:13px; height:13px; }
 .np-time-row{ display:flex; justify-content:space-between; font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-top:7px; }
-.np-controls{ display:flex; align-items:center; justify-content:center; gap:18px; flex-shrink:0; padding-bottom:4px; }
+.np-controls{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-shrink:0; padding-bottom:4px; }
+.np-controls-center{ display:flex; align-items:center; justify-content:center; gap:18px; }
+/* --- Boutons "Lire en boucle" (bas gauche) et "Lecture aléatoire" (bas
+   droite) du grand lecteur. Discrets à l'état inactif, accent ambre quand
+   activés. Masqués en Radio Direct (diffusion commune, voir plus bas). --- */
+.np-toggle-btn{ width:40px; height:40px; }
+.np-toggle-btn svg{ opacity:.62; transition:opacity .18s, transform .18s; }
+.np-toggle-btn:hover svg{ opacity:.9; }
+.np-toggle-btn.is-active{ color:var(--copper-bright); }
+.np-toggle-btn.is-active svg{ opacity:1; filter:drop-shadow(0 0 6px rgba(255,176,32,0.55)); }
+.np-toggle-btn.is-active::before{ opacity:1; transform:scale(1); background:rgba(255,176,32,0.14); border-color:rgba(255,176,32,0.4); }
 .np-side-btn{ position:relative; width:52px; height:52px; border-radius:50%; background:transparent; border:0; color:var(--text); display:flex; align-items:center; justify-content:center; transition:transform .2s cubic-bezier(.34,1.56,.64,1); }
 .np-side-btn::before{ content:''; position:absolute; inset:0; border-radius:50%; background:rgba(255,255,255,0.08); border:1px solid var(--glass-border); opacity:0; transform:scale(.7); transition:opacity .2s, transform .2s cubic-bezier(.34,1.56,.64,1); }
 .np-side-btn:hover::before{ opacity:1; transform:scale(1); }
@@ -1799,21 +1814,29 @@ input,textarea{ font-family:inherit; }
       </div>
 
       <div class="np-controls">
-        <button class="np-side-btn" id="np-prev" aria-label="Précédent"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zM20 6L9 12l11 6z"/></svg></button>
-        <button class="np-play" id="np-play" aria-label="Lire / mettre en pause">
-          <svg id="np-play-icon" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        <button class="np-side-btn np-toggle-btn" id="np-loop-btn" type="button" aria-label="Lire en boucle" aria-pressed="false" title="Lire en boucle" data-tooltip="Lire en boucle">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
         </button>
-        <!-- Radio Direct : réacteur emoji du grand lecteur (mêmes gestes
-             que sur le mini-lecteur : glisser pour changer, appuyer pour
-             envoyer). L'animation des bulles se joue toujours ici. -->
-        <div class="p-emoji-react p-emoji-react-lg" id="np-emoji-react" role="group" aria-label="Réagir en direct à la radio">
-          <div class="p-emoji-reel" id="np-emoji-reel">
-            <span class="p-emoji-item p-emoji-item-prev" id="np-emoji-item-prev" aria-hidden="true"></span>
-            <button type="button" class="p-emoji-item p-emoji-item-current" id="np-emoji-item-current" aria-label="Envoyer une réaction emoji"></button>
-            <span class="p-emoji-item p-emoji-item-next" id="np-emoji-item-next" aria-hidden="true"></span>
+        <div class="np-controls-center">
+          <button class="np-side-btn" id="np-prev" aria-label="Précédent"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zM20 6L9 12l11 6z"/></svg></button>
+          <button class="np-play" id="np-play" aria-label="Lire / mettre en pause">
+            <svg id="np-play-icon" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <!-- Radio Direct : réacteur emoji du grand lecteur (mêmes gestes
+               que sur le mini-lecteur : glisser pour changer, appuyer pour
+               envoyer). L'animation des bulles se joue toujours ici. -->
+          <div class="p-emoji-react p-emoji-react-lg" id="np-emoji-react" role="group" aria-label="Réagir en direct à la radio">
+            <div class="p-emoji-reel" id="np-emoji-reel">
+              <span class="p-emoji-item p-emoji-item-prev" id="np-emoji-item-prev" aria-hidden="true"></span>
+              <button type="button" class="p-emoji-item p-emoji-item-current" id="np-emoji-item-current" aria-label="Envoyer une réaction emoji"></button>
+              <span class="p-emoji-item p-emoji-item-next" id="np-emoji-item-next" aria-hidden="true"></span>
+            </div>
           </div>
+          <button class="np-side-btn" id="np-next" aria-label="Suivant"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM4 6l11 6-11 6z"/></svg></button>
         </div>
-        <button class="np-side-btn" id="np-next" aria-label="Suivant"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM4 6l11 6-11 6z"/></svg></button>
+        <button class="np-side-btn np-toggle-btn" id="np-shuffle-btn" type="button" aria-label="Lecture aléatoire" aria-pressed="false" title="Lecture aléatoire" data-tooltip="Lecture aléatoire">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+        </button>
       </div>
 
     </div>
@@ -2688,6 +2711,8 @@ let rankingPeriodLoadToken = 0; // évite qu'une requête de période périmée 
 let currentTrackIndex = -1;
 let uploadAudioFile = null;
 let uploadCoverDataUrl = null;
+let loopModeActive = false;    // "Lire en boucle" (grand lecteur) : rejoue le même titre à sa fin
+let shuffleModeActive = false; // "Lecture aléatoire" (grand lecteur) : pioche le titre suivant au hasard dans currentQueue
 
 let allPlaylists = [];     // playlists de l'utilisateur connecté (onSnapshot filtré par ownerId)
 let playlistsUnsub = null;
@@ -7200,6 +7225,17 @@ function playAdjacent(delta, opts){
     return;
   }
   if(!currentQueue.length) return;
+  // Lecture aléatoire active ("np-shuffle-btn") : le titre "suivant" est
+  // tiré au sort dans la file actuellement affichée (currentQueue) plutôt
+  // que de suivre l'ordre de la liste. currentQueue reflète déjà le
+  // contexte en cours (bibliothèque filtrée, playlist ouverte, artiste,
+  // classement…), donc le tirage reste cohérent avec ce que l'utilisateur
+  // regarde. Le bouton "précédent" reste séquentiel, comme sur la plupart
+  // des lecteurs.
+  if(shuffleModeActive && delta > 0){
+    const randomId = pickRandomQueueTrackId();
+    if(randomId){ playTrackById(randomId, 1, opts); return; }
+  }
   // On retrouve la position ACTUELLE du titre en cours dans la file plutôt
   // que de faire confiance au compteur "currentTrackIndex" mémorisé : la
   // bibliothèque est partagée en direct (Firestore), donc "currentQueue" est
@@ -7214,6 +7250,68 @@ function playAdjacent(delta, opts){
   if(idx < 0) idx = currentQueue.length - 1;
   if(idx >= currentQueue.length) idx = 0;
   playTrackById(currentQueue[idx].id, delta > 0 ? 1 : -1, opts);
+}
+
+/* =========================================================
+   GRAND LECTEUR — "Lire en boucle" (bas gauche) et "Lecture aléatoire"
+   (bas droite). Deux boutons indépendants, tous deux désactivés en Radio
+   Direct : voir les gardes-fous dans les gestionnaires de clic ci-dessous
+   ainsi que dans playAdjacent()/l'événement "ended" du lecteur audio.
+   ========================================================= */
+function setLoopMode(active){
+  loopModeActive = active;
+  const btn = document.getElementById('np-loop-btn');
+  if(btn) btn.classList.toggle('is-active', loopModeActive);
+  if(btn) btn.setAttribute('aria-pressed', loopModeActive ? 'true' : 'false');
+}
+function setShuffleMode(active){
+  shuffleModeActive = active;
+  const btn = document.getElementById('np-shuffle-btn');
+  if(btn) btn.classList.toggle('is-active', shuffleModeActive);
+  if(btn) btn.setAttribute('aria-pressed', shuffleModeActive ? 'true' : 'false');
+}
+document.getElementById('np-loop-btn').addEventListener('click', ()=>{
+  if(radioModeActive) return; // bouton masqué en Radio Direct ; garde-fou si jamais atteint autrement
+  setLoopMode(!loopModeActive);
+  showToast(loopModeActive ? 'Lecture en boucle activée 🔁' : 'Lecture en boucle désactivée');
+});
+document.getElementById('np-shuffle-btn').addEventListener('click', ()=>{
+  if(radioModeActive) return;
+  setShuffleMode(!shuffleModeActive);
+  showToast(shuffleModeActive ? 'Lecture aléatoire activée 🔀' : 'Lecture aléatoire désactivée');
+});
+// Choisit un titre au hasard dans la file actuellement affichée
+// (currentQueue), en évitant de retomber sur le titre déjà en lecture
+// quand la file contient plus d'un titre.
+function pickRandomQueueTrackId(){
+  if(!currentQueue.length) return null;
+  if(currentQueue.length === 1) return currentQueue[0].id;
+  let pick;
+  do{
+    pick = currentQueue[Math.floor(Math.random() * currentQueue.length)];
+  }while(pick.id === currentTrackId);
+  return pick.id;
+}
+// Relance le titre en cours depuis le début (utilisé quand "Lire en
+// boucle" est actif et que le morceau arrive à sa fin). Respecte les
+// bornes d'un extrait actif (passage court) le cas échéant, et compte
+// cette relecture comme une écoute normale (alimente le Classement),
+// comme n'importe quel enchaînement de titre.
+function replayCurrentTrackForLoop(){
+  if(!currentTrackId) return;
+  const clipActive = activeClipStart !== null && activeClipEnd !== null;
+  try{
+    audioEl.currentTime = clipActive ? activeClipStart : 0;
+    const p = audioEl.play();
+    if(p && p.catch) p.catch(()=>{});
+  }catch(e){}
+  crossfadeTriggered = false;
+  nextTrackPrefetchTriggered = false;
+  tracksRef.doc(currentTrackId).update({ plays: firebase.firestore.FieldValue.increment(1) })
+    .catch(err => console.error('Échec incrément "plays" (lecture en boucle) :', err));
+  playLogsRef.add({ trackId: currentTrackId, playedAt: firebase.firestore.FieldValue.serverTimestamp() })
+    .catch(err => console.error('Échec écriture "musicPlayLogs" (lecture en boucle) :', err));
+  recordListenHistory(currentTrackId);
 }
 
 /* =========================================================
@@ -7516,6 +7614,7 @@ audioEl.addEventListener('ended', ()=>{
   // pochettes avant de se stabiliser sur le mauvais morceau).
   if(trackChangeInFlight) return;
   if(radioModeActive){ radioAdvanceOnEnd(); return; }
+  if(loopModeActive){ replayCurrentTrackForLoop(); return; }
   playAdjacent(1);
 });
 audioEl.addEventListener('seeked', ()=> pushPlaybackState());
@@ -7574,7 +7673,9 @@ audioEl.addEventListener('timeupdate', ()=>{
      && audioEl.duration > (CROSSFADE_MS/1000) * 1.3
      && (audioEl.duration - audioEl.currentTime) <= (CROSSFADE_MS/1000)){
     crossfadeTriggered = true;
-    if(radioModeActive) radioAdvanceOnEnd(); else playAdjacent(1);
+    if(radioModeActive) radioAdvanceOnEnd();
+    else if(loopModeActive) replayCurrentTrackForLoop();
+    else playAdjacent(1);
   }
   // Écriture périodique (throttlée) de la position, pour que la reprise sur
   // un autre appareil retombe proche de l'endroit réel, même sans pause.
