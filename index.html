@@ -383,6 +383,19 @@ input,textarea{ font-family:inherit; }
 }
 .radio-listener-count{ display:inline-flex; align-items:center; gap:5px; color:#ff8080; font-weight:600; }
 
+/* --- Résultats "artiste" de la recherche : cartes au même format que les
+   titres (voir .card / .card-cover ci-dessus), insérées directement dans
+   la même grille que les résultats de titres, avec un badge "ARTISTE"
+   pour les distinguer d'un coup d'œil. --- */
+.card-artist-result .card-cover{ background:linear-gradient(145deg, rgba(255,176,32,0.22), rgba(255,255,255,0.04)); display:flex; align-items:center; justify-content:center; }
+.card-artist-result .card-cover img{ border-radius:50%; width:72%; height:72%; margin:auto; }
+.card-artist-fallback{ font-size:34px; }
+.card-artist-result .card-cover-badge{
+  position:absolute; left:8px; top:8px; z-index:1; font-size:10.5px; font-weight:700;
+  padding:3px 8px; border-radius:20px; background:rgba(0,0,0,0.55); color:var(--copper-bright);
+  letter-spacing:.02em; backdrop-filter:blur(6px);
+}
+
 /* --- Lecteur en mode "Radio Direct" : précédent/suivant retirés
    visuellement (la diffusion est la même pour tout le monde, on ne peut
    ni sauter un titre ni revenir en arrière). --- */
@@ -1014,13 +1027,6 @@ input,textarea{ font-family:inherit; }
 #p-artist.artist-link:hover{ text-decoration:none; }
 
 /* Résultats "artiste" de la recherche globale : vignettes cliquables. */
-.artist-results{ display:flex; flex-wrap:wrap; gap:10px; margin:0 0 22px; }
-.artist-chip{ display:flex; align-items:center; gap:10px; padding:7px 14px 7px 7px; border-radius:999px; background:var(--panel-2); border:1px solid var(--glass-border); cursor:pointer; transition:border-color .15s, background .15s; }
-.artist-chip:hover{ border-color:var(--glass-border-strong); background:rgba(255,255,255,0.08); }
-.artist-chip img{ width:34px; height:34px; border-radius:50%; object-fit:cover; display:block; }
-.artist-chip-fallback{ width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:linear-gradient(145deg, rgba(255,176,32,0.28), rgba(255,176,32,0.08)); font-size:15px; flex-shrink:0; }
-.artist-chip-name{ font-size:13px; font-weight:600; }
-.artist-chip-count{ font-size:11px; color:var(--text-dim); margin-left:2px; }
 .pl-detail-title{ font-family:var(--display); font-size:clamp(22px,3vw,32px); font-weight:900; margin:2px 0 6px; letter-spacing:-0.02em; }
 .pl-detail-desc{ color:var(--text-dim); font-size:13.5px; margin:0 0 8px; max-width:520px; }
 .pl-detail-actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:16px; }
@@ -1221,11 +1227,10 @@ input,textarea{ font-family:inherit; }
 
 <div class="wrap">
 
-  <!-- Résultats "artiste" pour la recherche globale : si le terme tapé dans
-       la barre de recherche correspond au nom d'un ou plusieurs artistes,
-       on les affiche ici sous forme de vignettes cliquables qui ouvrent
-       leur page (photo + tous leurs titres, triés par popularité). -->
-  <div class="artist-results" id="search-artist-results" style="display:none;"></div>
+  <!-- Les résultats "artiste" de la recherche s'affichent désormais
+       directement dans la grille de la bibliothèque (#library-grid), au
+       même endroit et avec le même style que les titres — voir
+       renderArtistSearchResults(). -->
 
   <!-- HERO : dernier titre ajouté / musique de l'événement, thème visuel adapté au contenu -->
   <section class="hero" id="hero" style="display:none;">
@@ -3047,14 +3052,25 @@ document.getElementById('artist-edit-save').addEventListener('click', async ()=>
 });
 
 /* =========================================================
-   RECHERCHE — résultats "artiste" affichés au-dessus de la vue active
-   quand le terme tapé correspond au nom d'un ou plusieurs artistes.
-   Cliquer une vignette ouvre la page de l'artiste correspondant.
+   RECHERCHE — résultats "artiste" affichés au même endroit et avec le
+   même format que les titres : quand le terme tapé correspond au nom d'un
+   ou plusieurs artistes, on ajoute des cartes "artiste" (identiques aux
+   cartes de titres — voir paintGrid) tout au début de la grille de la
+   bibliothèque. Cliquer une carte ouvre la page de l'artiste correspondant.
    ========================================================= */
 function renderArtistSearchResults(){
-  const wrap = document.getElementById('search-artist-results');
-  if(!wrap) return;
-  if(!searchTerm){ wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  // La recherche "artiste" ne concerne que la bibliothèque (là où les
+  // résultats de titres s'affichent aussi) : sur les autres vues, rien à
+  // ajouter.
+  if(currentView !== 'library') return;
+  const grid = document.getElementById('library-grid');
+  if(!grid) return;
+  // Idempotent : retire d'abord d'éventuelles cartes "artiste" déjà
+  // insérées par un appel précédent (ex. mise à jour d'une photo d'artiste
+  // pendant que la recherche est toujours affichée), pour ne jamais les
+  // dupliquer.
+  grid.querySelectorAll('.card-artist-result').forEach(el => el.remove());
+  if(!searchTerm) return;
   const seen = new Set();
   const matches = [];
   allTracks.forEach(t=>{
@@ -3065,20 +3081,28 @@ function renderArtistSearchResults(){
     seen.add(key);
     matches.push({ key, name });
   });
-  if(!matches.length){ wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
-  wrap.style.display = '';
-  wrap.innerHTML = matches.map(m=>{
+  if(!matches.length) return;
+  // Des artistes correspondent : même si aucun titre ne correspond (grille
+  // vidée par paintGrid avec le message "Aucun résultat"), on a bien
+  // quelque chose à montrer — on annule ce message vide.
+  const emptyEl = document.getElementById('library-empty');
+  if(emptyEl) emptyEl.style.display = 'none';
+  const artistCardsHtml = matches.map(m=>{
     const count = tracksByArtistKey(m.key).length;
     const photoURL = artistPhotoURL(m.key);
     return `
-    <div class="artist-chip" data-open-artist="${escapeHtml(m.name)}">
-      ${photoURL ? `<img src="${escapeHtml(photoURL)}" alt="">` : `<span class="artist-chip-fallback">🎤</span>`}
-      <span class="artist-chip-name">${escapeHtml(m.name)}</span>
-      <span class="artist-chip-count">${count} ${count > 1 ? 'titres' : 'titre'}</span>
+    <div class="card card-artist-result" data-open-artist="${escapeHtml(m.name)}">
+      <div class="card-cover">
+        <span class="card-cover-badge">ARTISTE</span>
+        ${photoURL ? `<img src="${escapeHtml(photoURL)}" alt="">` : `<span class="card-artist-fallback">🎤</span>`}
+      </div>
+      <p class="card-title">${escapeHtml(m.name)}</p>
+      <p class="card-artist">${count} ${count > 1 ? 'titres' : 'titre'}</p>
     </div>`;
   }).join('');
-  wrap.querySelectorAll('[data-open-artist]').forEach(chip=>{
-    chip.addEventListener('click', ()=> openArtistPage(chip.dataset.openArtist));
+  grid.insertAdjacentHTML('afterbegin', artistCardsHtml);
+  grid.querySelectorAll('[data-open-artist]').forEach(card=>{
+    card.addEventListener('click', ()=> openArtistPage(card.dataset.openArtist));
   });
 }
 
@@ -4855,7 +4879,6 @@ function renderHomePlaylistsSection(){
 document.getElementById('home-pl-see-all').addEventListener('click', ()=> switchView('playlists'));
 
 function renderTracks(){
-  renderArtistSearchResults();
   const uid = auth.currentUser ? auth.currentUser.uid : null;
   if(currentView === 'library'){
     const list = getOrderedLibraryTracks().filter(matchesSearch);
@@ -4864,6 +4887,9 @@ function renderTracks(){
       emptyTitle: searchTerm ? 'Aucun résultat' : "Aucun titre pour l'instant",
       emptyText: searchTerm ? "Essaie un autre mot-clé." : "Sois le premier à ajouter un morceau à RIJOUL MUSIC."
     });
+    // Doit s'exécuter APRÈS paintGrid : les cartes "artiste" sont ajoutées
+    // au début de #library-grid, qui vient d'être (re)rempli ci-dessus.
+    renderArtistSearchResults();
   }else if(currentView === 'mine'){
     const list = allTracks.filter(t => uid && t.uploaderId === uid).filter(matchesSearch);
     currentQueue = list;
