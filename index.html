@@ -2582,6 +2582,16 @@ function musicHistoryEntriesRef(uid){
 // sur cette collection pour tout visiteur (comme pour le champ "plays").
 const playLogsRef = db.collection("musicPlayLogs");
 
+// Instantané PARTAGÉ (identique pour tout le monde, en direct) du
+// classement, utilisé uniquement pour calculer les flèches ▲/▼ de
+// variation de position sur les dernières 24h (voir bloc "FLÈCHES DE
+// CLASSEMENT"). Un seul document par période (id = 'week'/'month'/'year'/
+// 'all'), lu en temps réel par tous les visiteurs via onSnapshot, et
+// réécrit par le premier client qui constate qu'il a plus de 24h — ainsi
+// tout le monde voit exactement les mêmes flèches, mises à jour pour tous
+// dès qu'un client rafraîchit la référence.
+const rankingSnapshotsRef = db.collection("musicRankingSnapshots");
+
 // Pages "artiste" : une entrée par artiste (identifiant dérivé du nom,
 // voir artistDocId), servant uniquement à stocker la photo ajoutée par
 // l'admin. Le reste de la page (nom affiché, liste des titres, tri par
@@ -2974,6 +2984,12 @@ function subscribeToProfile(uid){
     // ci-dessus, mais DÉSACTIVÉ par défaut (fonctionnalité optionnelle) tant
     // que l'utilisateur ne l'a pas explicitement activée sur son compte.
     if(typeof setLyricsMode === 'function') setLyricsMode(data.lyricsMode === true, { save:false });
+    // Lecture en boucle / lecture aléatoire (grand lecteur) : mêmes
+    // principe et valeurs par défaut (DÉSACTIVÉES) que le mode Lyrics
+    // ci-dessus, synchronisées avec le compte pour rester identiques sur
+    // tous les appareils connectés.
+    if(typeof setLoopMode === 'function') setLoopMode(data.loopMode === true, { save:false });
+    if(typeof setShuffleMode === 'function') setShuffleMode(data.shuffleMode === true, { save:false });
   });
 }
 function updateProfilePreview(label, photoURL){
@@ -3067,6 +3083,10 @@ auth.onAuthStateChanged(async (user)=>{
     // personnalisé, le mode Lyrics repart donc désactivé (comme un compte
     // sans préférence enregistrée).
     if(typeof setLyricsMode === 'function') setLyricsMode(false, { save:false });
+    // Session anonyme : lecture en boucle et lecture aléatoire repartent
+    // désactivées elles aussi, comme les autres réglages liés au compte.
+    if(typeof setLoopMode === 'function') setLoopMode(false, { save:false });
+    if(typeof setShuffleMode === 'function') setShuffleMode(false, { save:false });
     if(playlistsUnsub){ playlistsUnsub(); playlistsUnsub = null; }
     allPlaylists = [];
     if(playbackSyncUnsub){ playbackSyncUnsub(); playbackSyncUnsub = null; }
@@ -3102,6 +3122,15 @@ function switchView(view){
   document.getElementById('view-historique').style.display = view === 'historique' ? '' : 'none';
   document.getElementById('view-playlist-detail').style.display = 'none';
   document.getElementById('view-artist-detail').style.display = 'none';
+  // On quitte le Classement : coupe l'écoute temps réel de l'instantané
+  // partagé des flèches (voir listenRankingSnapshot), inutile ailleurs.
+  if(view !== 'classement' && rankingSnapshotUnsub){
+    rankingSnapshotUnsub();
+    rankingSnapshotUnsub = null;
+    rankingSnapshotDoc = null;
+    rankingSnapshotLoaded = false;
+    rankingSnapshotPeriod = null;
+  }
   if(view === 'classement'){
     loadRankingPeriod(rankingPeriod);
   }
@@ -4057,7 +4086,7 @@ function paintPlaylistRows(list, isOwner){
       <div class="pl-row-cover"><img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt=""></div>
       <div class="pl-row-meta">
         <div class="pl-row-title">${escapeHtml(t.title || 'Sans titre')}</div>
-        <div class="pl-row-artist artist-link" data-artist-link="${escapeHtml(t.artist || '')}">${escapeHtml(t.artist || 'Artiste inconnu')}</div>
+        <div class="pl-row-artist">${escapeHtml(t.artist || 'Artiste inconnu')}</div>
       </div>
       <span class="pl-row-duration">${formatTime(t.duration || 0)}</span>
       ${isOwner ? `
@@ -5364,6 +5393,7 @@ function rankingPeriodCutoffDate(period){
 async function loadRankingPeriod(period){
   rankingPeriod = period;
   rankingVisibleCount = 20; // repart du Top20 à chaque changement de période
+  listenRankingSnapshot(period); // (ré)abonne aux flèches partagées de cette période
   document.querySelectorAll('.ranking-period-btn').forEach(b=>{
     b.classList.toggle('active', b.dataset.period === period);
   });
@@ -5421,51 +5451,89 @@ function rankingPeriodMaxTracks(period){
 
 /* =========================================================
    FLÈCHES DE CLASSEMENT — variation de position sur les dernières 24h
-   Un instantané du classement (id du titre -> rang) est conservé dans
-   localStorage pour chaque période (Semaine/Mois/Année/Toujours). Tant que
-   cet instantané a moins de 24h, on l'utilise comme référence pour savoir
-   si un titre a monté (flèche verte), descendu (flèche rouge) ou n'a pas
-   bougé (aucune flèche) par rapport à il y a ~24h. Une fois l'instantané
-   dépassé (>= 24h), on le remplace par le classement actuel, qui devient
-   la nouvelle référence pour les prochaines 24h.
+   Un instantané PARTAGÉ (Firestore, collection "musicRankingSnapshots",
+   un document par période) sert de référence : tant qu'il a moins de 24h,
+   on l'utilise pour savoir si un titre a monté (flèche verte), descendu
+   (flèche rouge) ou n'a pas bougé (aucune flèche) par rapport à il y a
+   ~24h. Une fois l'instantané dépassé (>= 24h), le premier client qui le
+   constate le remplace par le classement actuel, qui devient la nouvelle
+   référence pour les prochaines 24h — pour TOUT le monde, en direct
+   (écoute temps réel via onSnapshot, voir listenRankingSnapshot).
    ========================================================= */
 const RANKING_SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-function rankingSnapshotKey(period){ return `rijoul_ranking_snapshot_${period}`; }
-function loadRankingSnapshot(period){
-  try{
-    const raw = localStorage.getItem(rankingSnapshotKey(period));
-    if(!raw) return null;
-    const data = JSON.parse(raw);
-    if(!data || typeof data.savedAt !== 'number' || !data.ranks) return null;
-    return data;
-  }catch(e){ return null; }
+let rankingSnapshotUnsub = null;   // désabonnement de l'écoute temps réel en cours
+let rankingSnapshotPeriod = null;  // période à laquelle correspond rankingSnapshotDoc/rankingSnapshotLoaded
+let rankingSnapshotDoc = null;     // dernier instantané reçu ({ savedAt, ranks }) ou null si jamais enregistré
+let rankingSnapshotLoaded = false; // devient vrai dès la première réponse Firestore (évite d'afficher des flèches avant d'avoir une vraie référence)
+const rankingSnapshotWritesInFlight = new Set(); // périodes en cours d'écriture, pour ne pas réécrire en boucle
+
+// (Ré)abonne le client à l'instantané partagé de la période donnée. Appelé
+// à chaque ouverture du Classement et à chaque changement de période (voir
+// loadRankingPeriod) ; désabonné quand on quitte la vue Classement (voir
+// switchView) pour ne pas laisser tourner une écoute Firestore inutile.
+function listenRankingSnapshot(period){
+  if(rankingSnapshotUnsub){ rankingSnapshotUnsub(); rankingSnapshotUnsub = null; }
+  rankingSnapshotDoc = null;
+  rankingSnapshotLoaded = false;
+  rankingSnapshotPeriod = period;
+  rankingSnapshotUnsub = rankingSnapshotsRef.doc(period).onSnapshot(snap=>{
+    // "estimate" donne une valeur exploitable immédiatement pour nos
+    // propres écritures en attente de confirmation serveur, plutôt que
+    // null le temps de l'aller-retour.
+    rankingSnapshotDoc = snap.exists ? snap.data({ serverTimestamps: 'estimate' }) : null;
+    rankingSnapshotLoaded = true;
+    // Ne rafraîchit le rendu que si on est toujours sur cette période/vue :
+    // évite de peindre par-dessus un autre affichage si l'utilisateur a
+    // changé de période ou quitté le Classement entre-temps.
+    if(currentView === 'classement' && rankingPeriod === period) renderRanking();
+  }, err=>{
+    console.error("Impossible d'écouter l'instantané partagé du classement :", err);
+    rankingSnapshotDoc = null;
+    rankingSnapshotLoaded = true;
+  });
 }
-function saveRankingSnapshot(period, ranksById){
-  try{
-    localStorage.setItem(rankingSnapshotKey(period), JSON.stringify({ savedAt: Date.now(), ranks: ranksById }));
-  }catch(e){ /* stockage indisponible (navigation privée, quota…) : tant pis, pas de flèches */ }
+// Enregistre le classement actuel comme nouvelle référence partagée pour
+// cette période. Protégé contre les écritures en double si plusieurs
+// rendus successifs constatent la péremption avant que Firestore ait
+// confirmé la première écriture.
+function scheduleRankingSnapshotWrite(period, ranksById){
+  if(rankingSnapshotWritesInFlight.has(period)) return;
+  rankingSnapshotWritesInFlight.add(period);
+  rankingSnapshotsRef.doc(period).set({
+    ranks: ranksById,
+    savedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(err=>{
+    console.error("Échec d'écriture de l'instantané partagé du classement :", err);
+  }).finally(()=>{
+    rankingSnapshotWritesInFlight.delete(period);
+  });
 }
 // Calcule, pour chaque titre du classement fourni, son déplacement (positif
 // = a gagné des places, négatif = a perdu des places) par rapport à
-// l'instantané de référence. Renvoie un objet { trackId: delta } qui ne
-// contient QUE les titres ayant réellement changé de place.
+// l'instantané partagé de référence. Renvoie un objet { trackId: delta } qui
+// ne contient QUE les titres ayant réellement changé de place.
 function getRankingDeltas(period, ranked){
+  // Instantané pas encore chargé pour cette période (écoute Firestore tout
+  // juste attachée) : pas de flèches pour cet affichage, elles arriveront
+  // avec le prochain renderRanking() déclenché par onSnapshot.
+  if(period !== rankingSnapshotPeriod || !rankingSnapshotLoaded) return {};
+
   const currentRanks = {};
   ranked.forEach((t, i)=>{ currentRanks[t.id] = i + 1; });
 
-  const snap = loadRankingSnapshot(period);
-  const isStale = !snap || (Date.now() - snap.savedAt) >= RANKING_SNAPSHOT_MAX_AGE_MS;
+  const snap = rankingSnapshotDoc;
+  const isStale = !snap || !snap.savedAt || (Date.now() - snap.savedAt.toMillis()) >= RANKING_SNAPSHOT_MAX_AGE_MS;
   if(isStale){
-    // Pas de référence exploitable (première visite ou référence trop
-    // ancienne) : on en enregistre une nouvelle et on n'affiche aucune
+    // Pas de référence exploitable (jamais enregistrée ou trop ancienne) :
+    // on en publie une nouvelle pour tout le monde et on n'affiche aucune
     // flèche pour cet affichage.
-    saveRankingSnapshot(period, currentRanks);
+    scheduleRankingSnapshotWrite(period, currentRanks);
     return {};
   }
 
   const deltas = {};
   ranked.forEach((t, i)=>{
-    const prevRank = snap.ranks[t.id];
+    const prevRank = snap.ranks ? snap.ranks[t.id] : undefined;
     if(prevRank == null) return; // titre absent du classement il y a 24h : pas de flèche
     const delta = prevRank - (i + 1); // > 0 : a gagné des places, < 0 : en a perdu
     if(delta !== 0) deltas[t.id] = delta;
@@ -7257,18 +7325,49 @@ function playAdjacent(delta, opts){
    (bas droite). Deux boutons indépendants, tous deux désactivés en Radio
    Direct : voir les gardes-fous dans les gestionnaires de clic ci-dessous
    ainsi que dans playAdjacent()/l'événement "ended" du lecteur audio.
+   Réglages synchronisés avec le compte connecté (même principe que le
+   mode concert / l'amélioration IA / Lyrics, voir setConcertMode) : lus
+   et appliqués depuis le profil Firestore dans subscribeToProfile(), pour
+   retrouver le même état sur tous les appareils d'un même compte.
    ========================================================= */
-function setLoopMode(active){
-  loopModeActive = active;
+// `save:false` sert quand on ne fait qu'appliquer une valeur déjà connue
+// (snapshot Firestore du profil, réinitialisation locale à la déconnexion)
+// sans la réécrire aussitôt sur le compte.
+function setLoopMode(active, opts){
+  const save = !opts || opts.save !== false;
+  loopModeActive = !!active;
   const btn = document.getElementById('np-loop-btn');
   if(btn) btn.classList.toggle('is-active', loopModeActive);
   if(btn) btn.setAttribute('aria-pressed', loopModeActive ? 'true' : 'false');
+  if(save) saveLoopModeSetting(loopModeActive);
 }
-function setShuffleMode(active){
-  shuffleModeActive = active;
+function setShuffleMode(active, opts){
+  const save = !opts || opts.save !== false;
+  shuffleModeActive = !!active;
   const btn = document.getElementById('np-shuffle-btn');
   if(btn) btn.classList.toggle('is-active', shuffleModeActive);
   if(btn) btn.setAttribute('aria-pressed', shuffleModeActive ? 'true' : 'false');
+  if(save) saveShuffleModeSetting(shuffleModeActive);
+}
+// Enregistre le réglage sur le profil du compte connecté (aucun effet si
+// personne n'est connecté, ex. session anonyme : le réglage reste alors
+// local à cet onglet pour la session en cours, comme les autres bascules
+// du grand lecteur).
+function saveLoopModeSetting(enabled){
+  const uid = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser.uid : null;
+  if(!uid) return;
+  usersRef.doc(uid).set({
+    loopMode: enabled,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge:true }).catch(err=> console.error("Impossible d'enregistrer la lecture en boucle :", err));
+}
+function saveShuffleModeSetting(enabled){
+  const uid = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser.uid : null;
+  if(!uid) return;
+  usersRef.doc(uid).set({
+    shuffleMode: enabled,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge:true }).catch(err=> console.error("Impossible d'enregistrer la lecture aléatoire :", err));
 }
 document.getElementById('np-loop-btn').addEventListener('click', ()=>{
   if(radioModeActive) return; // bouton masqué en Radio Direct ; garde-fou si jamais atteint autrement
