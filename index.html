@@ -6537,7 +6537,17 @@ function playAdjacent(delta, opts){
     return;
   }
   if(!currentQueue.length) return;
-  let idx = currentTrackIndex + delta;
+  // On retrouve la position ACTUELLE du titre en cours dans la file plutôt
+  // que de faire confiance au compteur "currentTrackIndex" mémorisé : la
+  // bibliothèque est partagée en direct (Firestore), donc "currentQueue" est
+  // reconstruite dès qu'un like/écoute/ajout survient N'IMPORTE OÙ sur la
+  // plateforme (même par un autre auditeur), ce qui pouvait rendre cet
+  // ancien index obsolète et faisait "sauter" vers un titre sans rapport —
+  // donnant l'impression d'une lecture aléatoire au lieu d'enchaîner les
+  // titres dans l'ordre affiché.
+  const curIdx = currentTrackId ? currentQueue.findIndex(t => t.id === currentTrackId) : -1;
+  const base = curIdx >= 0 ? curIdx : currentTrackIndex;
+  let idx = base + delta;
   if(idx < 0) idx = currentQueue.length - 1;
   if(idx >= currentQueue.length) idx = 0;
   playTrackById(currentQueue[idx].id, delta > 0 ? 1 : -1, opts);
