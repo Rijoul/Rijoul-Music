@@ -322,6 +322,20 @@ input,textarea{ font-family:inherit; }
 .edit-vol-play-btn:hover{ filter:brightness(1.08); }
 .edit-vol-play-btn:disabled{ opacity:.5; cursor:not-allowed; }
 #edit-concert-wave-eq{ flex:1; height:24px; }
+/* Outil de synchronisation des paroles (modal admin "Paroles du titre") :
+   écoute le titre et permet de "taper" le début de chaque ligne pour
+   générer automatiquement les horodatages [mm:ss] insérés dans le texte. */
+.lyrics-sync-hint-text{ font-size:11px; color:var(--text-faint); margin:0 0 8px; line-height:1.5; }
+.lyrics-sync-hint-text code{ font-family:var(--mono); background:rgba(255,255,255,0.08); padding:1px 5px; border-radius:5px; }
+.lyrics-sync-tool{ margin-top:14px; padding:14px; border:1px solid var(--line); border-radius:16px; background:rgba(255,255,255,0.03); }
+.lyrics-sync-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.lyrics-sync-clock{ font-family:var(--mono); font-size:12.5px; color:var(--text-dim); }
+.lyrics-sync-panel{ margin-top:12px; display:flex; flex-direction:column; gap:10px; }
+.lyrics-sync-progress{ font-family:var(--mono); font-size:11px; color:var(--text-faint); text-align:center; }
+.lyrics-sync-next-line{ margin:0; padding:10px 12px; border-radius:12px; background:rgba(255,176,32,0.09); border:1px solid rgba(255,176,32,0.25); color:var(--text); font-size:13.5px; font-weight:700; text-align:center; line-height:1.4; }
+.lyrics-sync-actions{ display:flex; gap:8px; }
+.lyrics-sync-kbd{ font-size:11px; font-weight:600; opacity:.7; }
+.lyrics-sync-hint{ margin:2px 0 0; font-size:10.5px; color:var(--text-faint); line-height:1.5; }
 
 /* =========================================================
    EXTRAITS — section page d'accueil + cartes de passages courts
@@ -939,6 +953,66 @@ input,textarea{ font-family:inherit; }
 .np-art-track.anim-left{ animation:npArtSlideLeft .34s cubic-bezier(.25,1,.4,1) both; }
 .np-art-track.anim-right{ animation:npArtSlideRight .34s cubic-bezier(.25,1,.4,1) both; }
 .np-art-track.anim-fade{ animation:npArtFade .3s cubic-bezier(.25,1,.4,1) both; }
+
+/* =========================================================
+   MODE LYRICS — remplace la pochette (.np-art-track) par les
+   paroles du titre en cours quand l'utilisateur a activé le
+   bouton "Lyrics" du menu "...". Réglage synchronisé sur le
+   compte (voir setLyricsMode / usersRef.lyricsMode) pour rester
+   identique sur tous les appareils connectés. Si les paroles
+   contiennent des horodatages [mm:ss] (ajoutés par un admin,
+   à la main ou via l'outil de synchronisation du modal d'édition),
+   la ligne correspondant à l'instant de lecture est mise en
+   avant et défile automatiquement ; sinon le texte s'affiche tel
+   quel, sans surlignage.
+   ========================================================= */
+.np-art-wrap.lyrics-active .np-art-track{ display:none; }
+.np-lyrics-wrap{
+  display:none; position:relative; width:100%; height:100%;
+  align-items:center; justify-content:center; overflow:hidden;
+}
+.np-art-wrap.lyrics-active .np-lyrics-wrap{ display:flex; }
+.np-lyrics-scroll{
+  display:flex; flex-direction:column; align-items:center; gap:16px;
+  width:100%; max-height:100%; overflow-y:auto; padding:40% 8px;
+  -ms-overflow-style:none; scrollbar-width:none;
+  mask-image:linear-gradient(180deg, transparent 0%, #000 18%, #000 82%, transparent 100%);
+  -webkit-mask-image:linear-gradient(180deg, transparent 0%, #000 18%, #000 82%, transparent 100%);
+}
+.np-lyrics-scroll::-webkit-scrollbar{ display:none; }
+.np-lyrics-line{
+  font-family:var(--display); font-weight:800; font-size:19px; line-height:1.4;
+  text-align:center; color:var(--text-faint); letter-spacing:-0.01em;
+  opacity:.45; transform:scale(.94); transition:opacity .32s cubic-bezier(.25,1,.4,1), transform .32s cubic-bezier(.25,1,.4,1), color .32s ease;
+  max-width:92%;
+}
+.np-lyrics-line.past{ color:var(--text-dim); opacity:.32; }
+.np-lyrics-line.active{
+  color:var(--text); opacity:1; transform:scale(1.06);
+  font-size:22px;
+  text-shadow:0 2px 18px rgba(255,176,32,0.25);
+  animation:npLyricsLinePulse .38s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes npLyricsLinePulse{
+  0%{ opacity:.45; transform:scale(.9) translateY(10px); }
+  60%{ opacity:1; transform:scale(1.09) translateY(-2px); }
+  100%{ opacity:1; transform:scale(1.06) translateY(0); }
+}
+/* Paroles sans horodatage : simple bloc de texte statique et lisible,
+   sans mise en avant ligne par ligne (rien à synchroniser). */
+.np-lyrics-line.np-lyrics-line-static{
+  color:var(--text-dim); opacity:1; transform:none; font-size:16px; font-weight:600;
+  text-align:center;
+}
+.np-lyrics-empty{
+  display:none; flex-direction:column; align-items:center; gap:10px;
+  text-align:center; color:var(--text-faint); font-size:13.5px; font-weight:600;
+  padding:0 24px;
+}
+@media (max-width:760px){
+  .np-lyrics-line{ font-size:17px; }
+  .np-lyrics-line.active{ font-size:20px; }
+}
 .np-meta{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex-shrink:0; margin-bottom:20px; }
 .np-meta-text{ min-width:0; position:relative; }
 .np-title{ font-family:var(--display); font-size:21px; font-weight:800; letter-spacing:-0.02em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -1635,6 +1709,17 @@ input,textarea{ font-family:inherit; }
               <input type="checkbox" id="np-menu-concert-toggle" class="np-toggle-input">
               <span class="np-toggle-switch" aria-hidden="true"></span>
             </label>
+            <!-- Mode Lyrics : affiche les paroles (ajoutées par un admin) à la
+                 place de la pochette, synchronisées sur la lecture quand des
+                 horodatages sont présents. Réglage sauvegardé sur le compte
+                 (usersRef.lyricsMode) pour rester identique sur tous les
+                 appareils connectés — voir setLyricsMode en JS. -->
+            <label class="np-menu-item np-menu-item-toggle" for="np-menu-lyrics-toggle">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h13"/></svg>
+              <span class="np-menu-item-label">Lyrics</span>
+              <input type="checkbox" id="np-menu-lyrics-toggle" class="np-toggle-input">
+              <span class="np-toggle-switch" aria-hidden="true"></span>
+            </label>
           </div>
         </div>
       </div>
@@ -1665,6 +1750,17 @@ input,textarea{ font-family:inherit; }
             <span class="hd-badge" id="np-cover-hd-badge" style="display:none">HD</span>
           </div>
           <img class="np-art-side" id="np-art-next" alt="" aria-hidden="true">
+        </div>
+        <!-- Mode Lyrics : occupe la même zone que la pochette (.np-art-track
+             est masquée via .lyrics-active sur le parent) et affiche les
+             paroles, ligne surlignée en cours de lecture quand elles sont
+             horodatées. Voir refreshLyricsView / updateLyricsSyncPosition. -->
+        <div class="np-lyrics-wrap" id="np-lyrics-wrap">
+          <div class="np-lyrics-scroll" id="np-lyrics-scroll"></div>
+          <div class="np-lyrics-empty" id="np-lyrics-empty">
+            <span style="font-size:26px;">📝</span>
+            <span>Paroles non disponibles pour ce titre.</span>
+          </div>
         </div>
       </div>
 
@@ -1966,8 +2062,35 @@ input,textarea{ font-family:inherit; }
     <div class="auth-error" id="lyrics-error"></div>
     <div class="field" style="margin-top:16px;">
       <label>Paroles</label>
+      <p class="lyrics-sync-hint-text">Pour un affichage synchronisé (mode "Lyrics"), ajoute un horodatage <code>[mm:ss]</code> au début de chaque ligne, ex. <code>[00:12] Premier vers…</code>. Sans horodatage, les paroles s'affichent telles quelles, sans défilement synchronisé. L'outil ci-dessous peut générer ces horodatages automatiquement en écoutant le titre.</p>
       <textarea id="lyrics-textarea" rows="14" placeholder="Colle ou écris les paroles du titre ici…"></textarea>
     </div>
+
+    <!-- Outil de synchronisation : lit le titre et permet de "taper" (bouton
+         ou barre espace) l'instant où chaque ligne commence, pour insérer
+         automatiquement les [mm:ss] correspondants dans le texte ci-dessus. -->
+    <div class="lyrics-sync-tool" id="lyrics-sync-tool">
+      <div class="lyrics-sync-row">
+        <button type="button" class="btn btn-ghost btn-sm" id="lyrics-sync-toggle-btn">🎤 Synchroniser en écoutant</button>
+      </div>
+      <div class="lyrics-sync-panel" id="lyrics-sync-panel" style="display:none;">
+        <div class="lyrics-sync-row">
+          <button type="button" class="btn btn-ghost btn-sm" id="lyrics-sync-play-btn">
+            <span id="lyrics-sync-play-icon">▶️</span> Écouter
+          </button>
+          <span class="lyrics-sync-clock" id="lyrics-sync-clock">0:00</span>
+        </div>
+        <p class="lyrics-sync-progress" id="lyrics-sync-progress">—</p>
+        <p class="lyrics-sync-next-line" id="lyrics-sync-next-line">—</p>
+        <button type="button" class="btn btn-gold btn-block" id="lyrics-sync-tap-btn">⏱️ Marquer cette ligne <span class="lyrics-sync-kbd">(ou barre Espace)</span></button>
+        <div class="lyrics-sync-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="lyrics-sync-undo-btn" style="flex:1;">↩️ Annuler la dernière</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="lyrics-sync-finish-btn" style="flex:1;">✅ Appliquer maintenant</button>
+        </div>
+        <p class="lyrics-sync-hint">Appuie sur "Marquer cette ligne" pile au moment où elle est chantée. Les lignes déjà marquées reçoivent leur horodatage ; celles qui restent sont ajoutées telles quelles à la fin du texte.</p>
+      </div>
+    </div>
+
     <button class="btn btn-gold btn-block" id="lyrics-submit" style="margin-top:16px;">Enregistrer les paroles</button>
   </div>
 </div>
@@ -2524,6 +2647,10 @@ function closeOverlay(id){
   // Coupe l'aperçu sonore du réglage de volume si l'admin ferme le modal
   // d'édition sans l'avoir arrêté lui-même.
   if(id === 'edit-overlay' && typeof stopEditPreview === 'function') stopEditPreview();
+  // Idem pour le modal "Paroles du titre" : coupe l'aperçu audio de l'outil
+  // de synchronisation et referme son panneau si l'admin quitte sans avoir
+  // terminé, pour ne pas laisser le titre jouer en fond.
+  if(id === 'lyrics-overlay' && typeof resetLyricsSyncTool === 'function') resetLyricsSyncTool();
 }
 document.querySelectorAll('[data-close]').forEach(btn=>{
   btn.addEventListener('click', ()=> closeOverlay(btn.dataset.close));
@@ -2809,6 +2936,10 @@ function subscribeToProfile(uid){
     // activée par défaut et synchronisée via le compte pour rester
     // identique sur tous les appareils connectés au même compte.
     if(typeof setAiEnhance === 'function') setAiEnhance(data.aiEnhance !== false, { save:false });
+    // Mode Lyrics : même principe que le mode concert / l'amélioration IA
+    // ci-dessus, mais DÉSACTIVÉ par défaut (fonctionnalité optionnelle) tant
+    // que l'utilisateur ne l'a pas explicitement activée sur son compte.
+    if(typeof setLyricsMode === 'function') setLyricsMode(data.lyricsMode === true, { save:false });
   });
 }
 function updateProfilePreview(label, photoURL){
@@ -2898,6 +3029,10 @@ auth.onAuthStateChanged(async (user)=>{
     // par défaut également (comme pour un compte sans préférence enregistrée).
     if(typeof setConcertMode === 'function') setConcertMode(true, { save:false });
     if(typeof setAiEnhance === 'function') setAiEnhance(true, { save:false });
+    // Visiteur non connecté : pas de compte pour retrouver un réglage
+    // personnalisé, le mode Lyrics repart donc désactivé (comme un compte
+    // sans préférence enregistrée).
+    if(typeof setLyricsMode === 'function') setLyricsMode(false, { save:false });
     if(playlistsUnsub){ playlistsUnsub(); playlistsUnsub = null; }
     allPlaylists = [];
     if(playbackSyncUnsub){ playbackSyncUnsub(); playbackSyncUnsub = null; }
@@ -6118,9 +6253,11 @@ document.getElementById('edit-audio-input').addEventListener('change', async (e)
 
 /* =========================================================
    PAROLES D'UN TITRE — texte libre saisi par l'admin depuis la modale
-   "Modifier le titre". Pour le moment il ne s'agit que du stockage du
-   texte (champ "lyrics" sur le titre) : aucune synchronisation avec la
-   lecture en cours n'est faite ici.
+   "Modifier le titre" (champ "lyrics" sur le titre). Les lignes peuvent
+   porter un horodatage [mm:ss] en tête (ajouté à la main, ou généré par
+   l'outil de synchronisation ci-dessous) pour être affichées en défilement
+   synchronisé côté lecteur, en mode "Lyrics" (voir parseLyrics /
+   updateLyricsSyncPosition plus haut).
    ========================================================= */
 let lyricsTrackId = null;
 document.getElementById('edit-lyrics-open').addEventListener('click', ()=>{
@@ -6130,6 +6267,7 @@ document.getElementById('edit-lyrics-open').addEventListener('click', ()=>{
   lyricsTrackId = editingTrackId;
   document.getElementById('lyrics-error').style.display = 'none';
   document.getElementById('lyrics-textarea').value = track.lyrics || '';
+  resetLyricsSyncTool();
   closeOverlay('edit-overlay');
   openOverlay('lyrics-overlay');
 });
@@ -6155,6 +6293,156 @@ document.getElementById('lyrics-submit').addEventListener('click', async ()=>{
     btn.disabled = false; btn.textContent = 'Enregistrer les paroles';
   }
 });
+
+/* =========================================================
+   OUTIL DE SYNCHRONISATION DES PAROLES — écoute le titre en cours
+   d'édition (réutilise l'aperçu audio partagé editPreviewAudio, déjà
+   utilisé par le réglage du volume "mode concert" ci-dessus, pour éviter
+   de retélécharger l'audio) et permet de "taper" (bouton ou barre Espace)
+   l'instant où chaque ligne du texte commence. À la fin (ou sur demande),
+   les horodatages [mm:ss] sont insérés automatiquement dans le textarea.
+   ========================================================= */
+let lyricsSyncLines = [];   // texte des lignes à synchroniser, dans l'ordre
+let lyricsSyncResults = []; // horodatages déjà posés : [{ time, text }]
+let lyricsSyncBound = false; // évite de rebrancher plusieurs fois les écouteurs sur editPreviewAudio
+
+function formatLyricsSyncTime(t){
+  const m = Math.floor(t / 60);
+  const s = Math.floor(t % 60);
+  return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+// Retire tout horodatage [mm:ss] déjà présent en tête de chaque ligne, pour
+// repartir d'un texte "propre" à retaguer (permet de relancer l'outil même
+// sur des paroles déjà partiellement synchronisées).
+function stripLyricsTimestamps(text){
+  return (text || '').replace(/\r\n?/g, '\n').split('\n')
+    .map(l => l.replace(/^\[\d{1,2}:\d{2}(?:[.:]\d{1,2})?\]\s*/, '').trim())
+    .filter(l => l.length > 0);
+}
+function ensureLyricsSyncAudioBindings(){
+  if(lyricsSyncBound) return;
+  lyricsSyncBound = true;
+  ensureEditPreviewAudio();
+  const icon = document.getElementById('lyrics-sync-play-icon');
+  editPreviewAudio.addEventListener('play', ()=>{ if(icon) icon.textContent = '⏸️'; });
+  editPreviewAudio.addEventListener('pause', ()=>{ if(icon) icon.textContent = '▶️'; });
+  editPreviewAudio.addEventListener('ended', ()=>{ if(icon) icon.textContent = '▶️'; });
+  editPreviewAudio.addEventListener('timeupdate', ()=>{
+    const clock = document.getElementById('lyrics-sync-clock');
+    if(clock && document.getElementById('lyrics-sync-panel').style.display !== 'none'){
+      clock.textContent = formatLyricsSyncTime(editPreviewAudio.currentTime || 0);
+    }
+  });
+}
+function updateLyricsSyncProgressUI(){
+  const progress = document.getElementById('lyrics-sync-progress');
+  const nextLine = document.getElementById('lyrics-sync-next-line');
+  const tapBtn = document.getElementById('lyrics-sync-tap-btn');
+  const idx = lyricsSyncResults.length;
+  if(progress) progress.textContent = `Ligne ${Math.min(idx + 1, lyricsSyncLines.length)} / ${lyricsSyncLines.length}`;
+  if(idx < lyricsSyncLines.length){
+    if(nextLine) nextLine.textContent = lyricsSyncLines[idx];
+    if(tapBtn){ tapBtn.disabled = false; tapBtn.textContent = '⏱️ Marquer cette ligne'; }
+  }else{
+    if(nextLine) nextLine.textContent = 'Toutes les lignes sont marquées 🎉';
+    if(tapBtn){ tapBtn.disabled = true; tapBtn.textContent = '✔️ Synchronisation terminée'; }
+    applyLyricsSyncResults();
+  }
+}
+// Ouvre/prépare le panneau de synchronisation : découpe le texte actuel du
+// textarea en lignes "propres" (sans horodatage) et réinitialise la
+// progression.
+function openLyricsSyncPanel(){
+  const raw = document.getElementById('lyrics-textarea').value;
+  lyricsSyncLines = stripLyricsTimestamps(raw);
+  lyricsSyncResults = [];
+  if(!lyricsSyncLines.length){
+    showToast("Écris d'abord les paroles dans le champ ci-dessus.");
+    return;
+  }
+  ensureLyricsSyncAudioBindings();
+  document.getElementById('lyrics-sync-panel').style.display = '';
+  updateLyricsSyncProgressUI();
+}
+function resetLyricsSyncTool(){
+  lyricsSyncLines = [];
+  lyricsSyncResults = [];
+  const panel = document.getElementById('lyrics-sync-panel');
+  if(panel) panel.style.display = 'none';
+  if(editPreviewAudio && !editPreviewAudio.paused){ try{ editPreviewAudio.pause(); }catch(e){} }
+}
+// Marque la ligne en attente avec le temps courant de l'aperçu audio.
+function tapLyricsSyncLine(){
+  if(!lyricsSyncLines.length) return;
+  const idx = lyricsSyncResults.length;
+  if(idx >= lyricsSyncLines.length) return;
+  lyricsSyncResults.push({ time: (editPreviewAudio ? editPreviewAudio.currentTime : 0) || 0, text: lyricsSyncLines[idx] });
+  updateLyricsSyncProgressUI();
+}
+// Insère les horodatages [mm:ss] recueillis jusqu'ici dans le textarea ;
+// les lignes pas encore marquées sont ajoutées telles quelles à la suite,
+// sans horodatage, pour ne rien perdre du texte si l'admin s'arrête en
+// cours de route.
+function applyLyricsSyncResults(){
+  if(!lyricsSyncResults.length) return;
+  const taggedLines = lyricsSyncResults.map(r => `[${formatLyricsSyncTime(r.time)}] ${r.text}`);
+  const remaining = lyricsSyncLines.slice(lyricsSyncResults.length);
+  document.getElementById('lyrics-textarea').value = taggedLines.concat(remaining).join('\n');
+  showToast("Horodatages appliqués — pense à cliquer sur \"Enregistrer les paroles\".");
+}
+document.getElementById('lyrics-sync-toggle-btn').addEventListener('click', ()=>{
+  const panel = document.getElementById('lyrics-sync-panel');
+  if(panel.style.display === 'none') openLyricsSyncPanel();
+  else resetLyricsSyncTool();
+});
+document.getElementById('lyrics-sync-play-btn').addEventListener('click', async ()=>{
+  if(!isAdmin || !lyricsTrackId) return;
+  const track = allTracks.find(t => t.id === lyricsTrackId);
+  if(!track) return;
+  ensureLyricsSyncAudioBindings();
+  const btn = document.getElementById('lyrics-sync-play-btn');
+  if(!editPreviewAudio.paused){ editPreviewAudio.pause(); return; }
+  try{
+    btn.disabled = true;
+    if(editPreviewTrackId !== lyricsTrackId || !editPreviewAudio.src){
+      const blobUrl = await getTrackAudioBlobUrl(track);
+      if(lyricsTrackId !== track.id) return; // l'admin a changé de titre entre-temps
+      editPreviewAudio.src = blobUrl;
+      editPreviewTrackId = lyricsTrackId;
+    }
+    await editPreviewAudio.play();
+  }catch(err){
+    console.error(err);
+    showToast("Impossible de lire ce titre pour la synchronisation.");
+  }finally{
+    btn.disabled = false;
+  }
+});
+document.getElementById('lyrics-sync-tap-btn').addEventListener('click', tapLyricsSyncLine);
+document.getElementById('lyrics-sync-undo-btn').addEventListener('click', ()=>{
+  if(!lyricsSyncResults.length) return;
+  lyricsSyncResults.pop();
+  updateLyricsSyncProgressUI();
+});
+document.getElementById('lyrics-sync-finish-btn').addEventListener('click', ()=>{
+  if(!lyricsSyncResults.length){ showToast('Marque au moins une ligne avant d’appliquer.'); return; }
+  applyLyricsSyncResults();
+  resetLyricsSyncTool();
+});
+// Barre Espace = "Marquer cette ligne" quand le panneau de synchronisation
+// est ouvert, à la place du raccourci global lecture/pause du lecteur (voir
+// plus haut) : capture:true pour intercepter l'évènement avant l'écouteur
+// global posé sur document (registré, lui, en phase de bouillonnement).
+document.addEventListener('keydown', function(e){
+  if(e.code !== 'Space') return;
+  const overlay = document.getElementById('lyrics-overlay');
+  const panel = document.getElementById('lyrics-sync-panel');
+  if(!overlay || !overlay.classList.contains('open')) return;
+  if(!panel || panel.style.display === 'none') return;
+  e.preventDefault();
+  e.stopPropagation();
+  tapLyricsSyncLine();
+}, true);
 
 /* =========================================================
    AJOUT D'UN TITRE (fichier audio découpé et stocké dans
@@ -6716,6 +7004,7 @@ async function playTrackById(trackId, direction, opts){
   updateVolumeUIForTrack(track); // applique/retire le volume verrouillé de ce titre
   updateAiEnhanceUIForTrack(track); // coupe/grise l'amélioration IA si ce titre est certifié "mode concert"
   updateNpCoverBadges(track); // badges HD/CONCERT sur la pochette du grand lecteur
+  updateLyricsUIForTrack(track); // recharge/affiche les paroles de ce titre si le mode Lyrics est actif
   // Incrémente le compteur d'écoutes du titre (utilisé par le Classement).
   // Doit fonctionner pour TOUT visiteur (connecté ou non) — si ça échoue,
   // c'est presque toujours une règle de sécurité Firestore trop stricte
@@ -6825,6 +7114,7 @@ function stopPlayback(){
   updateVolumeUIForTrack(null); // plus de titre en cours : déverrouille le curseur de volume
   updateAiEnhanceUIForTrack(null); // plus de titre en cours : redonne la main sur l'amélioration IA
   updateNpCoverBadges(null); // plus de titre en cours : masque les badges de la pochette
+  updateLyricsUIForTrack(null); // plus de titre en cours : vide le panneau Lyrics
   playerBar.classList.remove('visible');
   renderTracks();
   updateHeroPlayState();
@@ -7190,6 +7480,11 @@ audioEl.addEventListener('timeupdate', ()=>{
   document.getElementById('p-bar-fill').style.width = displayPct + '%';
   document.getElementById('np-time-current').textContent = formatTime(displayCurrent);
   document.getElementById('np-bar-fill').style.width = displayPct + '%';
+  // Mode Lyrics : les horodatages des paroles sont posés sur la position
+  // réelle dans le titre complet (audioEl.currentTime), pas sur le temps
+  // relatif à un éventuel extrait — un extrait ne change pas où en est la
+  // chanson, seulement sa fenêtre de lecture.
+  if(typeof updateLyricsSyncPosition === 'function') updateLyricsSyncPosition(audioEl.currentTime);
   // Le préchargement et le fondu enchaîné restent basés sur la progression
   // réelle dans le titre complet (indépendante de l'extrait affiché).
   const pct = audioEl.duration ? (audioEl.currentTime / audioEl.duration) * 100 : 0;
@@ -7891,6 +8186,164 @@ function updateNpCoverBadges(track){
   if(concertBadge) concertBadge.style.display = (track && track.concertCertified) ? '' : 'none';
   if(hdBadge) hdBadge.style.display = (track && track.hdCertified) ? '' : 'none';
 }
+
+/* =========================================================
+   MODE LYRICS — affichage des paroles synchronisées à la place
+   de la pochette du grand lecteur. Les paroles sont stockées en
+   texte libre par l'admin (champ "lyrics" du titre, voir modal
+   "Paroles du titre" plus bas) ; une ligne peut porter un
+   horodatage au format [mm:ss] ou [mm:ss.cc] en début de ligne
+   pour être resynchronisée avec la lecture (sinon le texte est
+   simplement affiché tel quel, sans surlignage ni défilement
+   automatique). Le réglage d'activation (case à cocher du menu
+   "...") est sauvegardé sur le compte (usersRef.lyricsMode),
+   exactement comme le mode concert / l'amélioration audio IA
+   juste au-dessus, pour rester identique sur tous les appareils
+   connectés au même compte.
+   ========================================================= */
+let lyricsModeOn = false; // état voulu par l'utilisateur (persisté), désactivé par défaut
+let currentLyricsData = null; // { hasTimestamps, lines:[{time,text}] } du titre en cours
+let currentLyricsLineIndex = -1; // ligne actuellement surlignée (-1 = aucune)
+
+// Découpe le texte brut des paroles en lignes exploitables. Si AU MOINS une
+// ligne porte un horodatage [mm:ss] ou [mm:ss.cc] en tête, seules les lignes
+// horodatées sont conservées (triées par temps croissant) pour permettre un
+// vrai défilement synchronisé ; sinon toutes les lignes non vides sont
+// gardées telles quelles, affichées en bloc statique.
+function parseLyrics(raw){
+  const text = (raw || '').replace(/\r\n?/g, '\n').trim();
+  if(!text) return { hasTimestamps:false, lines:[] };
+  const tagRe = /^\[(\d{1,2}):(\d{2})(?:[.:](\d{1,2}))?\]\s*(.*)$/;
+  const parsed = [];
+  let anyTimestamp = false;
+  text.split('\n').forEach(rawLine=>{
+    const line = rawLine.trim();
+    if(!line) return;
+    const m = line.match(tagRe);
+    if(m){
+      const min = parseInt(m[1], 10) || 0;
+      const sec = parseInt(m[2], 10) || 0;
+      const cs = m[3] ? parseInt(m[3].padEnd(2, '0'), 10) : 0;
+      const content = (m[4] || '').trim();
+      if(content){
+        parsed.push({ time: min * 60 + sec + cs / 100, text: content });
+        anyTimestamp = true;
+      }
+    }else{
+      parsed.push({ time: null, text: line });
+    }
+  });
+  if(anyTimestamp){
+    const timed = parsed.filter(l => l.time !== null).sort((a, b) => a.time - b.time);
+    return { hasTimestamps:true, lines: timed };
+  }
+  return { hasTimestamps:false, lines: parsed };
+}
+
+// Reconstruit les lignes affichées dans le panneau Lyrics du grand lecteur
+// à partir de currentLyricsData (appelé à chaque changement de titre ou
+// d'activation du mode).
+function renderLyricsLines(){
+  const scroll = document.getElementById('np-lyrics-scroll');
+  const empty = document.getElementById('np-lyrics-empty');
+  if(!scroll || !empty) return;
+  scroll.innerHTML = '';
+  currentLyricsLineIndex = -1;
+  if(!currentLyricsData || !currentLyricsData.lines.length){
+    scroll.style.display = 'none';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+  scroll.style.display = 'flex';
+  const frag = document.createDocumentFragment();
+  currentLyricsData.lines.forEach((line, i)=>{
+    const div = document.createElement('div');
+    div.className = 'np-lyrics-line' + (currentLyricsData.hasTimestamps ? '' : ' np-lyrics-line-static');
+    div.textContent = line.text;
+    div.dataset.index = String(i);
+    frag.appendChild(div);
+  });
+  scroll.appendChild(frag);
+}
+
+// Met en avant la ligne à l'index donné (animation via la classe .active,
+// voir @keyframes npLyricsLinePulse) et fait défiler le panneau pour la
+// garder centrée, façon karaoké.
+function setActiveLyricsLine(index){
+  const scroll = document.getElementById('np-lyrics-scroll');
+  if(!scroll) return;
+  const lines = scroll.querySelectorAll('.np-lyrics-line');
+  lines.forEach((el, i)=>{
+    el.classList.toggle('active', i === index);
+    el.classList.toggle('past', i < index);
+  });
+  if(index >= 0 && lines[index]){
+    lines[index].scrollIntoView({ block:'center', behavior:'smooth' });
+  }
+}
+
+// Appelé à chaque "timeupdate" du lecteur (position réelle dans le titre
+// complet) : détermine quelle ligne horodatée correspond à l'instant actuel
+// et met à jour l'affichage uniquement si elle a changé (évite de relancer
+// l'animation à chaque frame).
+function updateLyricsSyncPosition(currentTime){
+  if(!lyricsModeOn || !currentLyricsData || !currentLyricsData.hasTimestamps) return;
+  const lines = currentLyricsData.lines;
+  let idx = -1;
+  for(let i = 0; i < lines.length; i++){
+    if(lines[i].time <= currentTime) idx = i; else break;
+  }
+  if(idx !== currentLyricsLineIndex){
+    currentLyricsLineIndex = idx;
+    setActiveLyricsLine(idx);
+  }
+}
+
+// Affiche/masque le panneau Lyrics (à la place de la pochette) selon
+// lyricsModeOn, et (re)construit les lignes + la synchro si actif.
+function refreshLyricsView(){
+  const toggle = document.getElementById('np-menu-lyrics-toggle');
+  if(toggle) toggle.checked = lyricsModeOn;
+  const artWrap = document.getElementById('np-art-wrap');
+  if(!artWrap) return;
+  artWrap.classList.toggle('lyrics-active', lyricsModeOn);
+  if(!lyricsModeOn) return;
+  renderLyricsLines();
+  updateLyricsSyncPosition(audioEl.currentTime || 0);
+}
+
+// Active/désactive le mode Lyrics (case à cocher + variable d'état) et, en
+// option, enregistre le réglage sur le profil du compte connecté afin qu'il
+// se retrouve identique sur les autres appareils et à la réouverture de la
+// page (même logique que setConcertMode / setAiEnhance ci-dessus).
+function setLyricsMode(enabled, opts){
+  const save = !opts || opts.save !== false;
+  lyricsModeOn = !!enabled;
+  refreshLyricsView();
+  if(save) saveLyricsModeSetting(lyricsModeOn);
+}
+// Sauvegarde le réglage du mode Lyrics sur le profil du compte connecté
+// (aucun effet si personne n'est connecté : le réglage reste alors local à
+// cet onglet pour la session en cours, comme pour l'amélioration audio IA).
+function saveLyricsModeSetting(enabled){
+  const uid = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser.uid : null;
+  if(!uid) return;
+  usersRef.doc(uid).set({
+    lyricsMode: enabled,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge:true }).catch(err=> console.error("Impossible d'enregistrer le réglage Lyrics :", err));
+}
+// Recharge les paroles du titre en cours (appelé à chaque changement de
+// titre, comme updateNpCoverBadges / updateAiEnhanceUIForTrack ci-dessus).
+function updateLyricsUIForTrack(track){
+  currentLyricsData = parseLyrics(track && track.lyrics ? track.lyrics : '');
+  currentLyricsLineIndex = -1;
+  refreshLyricsView();
+}
+document.getElementById('np-menu-lyrics-toggle').addEventListener('change', function(){
+  setLyricsMode(this.checked);
+});
 // Info-bulle flottante partagée par tous les badges CONCERT "pleine
 // taille" (grand lecteur + pochettes de la bibliothèque) : un seul élément
 // réutilisé et positionné en JS selon le badge survolé, donc jamais rogné
