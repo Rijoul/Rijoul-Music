@@ -996,6 +996,25 @@ input,textarea{ font-family:inherit; }
 .pl-detail-cover{ width:180px; height:180px; flex-shrink:0; border-radius:20px; overflow:hidden; background:var(--panel-solid); box-shadow:var(--shadow), 0 0 0 1px var(--glass-border); }
 .pl-detail-cover img{ width:100%; height:100%; object-fit:cover; }
 .pl-detail-info{ min-width:0; flex:1; }
+
+/* Photo d'artiste : ronde plutôt que carrée, pour la distinguer d'une
+   pochette d'album/playlist. */
+.artist-detail-cover{ border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:52px; }
+.artist-detail-cover img{ border-radius:50%; }
+
+/* Nom d'artiste cliquable, utilisé partout où un nom d'artiste est affiché
+   (lecteur, cartes, lignes de playlist/classement…) : ouvre sa page. */
+.artist-link{ cursor:pointer; }
+.artist-link:hover{ text-decoration:underline; }
+
+/* Résultats "artiste" de la recherche globale : vignettes cliquables. */
+.artist-results{ display:flex; flex-wrap:wrap; gap:10px; margin:0 0 22px; }
+.artist-chip{ display:flex; align-items:center; gap:10px; padding:7px 14px 7px 7px; border-radius:999px; background:var(--panel-2); border:1px solid var(--glass-border); cursor:pointer; transition:border-color .15s, background .15s; }
+.artist-chip:hover{ border-color:var(--glass-border-strong); background:rgba(255,255,255,0.08); }
+.artist-chip img{ width:34px; height:34px; border-radius:50%; object-fit:cover; display:block; }
+.artist-chip-fallback{ width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:linear-gradient(145deg, rgba(255,176,32,0.28), rgba(255,176,32,0.08)); font-size:15px; flex-shrink:0; }
+.artist-chip-name{ font-size:13px; font-weight:600; }
+.artist-chip-count{ font-size:11px; color:var(--text-dim); margin-left:2px; }
 .pl-detail-title{ font-family:var(--display); font-size:clamp(22px,3vw,32px); font-weight:900; margin:2px 0 6px; letter-spacing:-0.02em; }
 .pl-detail-desc{ color:var(--text-dim); font-size:13.5px; margin:0 0 8px; max-width:520px; }
 .pl-detail-actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:16px; }
@@ -1196,6 +1215,12 @@ input,textarea{ font-family:inherit; }
 
 <div class="wrap">
 
+  <!-- Résultats "artiste" pour la recherche globale : si le terme tapé dans
+       la barre de recherche correspond au nom d'un ou plusieurs artistes,
+       on les affiche ici sous forme de vignettes cliquables qui ouvrent
+       leur page (photo + tous leurs titres, triés par popularité). -->
+  <div class="artist-results" id="search-artist-results" style="display:none;"></div>
+
   <!-- HERO : dernier titre ajouté / musique de l'événement, thème visuel adapté au contenu -->
   <section class="hero" id="hero" style="display:none;">
     <div class="hero-theme-icon" id="hero-theme-icon" aria-hidden="true"></div>
@@ -1214,7 +1239,7 @@ input,textarea{ font-family:inherit; }
     <div>
       <p class="hero-eyebrow" id="hero-eyebrow">Dernier ajout</p>
       <h1 class="hero-title" id="hero-title">—</h1>
-      <p class="hero-artist" id="hero-artist">—</p>
+      <p class="hero-artist artist-link" id="hero-artist">—</p>
       <div class="hero-actions">
         <button class="btn btn-gold" id="hero-play-cta">▶ Écouter</button>
         <div class="hero-uploader" id="hero-uploader"></div>
@@ -1364,6 +1389,32 @@ input,textarea{ font-family:inherit; }
     </div>
   </section>
 
+  <!-- PAGE ARTISTE — ouverte en cliquant sur le nom d'un artiste (dans le
+       lecteur, une carte, une ligne de playlist/classement…) ou depuis un
+       résultat de recherche correspondant à un artiste. Liste tous ses
+       titres, triés par popularité (nombre d'écoutes total). -->
+  <section id="view-artist-detail" style="display:none;">
+    <button class="btn btn-ghost btn-sm pl-detail-back" id="artist-detail-back">← Retour</button>
+    <div class="pl-detail-head">
+      <div class="pl-detail-cover artist-detail-cover" id="artist-detail-photo">🎤</div>
+      <div class="pl-detail-info">
+        <p class="hero-eyebrow">Artiste</p>
+        <h2 class="pl-detail-title" id="artist-detail-name">—</h2>
+        <span class="section-count" id="artist-detail-count">0 titre</span>
+        <div class="pl-detail-actions">
+          <button class="btn btn-gold" id="artist-detail-play">▶ Lire</button>
+          <!-- Réservé à l'admin : masqué pour tout le monde par défaut. -->
+          <button class="btn btn-ghost btn-sm" id="artist-detail-edit" style="display:none;">Modifier la page de l'artiste</button>
+        </div>
+      </div>
+    </div>
+    <div class="pl-track-list" id="artist-track-list"></div>
+    <div class="empty-state" id="artist-detail-empty" style="display:none;">
+      <h3>Aucun titre</h3>
+      <p>Cet artiste n'a pas encore de titre sur RIJOUL MUSIC.</p>
+    </div>
+  </section>
+
 </div>
 
 <!-- =========================================================
@@ -1397,7 +1448,7 @@ input,textarea{ font-family:inherit; }
     <div class="p-cover"><img id="p-cover" alt=""></div>
     <div class="p-meta">
       <div class="p-title" id="p-title">—</div>
-      <div class="p-artist" id="p-artist">—</div>
+      <div class="p-artist artist-link" id="p-artist">—</div>
     </div>
     <button class="p-like" id="p-like-btn" aria-label="Aimer ce titre">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.6-10-9.1C.5 8.6 2 5 5.6 5c2 0 3.4 1 4.9 3 1.5-2 2.9-3 4.9-3 3.6 0 5.1 3.6 3.6 6.9C19.5 16.4 12 21 12 21z"/></svg>
@@ -1533,7 +1584,7 @@ input,textarea{ font-family:inherit; }
       <div class="np-meta">
         <div class="np-meta-text">
           <div class="np-title" id="np-title">—</div>
-          <div class="np-artist" id="np-artist">—</div>
+          <div class="np-artist artist-link" id="np-artist">—</div>
           <div class="np-radio-info" id="np-radio-info" style="display:none;">
             <span class="live-dot"></span><span id="np-radio-info-text">En direct</span>
           </div>
@@ -1801,6 +1852,30 @@ input,textarea{ font-family:inherit; }
       <textarea id="lyrics-textarea" rows="14" placeholder="Colle ou écris les paroles du titre ici…"></textarea>
     </div>
     <button class="btn btn-gold btn-block" id="lyrics-submit" style="margin-top:16px;">Enregistrer les paroles</button>
+  </div>
+</div>
+
+<!-- Réservé à l'admin : ajoute/modifie la photo affichée sur la page d'un
+     artiste (nom de l'artiste tel que déjà utilisé sur ses titres — pas
+     un champ modifiable ici, pour ne jamais désynchroniser d'un titre à
+     l'autre). S'ouvre depuis le bouton "Modifier la page de l'artiste". -->
+<div class="overlay" id="artist-edit-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 class="modal-title">Modifier la page de l'artiste</h3>
+      <button class="modal-close" data-close="artist-edit-overlay">✕</button>
+    </div>
+    <div class="auth-error" id="artist-edit-error"></div>
+    <p class="section-count" id="artist-edit-name-label" style="margin:14px 0 0;"></p>
+    <div class="photo-row" style="margin-top:12px;">
+      <div class="photo-preview" id="artist-edit-photo-preview">🎤</div>
+      <div class="photo-actions">
+        <button class="btn btn-ghost btn-sm" id="artist-edit-photo-choose">Ajouter une photo</button>
+        <button class="btn btn-ghost btn-sm" id="artist-edit-photo-remove">Retirer</button>
+      </div>
+      <input type="file" id="artist-edit-photo-input" accept="image/*" class="visually-hidden">
+    </div>
+    <button class="btn btn-gold btn-block" id="artist-edit-save" style="margin-top:16px;">Enregistrer</button>
   </div>
 </div>
 
@@ -2235,6 +2310,13 @@ function musicHistoryEntriesRef(uid){
 // sur cette collection pour tout visiteur (comme pour le champ "plays").
 const playLogsRef = db.collection("musicPlayLogs");
 
+// Pages "artiste" : une entrée par artiste (identifiant dérivé du nom,
+// voir artistDocId), servant uniquement à stocker la photo ajoutée par
+// l'admin. Le reste de la page (nom affiché, liste des titres, tri par
+// popularité) est recalculé côté client à partir de "allTracks" — il n'y a
+// donc rien d'autre à synchroniser ici.
+const musicArtistsRef = db.collection("musicArtists");
+
 // =========================================================
 // RADIO DIRECT — playlist virtuelle diffusée EN MÊME TEMPS pour tout le
 // monde (comme une vraie radio), construite à partir du classement de la
@@ -2352,6 +2434,12 @@ let uploadCoverDataUrl = null;
 let allPlaylists = [];     // playlists de l'utilisateur connecté (onSnapshot filtré par ownerId)
 let playlistsUnsub = null;
 let currentPlaylistId = null; // playlist affichée en vue détail
+
+// --- Pages artiste ---
+let currentArtistKey = null;   // clé normalisée (voir artistKeyOf) de l'artiste affiché en vue détail
+let allArtistPhotos = {};      // artistDocId -> { photoURL, ... } (musicArtistsRef)
+let editingArtistKey = null;   // clé de l'artiste en cours d'édition dans le modal admin
+let artistEditPhotoDataUrl = null;
 const FOR_YOU_PLAYLIST_ID = 'for-you'; // playlist virtuelle générée pour l'utilisateur, affichée sur l'accueil
 const FOR_YOU_TRACK_LIMIT = 30; // nombre de titres retenus dans la playlist "Pour vous"
 
@@ -2714,6 +2802,7 @@ function switchView(view){
   document.getElementById('view-classement').style.display = view === 'classement' ? '' : 'none';
   document.getElementById('view-historique').style.display = view === 'historique' ? '' : 'none';
   document.getElementById('view-playlist-detail').style.display = 'none';
+  document.getElementById('view-artist-detail').style.display = 'none';
   if(view === 'classement'){
     loadRankingPeriod(rankingPeriod);
   }
@@ -2740,6 +2829,7 @@ function openPlaylistDetail(id){
   document.getElementById('view-library').style.display = 'none';
   document.getElementById('view-mine').style.display = 'none';
   document.getElementById('view-playlists').style.display = 'none';
+  document.getElementById('view-artist-detail').style.display = 'none';
   document.getElementById('view-playlist-detail').style.display = '';
   renderTracks();
 }
@@ -2761,6 +2851,220 @@ function currentPlaylist(){
   return allPlaylists.find(p => p.id === currentPlaylistId) || sharedPlaylistCache[currentPlaylistId] || null;
 }
 document.getElementById('brand-home').addEventListener('click', (e)=>{ e.preventDefault(); switchView('library'); });
+
+/* =========================================================
+   PAGES ARTISTE — ouverte en cliquant sur un nom d'artiste (lecteur,
+   carte, ligne de playlist/classement…) ou depuis un résultat de
+   recherche. Affiche la photo (ajoutée par l'admin), le nombre de titres
+   et tous les titres de l'artiste triés par popularité.
+   ========================================================= */
+function openArtistPage(name){
+  const key = artistKeyOf(name);
+  if(!key){ showToast("Artiste inconnu."); return; }
+  currentArtistKey = key;
+  currentView = 'artist-detail';
+  document.querySelectorAll('.tab-btn').forEach(b=> b.classList.remove('active'));
+  document.getElementById('view-library').style.display = 'none';
+  document.getElementById('view-mine').style.display = 'none';
+  document.getElementById('view-playlists').style.display = 'none';
+  document.getElementById('view-extraits').style.display = 'none';
+  document.getElementById('view-classement').style.display = 'none';
+  document.getElementById('view-historique').style.display = 'none';
+  document.getElementById('view-playlist-detail').style.display = 'none';
+  document.getElementById('view-artist-detail').style.display = '';
+  renderArtistDetail();
+}
+function renderArtistDetail(){
+  if(currentView !== 'artist-detail' || !currentArtistKey) return;
+  const key = currentArtistKey;
+  const tracks = tracksByArtistKey(key);
+  currentQueue = tracks;
+  document.getElementById('artist-detail-name').textContent = artistDisplayName(key);
+  document.getElementById('artist-detail-count').textContent = tracks.length + (tracks.length > 1 ? ' titres' : ' titre');
+  const photoWrap = document.getElementById('artist-detail-photo');
+  const photoURL = artistPhotoURL(key);
+  if(photoURL){
+    photoWrap.style.background = 'transparent';
+    photoWrap.innerHTML = `<img src="${escapeHtml(photoURL)}" alt="">`;
+  }else{
+    photoWrap.style.background = '';
+    photoWrap.innerHTML = '🎤';
+  }
+  document.getElementById('artist-detail-edit').style.display = isAdmin ? '' : 'none';
+  document.getElementById('artist-detail-play').style.display = tracks.length ? '' : 'none';
+  paintArtistRows(tracks);
+}
+function paintArtistRows(tracks){
+  const wrap = document.getElementById('artist-track-list');
+  const empty = document.getElementById('artist-detail-empty');
+  if(!tracks.length){
+    wrap.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  const uid = auth.currentUser ? auth.currentUser.uid : null;
+  wrap.innerHTML = tracks.map((t, i)=>{
+    const isPlaying = t.id === currentTrackId;
+    const liked = uid && Array.isArray(t.likes) && t.likes.includes(uid);
+    const plays = t.plays || 0;
+    return `
+    <div class="pl-row ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
+      <span class="pl-row-num">${isPlaying ? '♪' : (i+1)}</span>
+      <div class="pl-row-cover"><img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt=""></div>
+      <div class="pl-row-meta">
+        <div class="pl-row-title">${escapeHtml(t.title || 'Sans titre')}</div>
+        <div class="pl-row-artist">${plays} ${plays > 1 ? 'écoutes' : 'écoute'}</div>
+      </div>
+      <span class="pl-row-duration">${formatTime(t.duration || 0)}</span>
+      <div class="pl-row-actions">
+        <button class="like-btn ${liked ? 'liked' : ''}" data-artist-like="${t.id}" aria-label="Aimer">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.6-10-9.1C.5 8.6 2 5 5.6 5c2 0 3.4 1 4.9 3 1.5-2 2.9-3 4.9-3 3.6 0 5.1 3.6 3.6 6.9C19.5 16.4 12 21 12 21z"/></svg>
+        </button>
+        <button class="icon-btn" data-artist-add="${t.id}" aria-label="Ajouter à une playlist">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+  wrap.querySelectorAll('.pl-row').forEach(row=>{
+    row.addEventListener('click', (e)=>{
+      if(e.target.closest('button')) return;
+      playTrackById(row.dataset.trackId);
+    });
+  });
+  wrap.querySelectorAll('[data-artist-like]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); toggleLike(btn.dataset.artistLike); });
+  });
+  wrap.querySelectorAll('[data-artist-add]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); openAddToPlaylistModal(btn.dataset.artistAdd); });
+  });
+}
+document.getElementById('artist-detail-back').addEventListener('click', ()=> switchView('library'));
+document.getElementById('artist-detail-play').addEventListener('click', ()=>{
+  if(!currentQueue.length) return;
+  playTrackById(currentQueue[0].id, 1);
+});
+
+/* Clic sur un nom d'artiste, où qu'il apparaisse dans l'app (lecteur,
+   cartes, lignes de playlist/classement/historique…) : ouvre sa page.
+   Délégation en phase de CAPTURE (et non de bulle) pour intercepter le
+   clic AVANT qu'il n'atteigne un gestionnaire de clic posé sur un
+   conteneur parent (ex. une ligne de playlist qui lance la lecture au
+   clic) — voir chaque bloc "data-artist-link" ajouté aux templates. */
+document.addEventListener('click', (e)=>{
+  const link = e.target.closest('.artist-link');
+  if(!link) return;
+  const name = link.dataset.artistLink;
+  if(!name) return;
+  e.stopPropagation();
+  openArtistPage(name);
+}, true);
+
+/* =========================================================
+   MODIFICATION DE LA PAGE ARTISTE (réservée à l'admin) — permet
+   d'ajouter/remplacer la photo affichée sur la page d'un artiste.
+   ========================================================= */
+function openArtistEditModal(key){
+  if(!isAdmin){ showToast("Seul l'admin peut modifier la page d'un artiste."); return; }
+  if(!key) return;
+  editingArtistKey = key;
+  artistEditPhotoDataUrl = artistPhotoURL(key);
+  const preview = document.getElementById('artist-edit-photo-preview');
+  if(artistEditPhotoDataUrl){
+    preview.style.background = 'transparent';
+    preview.innerHTML = `<img src="${artistEditPhotoDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+  }else{
+    preview.style.background = '';
+    preview.innerHTML = '🎤';
+  }
+  document.getElementById('artist-edit-error').style.display = 'none';
+  document.getElementById('artist-edit-name-label').textContent = artistDisplayName(key);
+  openOverlay('artist-edit-overlay');
+}
+document.getElementById('artist-detail-edit').addEventListener('click', ()=> openArtistEditModal(currentArtistKey));
+function showArtistEditError(msg){
+  const el = document.getElementById('artist-edit-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+document.getElementById('artist-edit-photo-choose').addEventListener('click', ()=> document.getElementById('artist-edit-photo-input').click());
+document.getElementById('artist-edit-photo-input').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    artistEditPhotoDataUrl = await compressImageToDataURL(file, 500, 0.85);
+    const preview = document.getElementById('artist-edit-photo-preview');
+    preview.style.background = 'transparent';
+    preview.innerHTML = `<img src="${artistEditPhotoDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+  }catch(err){
+    showArtistEditError("Impossible de lire cette image.");
+  }
+});
+document.getElementById('artist-edit-photo-remove').addEventListener('click', ()=>{
+  artistEditPhotoDataUrl = null;
+  const preview = document.getElementById('artist-edit-photo-preview');
+  preview.innerHTML = '';
+  preview.textContent = '🎤';
+});
+document.getElementById('artist-edit-save').addEventListener('click', async ()=>{
+  if(!isAdmin){ showToast("Seul l'admin peut modifier la page d'un artiste."); return; }
+  if(!editingArtistKey) return;
+  const docId = artistDocId(editingArtistKey);
+  if(!docId) return;
+  const btn = document.getElementById('artist-edit-save');
+  btn.disabled = true; btn.textContent = 'Enregistrement…';
+  try{
+    await musicArtistsRef.doc(docId).set({
+      photoURL: artistEditPhotoDataUrl || null,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: auth.currentUser ? auth.currentUser.uid : null
+    }, { merge: true });
+    showToast('Page artiste mise à jour.');
+    closeOverlay('artist-edit-overlay');
+  }catch(err){
+    console.error(err);
+    showArtistEditError("Impossible d'enregistrer la photo (vérifier les règles Firestore sur 'musicArtists').");
+  }finally{
+    btn.disabled = false; btn.textContent = 'Enregistrer';
+  }
+});
+
+/* =========================================================
+   RECHERCHE — résultats "artiste" affichés au-dessus de la vue active
+   quand le terme tapé correspond au nom d'un ou plusieurs artistes.
+   Cliquer une vignette ouvre la page de l'artiste correspondant.
+   ========================================================= */
+function renderArtistSearchResults(){
+  const wrap = document.getElementById('search-artist-results');
+  if(!wrap) return;
+  if(!searchTerm){ wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  const seen = new Set();
+  const matches = [];
+  allTracks.forEach(t=>{
+    const name = (t.artist || '').trim();
+    if(!name) return;
+    const key = artistKeyOf(name);
+    if(seen.has(key) || !key.includes(searchTerm)) return;
+    seen.add(key);
+    matches.push({ key, name });
+  });
+  if(!matches.length){ wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  wrap.style.display = '';
+  wrap.innerHTML = matches.map(m=>{
+    const count = tracksByArtistKey(m.key).length;
+    const photoURL = artistPhotoURL(m.key);
+    return `
+    <div class="artist-chip" data-open-artist="${escapeHtml(m.name)}">
+      ${photoURL ? `<img src="${escapeHtml(photoURL)}" alt="">` : `<span class="artist-chip-fallback">🎤</span>`}
+      <span class="artist-chip-name">${escapeHtml(m.name)}</span>
+      <span class="artist-chip-count">${count} ${count > 1 ? 'titres' : 'titre'}</span>
+    </div>`;
+  }).join('');
+  wrap.querySelectorAll('[data-open-artist]').forEach(chip=>{
+    chip.addEventListener('click', ()=> openArtistPage(chip.dataset.openArtist));
+  });
+}
 
 /* =========================================================
    INSTALLATION SUR L'ÉCRAN D'ACCUEIL (PWA)
@@ -2922,6 +3226,19 @@ tracksRef.orderBy('createdAt', 'desc').onSnapshot((snap)=>{
 }, (err)=>{
   console.error('Erreur de chargement de la musique :', err);
   showToast("Impossible de charger la musique pour le moment.");
+});
+
+// Photos des pages artiste (ajoutées par l'admin) : peu de documents, on
+// écoute toute la collection en direct pour que la photo apparaisse sans
+// recharger, aussi bien sur la page artiste que dans les résultats de
+// recherche.
+musicArtistsRef.onSnapshot((snap)=>{
+  allArtistPhotos = {};
+  snap.forEach(doc=> allArtistPhotos[doc.id] = doc.data());
+  if(currentView === 'artist-detail') renderArtistDetail();
+  renderArtistSearchResults();
+}, (err)=>{
+  console.error('Erreur de chargement des pages artiste :', err);
 });
 
 /* =========================================================
@@ -3416,7 +3733,7 @@ function paintPlaylistRows(list, isOwner){
       <div class="pl-row-cover"><img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt=""></div>
       <div class="pl-row-meta">
         <div class="pl-row-title">${escapeHtml(t.title || 'Sans titre')}</div>
-        <div class="pl-row-artist">${escapeHtml(t.artist || 'Artiste inconnu')}</div>
+        <div class="pl-row-artist artist-link" data-artist-link="${escapeHtml(t.artist || '')}">${escapeHtml(t.artist || 'Artiste inconnu')}</div>
       </div>
       <span class="pl-row-duration">${formatTime(t.duration || 0)}</span>
       ${isOwner ? `
@@ -3878,6 +4195,7 @@ function renderHero(){
   }
   document.getElementById('hero-title').textContent = t.title || 'Sans titre';
   document.getElementById('hero-artist').textContent = t.artist || 'Artiste inconnu';
+  document.getElementById('hero-artist').dataset.artistLink = t.artist || '';
   document.getElementById('hero-cover').src = t.coverURL || fallbackCoverSvg();
   const up = document.getElementById('hero-uploader');
   up.innerHTML = `${t.uploaderPhoto ? `<img src="${escapeHtml(t.uploaderPhoto)}" alt="">` : ''}<span>Ajouté par ${escapeHtml(t.uploaderName || 'un membre')}</span>`;
@@ -3891,6 +4209,43 @@ function fallbackCoverSvg(){
 function matchesSearch(t){
   if(!searchTerm) return true;
   return (t.title||'').toLowerCase().includes(searchTerm) || (t.artist||'').toLowerCase().includes(searchTerm);
+}
+
+/* =========================================================
+   PAGES ARTISTE — clé normalisée (identique à celle déjà utilisée pour le
+   scoring de recommandation, voir buildTasteProfile) : ainsi "Rijoul",
+   "rijoul " et "RIJOUL" sont bien traités comme le même artiste partout
+   dans l'app.
+   ========================================================= */
+function artistKeyOf(name){
+  return (name || '').trim().toLowerCase();
+}
+// Identifiant de document Firestore dérivé de la clé artiste : un document
+// ne peut pas contenir de "/", donc on le remplace au besoin.
+function artistDocId(key){
+  if(!key) return null;
+  return key.replace(/\//g, '_').slice(0, 400) || null;
+}
+// Tous les titres d'un artiste (par clé normalisée), triés du plus au
+// moins populaire (nombre total d'écoutes, même compteur que le Classement
+// "Depuis toujours").
+function tracksByArtistKey(key){
+  return allTracks
+    .filter(t => artistKeyOf(t.artist) === key)
+    .slice()
+    .sort((a, b) => (b.plays || 0) - (a.plays || 0));
+}
+// Nom d'affichage d'un artiste : reprend la casse telle que saisie sur son
+// premier titre trouvé (la clé normalisée elle-même est toujours en
+// minuscules, donc pas idéale à afficher telle quelle).
+function artistDisplayName(key){
+  const t = allTracks.find(t => artistKeyOf(t.artist) === key);
+  return (t && t.artist) || key || 'Artiste inconnu';
+}
+function artistPhotoURL(key){
+  const docId = artistDocId(key);
+  const data = docId ? allArtistPhotos[docId] : null;
+  return (data && data.photoURL) || null;
 }
 
 /* =========================================================
@@ -4450,6 +4805,7 @@ function renderHomePlaylistsSection(){
 document.getElementById('home-pl-see-all').addEventListener('click', ()=> switchView('playlists'));
 
 function renderTracks(){
+  renderArtistSearchResults();
   const uid = auth.currentUser ? auth.currentUser.uid : null;
   if(currentView === 'library'){
     const list = getOrderedLibraryTracks().filter(matchesSearch);
@@ -4467,6 +4823,8 @@ function renderTracks(){
     });
   }else if(currentView === 'playlist-detail'){
     renderPlaylistDetailTracks(); // gère elle-même currentQueue, dans l'ordre de la playlist
+  }else if(currentView === 'artist-detail'){
+    renderArtistDetail(); // gère elle-même currentQueue, triée par popularité
   }else if(currentView === 'classement'){
     renderRanking();
   }else if(currentView === 'historique'){
@@ -4515,7 +4873,7 @@ function paintGrid(gridId, emptyId, countId, list, texts){
         ${(canDelete || canEdit) ? `<div class="card-owner-actions">${canEdit ? `<button class="icon-btn" data-edit="${t.id}" aria-label="Modifier"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>` : ''}${canDelete ? `<button class="icon-btn" data-delete="${t.id}" aria-label="Supprimer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>` : ''}</div>` : ''}
       </div>
       <p class="card-title">${escapeHtml(t.title || 'Sans titre')}</p>
-      <p class="card-artist">${escapeHtml(t.artist || 'Artiste inconnu')}</p>
+      <p class="card-artist artist-link" data-artist-link="${escapeHtml(t.artist || '')}">${escapeHtml(t.artist || 'Artiste inconnu')}</p>
       <div class="card-meta">
         <div class="card-uploader">${t.uploaderPhoto ? `<img src="${escapeHtml(t.uploaderPhoto)}" alt="">` : ''}<span>${escapeHtml(t.uploaderName || 'Membre')}</span></div>
         <button class="like-btn ${liked ? 'liked' : ''}" data-like="${t.id}">
@@ -4677,7 +5035,7 @@ function renderRanking(){
       </div>
       <div class="ranking-info">
         <p class="ranking-title">${escapeHtml(t.title || 'Sans titre')}</p>
-        <p class="ranking-artist">${escapeHtml(t.artist || 'Artiste inconnu')}</p>
+        <p class="ranking-artist artist-link" data-artist-link="${escapeHtml(t.artist || '')}">${escapeHtml(t.artist || 'Artiste inconnu')}</p>
       </div>
       <span class="ranking-plays">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5v14l11-7z"/></svg>
@@ -5003,7 +5361,7 @@ function renderHistory(){
       </div>
       <div class="ranking-info">
         <p class="ranking-title">${escapeHtml(t.title || 'Sans titre')}</p>
-        <p class="ranking-artist">${escapeHtml(t.artist || 'Artiste inconnu')}</p>
+        <p class="ranking-artist artist-link" data-artist-link="${escapeHtml(t.artist || '')}">${escapeHtml(t.artist || 'Artiste inconnu')}</p>
       </div>
       <span class="ranking-plays">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
@@ -5681,6 +6039,7 @@ function syncNowPlayingUI(){
   document.getElementById('np-bg').src = pCover.src;
   document.getElementById('np-title').textContent = document.getElementById('p-title').textContent;
   document.getElementById('np-artist').textContent = document.getElementById('p-artist').textContent;
+  document.getElementById('np-artist').dataset.artistLink = document.getElementById('p-artist').dataset.artistLink || '';
   document.getElementById('np-like-btn').classList.toggle('liked', document.getElementById('p-like-btn').classList.contains('liked'));
   document.getElementById('np-play-icon').innerHTML = document.getElementById('p-play-icon').innerHTML;
   document.getElementById('np-time-current').textContent = document.getElementById('p-time-current').textContent;
@@ -6049,6 +6408,7 @@ async function playTrackById(trackId, direction, opts){
   document.getElementById('p-cover').src = track.coverURL || fallbackCoverSvg();
   document.getElementById('p-title').textContent = track.title || 'Sans titre';
   document.getElementById('p-artist').textContent = (track.artist || 'Artiste inconnu') + ' · chargement…';
+  document.getElementById('p-artist').dataset.artistLink = track.artist || '';
   updateLikeButtons(track);
   playerBar.classList.add('visible');
   renderTracks();
