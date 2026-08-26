@@ -407,6 +407,9 @@ input,textarea{ font-family:inherit; }
 /* En Radio Direct, le play/pause du mini-lecteur cède sa place au
    réacteur emoji (voir #p-emoji-react ci-dessous). */
 .is-radio-live #p-play-wrap{ display:none !important; }
+/* Idem sur le grand lecteur ("Now Playing") : le play/pause central cède
+   sa place à son propre réacteur emoji (#np-emoji-react). */
+.is-radio-live #np-play{ display:none !important; }
 .np-radio-info{ display:flex; align-items:center; gap:6px; margin-top:4px; font-size:12.5px; font-weight:700; color:#ff6b6b; }
 
 /* --- Modale de création d'extrait --- */
@@ -630,8 +633,8 @@ input,textarea{ font-family:inherit; }
    glisser horizontalement pour changer d'emoji, et sur lequel un simple
    appui (sans glissement) envoie la réaction en direct à tous les
    auditeurs. Le bouton central peut être "spammé" sans limite. --- */
-#p-emoji-react{ display:none; }
-.is-radio-live #p-emoji-react{ display:flex; }
+.p-emoji-react{ display:none; }
+.is-radio-live .p-emoji-react{ display:flex; }
 .p-emoji-react{
   position:relative; width:112px; height:44px; flex-shrink:0; margin:0 2px;
   align-items:center; justify-content:center; overflow:hidden; border-radius:22px;
@@ -643,6 +646,9 @@ input,textarea{ font-family:inherit; }
   background:conic-gradient(from 0deg, var(--copper-bright), var(--copper), var(--copper-bright));
   opacity:.35; filter:blur(7px); z-index:-1;
 }
+/* Version agrandie utilisée sur le grand lecteur ("Now Playing"). */
+.p-emoji-react-lg{ width:196px; height:64px; border-radius:32px; margin:0 4px; }
+.p-emoji-react-lg::after{ border-radius:32px; }
 .p-emoji-reel{ display:flex; align-items:center; width:100%; height:100%; }
 .p-emoji-item{
   flex:0 0 33.334%; display:flex; align-items:center; justify-content:center;
@@ -652,6 +658,8 @@ input,textarea{ font-family:inherit; }
 .p-emoji-item-prev, .p-emoji-item-next{ opacity:.32; transform:scale(.72); filter:grayscale(.2); }
 .p-emoji-item-current{ font-size:24px; transform:scale(1); cursor:pointer; }
 .p-emoji-item-current:active{ transform:scale(.88); }
+.p-emoji-react-lg .p-emoji-item{ font-size:26px; }
+.p-emoji-react-lg .p-emoji-item-current{ font-size:34px; }
 @keyframes p-emoji-tap-pop{
   0%{ transform:scale(1); }
   35%{ transform:scale(1.35); }
@@ -660,22 +668,24 @@ input,textarea{ font-family:inherit; }
 .p-emoji-item-current.p-emoji-pop{ animation:p-emoji-tap-pop .28s cubic-bezier(.34,1.56,.64,1); }
 
 /* Bulles d'emoji envoyées : elles naissent sur la "barre" juste au-dessus
-   du titre, puis montent vers le haut du lecteur en s'estompant. */
-.p-emoji-fly-layer{
-  position:absolute; left:4px; right:4px; bottom:100%; height:0;
+   du titre du GRAND lecteur ("Now Playing"), puis montent vers le haut de
+   celui-ci en s'estompant — quel que soit le bouton (mini-lecteur ou grand
+   lecteur) qui a servi à les envoyer, l'animation se joue toujours ici. */
+.np-emoji-fly-layer{
+  position:absolute; left:6px; right:6px; bottom:100%; height:0;
   pointer-events:none; overflow:visible; z-index:3;
 }
-.p-emoji-bubble{
-  position:absolute; bottom:0; font-size:22px; line-height:1; opacity:0;
+.np-emoji-bubble{
+  position:absolute; bottom:0; font-size:34px; line-height:1; opacity:0;
   transform:translate(0,0) scale(.4) rotate(0deg);
-  animation-name:p-emoji-float; animation-timing-function:cubic-bezier(.16,.84,.44,1); animation-fill-mode:forwards;
-  will-change:transform, opacity; filter:drop-shadow(0 4px 10px rgba(0,0,0,.4));
+  animation-name:np-emoji-float; animation-timing-function:cubic-bezier(.16,.84,.44,1); animation-fill-mode:forwards;
+  will-change:transform, opacity; filter:drop-shadow(0 6px 14px rgba(0,0,0,.45));
 }
-@keyframes p-emoji-float{
+@keyframes np-emoji-float{
   0%{ transform:translate(0,0) scale(.4) rotate(0deg); opacity:0; }
-  14%{ transform:translate(calc(var(--drift-x) * .2), -16px) scale(1.2) rotate(calc(var(--rot) * .3)); opacity:1; }
-  72%{ transform:translate(calc(var(--drift-x) * .75), -118px) scale(1) rotate(var(--rot)); opacity:.85; }
-  100%{ transform:translate(var(--drift-x), -184px) scale(.78) rotate(var(--rot)); opacity:0; }
+  12%{ transform:translate(calc(var(--drift-x) * .2), -22px) scale(1.25) rotate(calc(var(--rot) * .3)); opacity:1; }
+  70%{ transform:translate(calc(var(--drift-x) * .75), -220px) scale(1) rotate(var(--rot)); opacity:.85; }
+  100%{ transform:translate(var(--drift-x), -320px) scale(.8) rotate(var(--rot)); opacity:0; }
 }
 .p-progress-row{ display:flex; align-items:center; gap:8px; width:100%; max-width:520px; }
 .p-time{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); width:34px; flex-shrink:0; }
@@ -930,7 +940,7 @@ input,textarea{ font-family:inherit; }
 .np-art-track.anim-right{ animation:npArtSlideRight .34s cubic-bezier(.25,1,.4,1) both; }
 .np-art-track.anim-fade{ animation:npArtFade .3s cubic-bezier(.25,1,.4,1) both; }
 .np-meta{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex-shrink:0; margin-bottom:20px; }
-.np-meta-text{ min-width:0; }
+.np-meta-text{ min-width:0; position:relative; }
 .np-title{ font-family:var(--display); font-size:21px; font-weight:800; letter-spacing:-0.02em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .np-artist{ font-size:14px; color:var(--text-dim); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .np-like{ flex-shrink:0; background:transparent; border:0; color:var(--text-dim); display:flex; }
@@ -1512,10 +1522,6 @@ input,textarea{ font-family:inherit; }
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
   </button>
   <div class="p-track">
-    <!-- Zone d'envol des emojis de réaction : ancrée juste au-dessus du
-         titre ("barre imaginaire"), les bulles y apparaissent puis
-         remontent en s'estompant. -->
-    <div class="p-emoji-fly-layer" id="p-emoji-fly-layer" aria-hidden="true"></div>
     <div class="p-cover"><img id="p-cover" alt=""></div>
     <div class="p-meta">
       <div class="p-title" id="p-title">—</div>
@@ -1664,6 +1670,10 @@ input,textarea{ font-family:inherit; }
 
       <div class="np-meta">
         <div class="np-meta-text">
+          <!-- Zone d'envol des emojis de réaction : ancrée juste au-dessus
+               du titre ("barre imaginaire"), les bulles y apparaissent puis
+               remontent vers le haut du grand lecteur en s'estompant. -->
+          <div class="np-emoji-fly-layer" id="np-emoji-fly-layer" aria-hidden="true"></div>
           <div class="np-title" id="np-title">—</div>
           <div class="np-artist artist-link" id="np-artist">—</div>
           <div class="np-radio-info" id="np-radio-info" style="display:none;">
@@ -1688,6 +1698,16 @@ input,textarea{ font-family:inherit; }
         <button class="np-play" id="np-play" aria-label="Lire / mettre en pause">
           <svg id="np-play-icon" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         </button>
+        <!-- Radio Direct : réacteur emoji du grand lecteur (mêmes gestes
+             que sur le mini-lecteur : glisser pour changer, appuyer pour
+             envoyer). L'animation des bulles se joue toujours ici. -->
+        <div class="p-emoji-react p-emoji-react-lg" id="np-emoji-react" role="group" aria-label="Réagir en direct à la radio">
+          <div class="p-emoji-reel" id="np-emoji-reel">
+            <span class="p-emoji-item p-emoji-item-prev" id="np-emoji-item-prev" aria-hidden="true"></span>
+            <button type="button" class="p-emoji-item p-emoji-item-current" id="np-emoji-item-current" aria-label="Envoyer une réaction emoji"></button>
+            <span class="p-emoji-item p-emoji-item-next" id="np-emoji-item-next" aria-hidden="true"></span>
+          </div>
+        </div>
         <button class="np-side-btn" id="np-next" aria-label="Suivant"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM4 6l11 6-11 6z"/></svg></button>
       </div>
 
@@ -4797,18 +4817,21 @@ function sendRadioReaction(emoji){
   }).catch(err=> console.error("Radio Direct : envoi de la réaction impossible :", err));
 }
 // Fait apparaître une bulle emoji sur la "barre" au-dessus du titre du
-// mini-lecteur, puis la fait monter vers le haut du lecteur en s'estompant
-// jusqu'à disparition complète.
+// GRAND lecteur ("Now Playing"), puis la fait monter vers le haut de
+// celui-ci en s'estompant jusqu'à disparition complète. Appelée quel que
+// soit le bouton (mini-lecteur ou grand lecteur) qui a envoyé la réaction :
+// l'animation se joue toujours sur le grand lecteur, jamais sur la barre
+// de lecture en bas du site.
 function spawnEmojiBubble(emoji){
-  const layer = document.getElementById('p-emoji-fly-layer');
+  const layer = document.getElementById('np-emoji-fly-layer');
   if(!layer) return;
   const el = document.createElement('span');
-  el.className = 'p-emoji-bubble';
+  el.className = 'np-emoji-bubble';
   el.textContent = emoji;
-  const driftX = (Math.random() * 70 - 35).toFixed(1);
+  const driftX = (Math.random() * 90 - 45).toFixed(1);
   const rot = (Math.random() * 32 - 16).toFixed(1);
-  const dur = (1.7 + Math.random() * 0.9).toFixed(2);
-  const startLeft = (12 + Math.random() * 66).toFixed(1); // le long de la "barre imaginaire"
+  const dur = (2.1 + Math.random() * 1.1).toFixed(2);
+  const startLeft = (8 + Math.random() * 60).toFixed(1); // le long de la "barre imaginaire"
   el.style.setProperty('--drift-x', driftX + 'px');
   el.style.setProperty('--rot', rot + 'deg');
   el.style.left = startLeft + '%';
@@ -7027,14 +7050,16 @@ document.getElementById('p-next').addEventListener('click', ()=> playAdjacent(1)
 document.getElementById('p-like-btn').addEventListener('click', ()=>{ if(currentTrackId) toggleLike(currentTrackId); });
 
 // --- Radio Direct : réacteur emoji (glisser pour changer, appuyer pour
-// envoyer) --------------------------------------------------------------
-(function setupRadioEmojiReactor(){
+// envoyer) — même logique branchée à la fois sur le mini-lecteur et sur le
+// grand lecteur ("Now Playing") : où qu'on appuie, l'animation des bulles
+// se joue toujours sur le grand lecteur (voir spawnEmojiBubble). --------
+function setupRadioEmojiReactor(ids){
   const RADIO_REACTION_EMOJIS = ['🔥','❤️','😂','🙌','😮','💃','🎶','👏','😢','🥳'];
-  const reactEl = document.getElementById('p-emoji-react');
-  const reelEl = document.getElementById('p-emoji-reel');
-  const prevEl = document.getElementById('p-emoji-item-prev');
-  const curEl = document.getElementById('p-emoji-item-current');
-  const nextEl = document.getElementById('p-emoji-item-next');
+  const reactEl = document.getElementById(ids.react);
+  const reelEl = document.getElementById(ids.reel);
+  const prevEl = document.getElementById(ids.prev);
+  const curEl = document.getElementById(ids.current);
+  const nextEl = document.getElementById(ids.next);
   if(!reactEl || !reelEl || !prevEl || !curEl || !nextEl) return;
 
   let idx = 0;
@@ -7082,7 +7107,8 @@ document.getElementById('p-like-btn').addEventListener('click', ()=>{ if(current
       else if(dx >= 40){ idx = (idx - 1 + RADIO_REACTION_EMOJIS.length) % RADIO_REACTION_EMOJIS.length; render(); }
     } else {
       // Simple appui (pas de glissement) : envoie la réaction actuelle.
-      // Aucune limite ici — on peut "spammer" le bouton librement.
+      // Aucune limite ici — on peut "spammer" le bouton librement, depuis
+      // le mini-lecteur comme depuis le grand lecteur.
       sendRadioReaction(emojiAt(0));
       curEl.classList.remove('p-emoji-pop');
       void curEl.offsetWidth; // relance l'animation même en cas d'appuis rapprochés
@@ -7092,7 +7118,9 @@ document.getElementById('p-like-btn').addEventListener('click', ()=>{ if(current
   }
   reactEl.addEventListener('pointerup', endDrag);
   reactEl.addEventListener('pointercancel', endDrag);
-})();
+}
+setupRadioEmojiReactor({ react:'p-emoji-react', reel:'p-emoji-reel', prev:'p-emoji-item-prev', current:'p-emoji-item-current', next:'p-emoji-item-next' });
+setupRadioEmojiReactor({ react:'np-emoji-react', reel:'np-emoji-reel', prev:'np-emoji-item-prev', current:'np-emoji-item-current', next:'np-emoji-item-next' });
 
 const pPlayIcon = document.getElementById('p-play-icon');
 const npPlayIcon = document.getElementById('np-play-icon');
