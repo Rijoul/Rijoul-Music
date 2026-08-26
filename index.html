@@ -45,6 +45,8 @@
   --text-faint: #7a7a7e;
   --danger: #ff5c5c;
   --good: #FFB020;
+  --rank-up: #1ed760;   /* flèche verte : le titre a gagné des places en 24h */
+  --rank-down: #ff5c5c; /* flèche rouge : le titre a perdu des places en 24h */
   --radius: 22px;
   --radius-sm: 16px;
   --shadow: 0 24px 60px -20px rgba(0,0,0,0.85);
@@ -514,6 +516,13 @@ input,textarea{ font-family:inherit; }
 .rank-gold .ranking-plays,
 .rank-gold .ranking-plays svg{ color:var(--copper-bright); }
 .ranking-medal{ font-size:14px; line-height:1; margin-right:3px; filter:drop-shadow(0 0 3px rgba(0,0,0,0.4)); }
+/* --- Flèche de variation de classement (vert = monte, rouge = descend)
+   sur les dernières 24h. N'apparaît que si la position a réellement
+   changé ; rien n'est affiché sinon (voir getRankingDeltas côté JS). --- */
+.ranking-change{ display:inline-block; margin-left:3px; line-height:1; vertical-align:middle; }
+.ranking-change svg{ display:block; }
+.ranking-change.up{ color:var(--rank-up); }
+.ranking-change.down{ color:var(--rank-down); }
 #history-list .ranking-row{ grid-template-columns:48px 1fr auto auto; }
 .ranking-cover{ position:relative; width:48px; height:48px; border-radius:10px; overflow:hidden; background:var(--panel-solid); flex-shrink:0; cursor:pointer; }
 .ranking-cover img{ width:100%; height:100%; object-fit:cover; }
@@ -5385,6 +5394,60 @@ function rankingPeriodMaxTracks(period){
   return 10; // 'all' (Depuis toujours)
 }
 
+/* =========================================================
+   FLÈCHES DE CLASSEMENT — variation de position sur les dernières 24h
+   Un instantané du classement (id du titre -> rang) est conservé dans
+   localStorage pour chaque période (Semaine/Mois/Année/Toujours). Tant que
+   cet instantané a moins de 24h, on l'utilise comme référence pour savoir
+   si un titre a monté (flèche verte), descendu (flèche rouge) ou n'a pas
+   bougé (aucune flèche) par rapport à il y a ~24h. Une fois l'instantané
+   dépassé (>= 24h), on le remplace par le classement actuel, qui devient
+   la nouvelle référence pour les prochaines 24h.
+   ========================================================= */
+const RANKING_SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+function rankingSnapshotKey(period){ return `rijoul_ranking_snapshot_${period}`; }
+function loadRankingSnapshot(period){
+  try{
+    const raw = localStorage.getItem(rankingSnapshotKey(period));
+    if(!raw) return null;
+    const data = JSON.parse(raw);
+    if(!data || typeof data.savedAt !== 'number' || !data.ranks) return null;
+    return data;
+  }catch(e){ return null; }
+}
+function saveRankingSnapshot(period, ranksById){
+  try{
+    localStorage.setItem(rankingSnapshotKey(period), JSON.stringify({ savedAt: Date.now(), ranks: ranksById }));
+  }catch(e){ /* stockage indisponible (navigation privée, quota…) : tant pis, pas de flèches */ }
+}
+// Calcule, pour chaque titre du classement fourni, son déplacement (positif
+// = a gagné des places, négatif = a perdu des places) par rapport à
+// l'instantané de référence. Renvoie un objet { trackId: delta } qui ne
+// contient QUE les titres ayant réellement changé de place.
+function getRankingDeltas(period, ranked){
+  const currentRanks = {};
+  ranked.forEach((t, i)=>{ currentRanks[t.id] = i + 1; });
+
+  const snap = loadRankingSnapshot(period);
+  const isStale = !snap || (Date.now() - snap.savedAt) >= RANKING_SNAPSHOT_MAX_AGE_MS;
+  if(isStale){
+    // Pas de référence exploitable (première visite ou référence trop
+    // ancienne) : on en enregistre une nouvelle et on n'affiche aucune
+    // flèche pour cet affichage.
+    saveRankingSnapshot(period, currentRanks);
+    return {};
+  }
+
+  const deltas = {};
+  ranked.forEach((t, i)=>{
+    const prevRank = snap.ranks[t.id];
+    if(prevRank == null) return; // titre absent du classement il y a 24h : pas de flèche
+    const delta = prevRank - (i + 1); // > 0 : a gagné des places, < 0 : en a perdu
+    if(delta !== 0) deltas[t.id] = delta;
+  });
+  return deltas;
+}
+
 function renderRanking(){
   const list = document.getElementById('ranking-list');
   const empty = document.getElementById('classement-empty');
@@ -5416,6 +5479,14 @@ function renderRanking(){
   const total = Math.min(ranked.length, rankingPeriodMaxTracks(rankingPeriod));
   countEl.textContent = total + (total > 1 ? ' titres classés' : ' titre classé');
 
+  // Flèches vertes/rouges : variation de position par rapport à
+  // l'instantané du classement d'il y a ~24h (calculé sur le classement
+  // complet, pas seulement la partie visible, pour que les rangs restent
+  // cohérents même après "Voir plus").
+  const rankingDeltas = getRankingDeltas(rankingPeriod, ranked);
+  const arrowUpSvg = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l9 14H3z"/></svg>';
+  const arrowDownSvg = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20L3 6h18z"/></svg>';
+
   const visible = ranked.slice(0, Math.min(rankingVisibleCount, total));
   list.innerHTML = visible.map((t, i)=>{
     const isPlaying = t.id === currentTrackId;
@@ -5423,9 +5494,11 @@ function renderRanking(){
     // Top 3 : traitement "podium" doré / argent / bronze.
     const rankClass = i === 0 ? 'rank-gold' : i === 1 ? 'rank-silver' : i === 2 ? 'rank-bronze' : '';
     const medal = i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+    const delta = rankingDeltas[t.id];
+    const changeHtml = !delta ? '' : `<span class="ranking-change ${delta > 0 ? 'up' : 'down'}" title="${delta > 0 ? 'A gagné ' + delta + ' place' + (delta > 1 ? 's' : '') : 'A perdu ' + Math.abs(delta) + ' place' + (Math.abs(delta) > 1 ? 's' : '')} en 24h" aria-label="${delta > 0 ? 'Monte de ' + delta + ' place' + (delta > 1 ? 's' : '') : 'Descend de ' + Math.abs(delta) + ' place' + (Math.abs(delta) > 1 ? 's' : '')} en 24h">${delta > 0 ? arrowUpSvg : arrowDownSvg}</span>`;
     return `
     <div class="ranking-row ${isPlaying ? 'is-playing' : ''} ${rankClass}" data-track-id="${t.id}">
-      <span class="ranking-rank">${medal ? `<span class="ranking-medal">${medal}</span>` : ''}${i + 1}</span>
+      <span class="ranking-rank">${medal ? `<span class="ranking-medal">${medal}</span>` : ''}${i + 1}${changeHtml}</span>
       <div class="ranking-cover" data-play="${t.id}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge-mini" aria-hidden="true">🎤</span>` : ''}
