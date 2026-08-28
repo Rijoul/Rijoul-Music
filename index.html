@@ -1031,9 +1031,13 @@ input,textarea{ font-family:inherit; }
 .np-meta-text{ min-width:0; position:relative; }
 .np-title{ font-family:var(--display); font-size:21px; font-weight:800; letter-spacing:-0.02em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .np-artist{ font-size:14px; color:var(--text-dim); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.np-meta-actions{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
 .np-like{ flex-shrink:0; background:transparent; border:0; color:var(--text-dim); display:flex; }
 .np-like.liked{ color:var(--copper); }
 .np-like.liked svg{ fill:var(--copper); }
+.np-share-btn{ flex-shrink:0; background:transparent; border:0; color:var(--text-dim); display:flex; padding:6px; border-radius:50%; transition:color .2s ease, background .2s ease, transform .15s ease; cursor:pointer; }
+.np-share-btn:hover{ color:var(--copper); background:rgba(255,176,32,0.1); }
+.np-share-btn:active{ transform:scale(.9); }
 .np-progress{ flex-shrink:0; margin-bottom:18px; }
 #np-bar{ height:5px; }
 #np-bar-fill::after{ width:13px; height:13px; }
@@ -1800,9 +1804,14 @@ input,textarea{ font-family:inherit; }
             <span class="live-dot"></span><span id="np-radio-info-text">En direct</span>
           </div>
         </div>
-        <button class="np-like" id="np-like-btn" aria-label="Aimer ce titre">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.6-10-9.1C.5 8.6 2 5 5.6 5c2 0 3.4 1 4.9 3 1.5-2 2.9-3 4.9-3 3.6 0 5.1 3.6 3.6 6.9C19.5 16.4 12 21 12 21z"/></svg>
-        </button>
+        <div class="np-meta-actions">
+          <button class="np-share-btn" id="np-share-inline-btn" aria-label="Partager ce titre" title="Partager">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4"/></svg>
+          </button>
+          <button class="np-like" id="np-like-btn" aria-label="Aimer ce titre">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.6-10-9.1C.5 8.6 2 5 5.6 5c2 0 3.4 1 4.9 3 1.5-2 2.9-3 4.9-3 3.6 0 5.1 3.6 3.6 6.9C19.5 16.4 12 21 12 21z"/></svg>
+          </button>
+        </div>
       </div>
 
       <div class="np-progress">
@@ -8722,8 +8731,7 @@ document.getElementById('np-menu-eq-btn').addEventListener('click', ()=>{ closeN
 /* --- Partager le titre en cours depuis le menu "..." du grand lecteur ---
    Génère un lien direct (?track=ID) vers le morceau : utilise le partage
    natif quand il est disponible (mobile), sinon copie le lien. */
-document.getElementById('np-menu-share-btn').addEventListener('click', async ()=>{
-  closeNpMenu();
+async function shareCurrentTrack(){
   if(!currentTrackId) return;
   const t = allTracks.find(tr => tr.id === currentTrackId);
   if(!t) return;
@@ -8743,7 +8751,11 @@ document.getElementById('np-menu-share-btn').addEventListener('click', async ()=
   }catch(e){
     showToast("Impossible de copier le lien automatiquement : " + shareData.url);
   }
-});
+}
+document.getElementById('np-menu-share-btn').addEventListener('click', ()=>{ closeNpMenu(); shareCurrentTrack(); });
+/* Bouton de partage visible directement sur le grand lecteur (à côté du
+   bouton "like"), pour un accès plus rapide qu'en passant par le menu "...". */
+document.getElementById('np-share-inline-btn').addEventListener('click', (e)=>{ e.stopPropagation(); shareCurrentTrack(); });
 document.getElementById('np-eq-close').addEventListener('click', closeEqPanel);
 npEqBackdrop.addEventListener('click', closeEqPanel);
 
