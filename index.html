@@ -2371,7 +2371,7 @@ const googleProvider = new firebase.auth.GoogleAuthProvider();
    puis réassemblés au moment de la lecture.
    ========================================================= */
 const AUDIO_CHUNK_SIZE = 700000; // caractères base64 par document (~700 Ko, sous la limite de 1 Mo)
-const MAX_AUDIO_BYTES = 10 * 1024 * 1024; // 10 Mo max par fichier audio d'origine
+const MAX_AUDIO_BYTES = 20 * 1024 * 1024; // 20 Mo max par fichier audio d'origine
 const audioBlobCache = new Map(); // trackId -> URL de blob déjà reconstruite (évite de retélécharger)
 
 /* =========================================================
