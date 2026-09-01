@@ -988,6 +988,19 @@ input,textarea{ font-family:inherit; }
 .np-art-cover-wrap .np-art{ width:100%; height:100%; }
 .np-art-cover-wrap .concert-badge{ top:10px; left:10px; }
 .np-art-cover-wrap .hd-badge{ bottom:10px; left:10px; }
+/* Titre vidéo dans le grand lecteur : la boîte adopte le ratio réel de la
+   vidéo (16:9, portrait, carré...) au lieu du carré fixe utilisé pour la
+   pochette, pour ne plus la recadrer (object-fit:cover). --np-video-ratio
+   est posée en JS dès que les dimensions de la vidéo sont connues
+   (voir loadedmetadata sur #np-video). La boîte reste bornée par le même
+   encombrement max que la pochette carrée pour ne pas bouleverser la mise
+   en page du grand lecteur. */
+.np-art-cover-wrap.is-video{
+  width:auto; height:auto;
+  max-width:min(56vw,260px); max-height:min(56vw,260px);
+  aspect-ratio:var(--np-video-ratio, 16/9);
+}
+.np-art-cover-wrap.is-video .np-art{ width:100%; height:100%; object-fit:contain; background:#000; border-radius:22px; }
 .np-art-side{
   flex-shrink:0; width:min(20vw,110px); height:min(20vw,110px);
   object-fit:cover; border-radius:16px; cursor:pointer;
@@ -1127,6 +1140,7 @@ input,textarea{ font-family:inherit; }
   .np-controls{ gap:26px; }
   .np-art{ width:min(50vw,240px); height:min(50vw,240px); }
   .np-art-cover-wrap{ width:min(50vw,240px); height:min(50vw,240px); }
+  .np-art-cover-wrap.is-video{ width:auto; height:auto; max-width:min(50vw,240px); max-height:min(50vw,240px); }
   .np-art-side{ width:min(17vw,90px); height:min(17vw,90px); }
   .np-art-track{ gap:8px; }
   /* Mode concert optimisé mobile : on remplace entièrement les 5 faisceaux
@@ -7056,20 +7070,37 @@ const playerBar = document.getElementById('player');
    #audio-el. Elle ne remplace la pochette que dans le grand lecteur : la
    barre du bas, les listes, etc. continuent d'afficher la pochette. */
 const npVideoEl = document.getElementById('np-video');
+const npCoverWrapEl = document.getElementById('np-cover-wrap');
 function isVideoTrack(track){
   return !!(track && track.audioMimeType && track.audioMimeType.startsWith('video/'));
 }
+/* Applique à la boîte du grand lecteur le ratio (largeur/hauteur) réel de la
+   vidéo dès qu'il est connu, pour qu'elle épouse son format (paysage,
+   portrait, carré...) au lieu du carré fixe utilisé pour la pochette. */
+function applyNpVideoRatio(){
+  if(npVideoEl.videoWidth > 0 && npVideoEl.videoHeight > 0){
+    npCoverWrapEl.style.setProperty('--np-video-ratio', `${npVideoEl.videoWidth} / ${npVideoEl.videoHeight}`);
+  }
+}
+npVideoEl.addEventListener('loadedmetadata', applyNpVideoRatio);
 function updateNpVideoForTrack(track, blobUrl){
   const npCover = document.getElementById('np-cover');
   if(isVideoTrack(track) && blobUrl){
-    if(npVideoEl.src !== blobUrl) npVideoEl.src = blobUrl;
+    if(npVideoEl.src !== blobUrl){
+      npCoverWrapEl.style.removeProperty('--np-video-ratio'); // évite un flash avec le ratio du titre précédent le temps que les nouvelles dimensions se chargent
+      npVideoEl.src = blobUrl;
+    }
     npVideoEl.style.display = '';
+    npCoverWrapEl.classList.add('is-video');
     npCover.style.display = 'none';
+    applyNpVideoRatio(); // déjà en cache si la vidéo était préchargée
     if(!audioEl.paused) npVideoEl.play().catch(()=>{});
   }else{
     npVideoEl.pause();
     npVideoEl.removeAttribute('src');
     npVideoEl.style.display = 'none';
+    npCoverWrapEl.classList.remove('is-video');
+    npCoverWrapEl.style.removeProperty('--np-video-ratio');
     npCover.style.display = '';
   }
 }
