@@ -1940,6 +1940,11 @@ input,textarea{ font-family:inherit; }
           <img class="np-art-side" id="np-art-prev" alt="" aria-hidden="true">
           <div class="np-art-cover-wrap" id="np-cover-wrap">
             <img class="np-art" id="np-cover" alt="">
+            <!-- Affichée à la place de la pochette uniquement quand le titre en
+                 cours est une vidéo MP4 (uploadée par l'admin) : le son continue
+                 de passer par #audio-el, cette vidéo est mise en sourdine et
+                 juste calée sur la même position/lecture (voir syncNpVideoWithAudio). -->
+            <video class="np-art" id="np-video" muted playsinline style="display:none"></video>
             <span class="concert-badge" tabindex="0" id="np-cover-concert-badge" data-tooltip="Ce titre est certifié pour être adapté au mode concert." style="display:none">🎤 CONCERT</span>
             <span class="hd-badge" id="np-cover-hd-badge" style="display:none">HD</span>
           </div>
@@ -2129,7 +2134,7 @@ input,textarea{ font-family:inherit; }
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
       <div class="upload-drop-text" id="upload-audio-label">Choisir un fichier audio (MP3, WAV…)</div>
       <div class="upload-drop-sub">Requis</div>
-      <input type="file" id="upload-audio-input" accept="audio/*" class="visually-hidden">
+      <input type="file" id="upload-audio-input" accept="audio/*,video/mp4" class="visually-hidden">
     </div>
 
     <div class="photo-row" style="margin-top:16px;">
@@ -6853,7 +6858,9 @@ function resetUploadForm(){
   document.getElementById('upload-title').value = '';
   document.getElementById('upload-artist').value = '';
   document.getElementById('upload-audio-drop').classList.remove('has-file');
-  document.getElementById('upload-audio-label').textContent = 'Choisir un fichier audio (MP3, WAV…)';
+  document.getElementById('upload-audio-label').textContent = isAdmin
+    ? 'Choisir un fichier audio (MP3, WAV…) ou une vidéo MP4'
+    : 'Choisir un fichier audio (MP3, WAV…)';
   document.getElementById('upload-cover-preview').textContent = '🎵';
   document.getElementById('upload-cover-preview').style.background = '';
   document.getElementById('upload-progress').style.display = 'none';
@@ -6864,6 +6871,15 @@ document.getElementById('upload-audio-drop').addEventListener('click', ()=> docu
 document.getElementById('upload-audio-input').addEventListener('change', (e)=>{
   const file = e.target.files[0];
   if(!file) return;
+  const isVideoFile = (file.type || '').startsWith('video/');
+  // La sélection d'une vidéo (MP4) n'est autorisée que pour l'admin : pour
+  // tout le monde d'autre, on refuse silencieusement et on réinitialise le
+  // champ, comme si aucun fichier vidéo n'avait été proposé.
+  if(isVideoFile && !isAdmin){
+    e.target.value = '';
+    showUploadError("Seul l'admin peut ajouter une vidéo MP4 ici.");
+    return;
+  }
   uploadAudioFile = file;
   document.getElementById('upload-audio-drop').classList.add('has-file');
   document.getElementById('upload-audio-label').textContent = file.name;
@@ -6915,7 +6931,11 @@ function chunkString(str, size){
 // Découpe le fichier audio en base64 et écrit chaque morceau dans
 // trackRef/audioChunks/{index}. Renvoie le nombre de morceaux et le type MIME.
 async function uploadAudioToFirestore(trackRef, file, uploaderId, onProgress){
-  if(file.size > MAX_AUDIO_BYTES){
+  // Pas de limite de taille pour une vidéo MP4 envoyée par l'admin (seul
+  // cas où un fichier vidéo peut arriver ici, cf. validation à la sélection).
+  const isVideoFile = (file.type || '').startsWith('video/');
+  const bypassSizeLimit = isVideoFile && isAdmin;
+  if(!bypassSizeLimit && file.size > MAX_AUDIO_BYTES){
     throw new Error(`Fichier trop volumineux (max ${Math.round(MAX_AUDIO_BYTES / (1024*1024))} Mo).`);
   }
   const base64 = await readFileAsBase64(file);
@@ -7028,6 +7048,44 @@ document.getElementById('upload-submit').addEventListener('click', async ()=>{
    ========================================================= */
 const audioEl = document.getElementById('audio-el');
 const playerBar = document.getElementById('player');
+
+/* --- Titre vidéo (MP4) dans le grand lecteur ---
+   Le son d'un titre vidéo passe normalement par #audio-el (comme n'importe
+   quel titre audio, y compris le fondu/l'égaliseur). #np-video n'affiche que
+   l'image, en sourdine, et se contente de suivre lecture/pause/position de
+   #audio-el. Elle ne remplace la pochette que dans le grand lecteur : la
+   barre du bas, les listes, etc. continuent d'afficher la pochette. */
+const npVideoEl = document.getElementById('np-video');
+function isVideoTrack(track){
+  return !!(track && track.audioMimeType && track.audioMimeType.startsWith('video/'));
+}
+function updateNpVideoForTrack(track, blobUrl){
+  const npCover = document.getElementById('np-cover');
+  if(isVideoTrack(track) && blobUrl){
+    if(npVideoEl.src !== blobUrl) npVideoEl.src = blobUrl;
+    npVideoEl.style.display = '';
+    npCover.style.display = 'none';
+    if(!audioEl.paused) npVideoEl.play().catch(()=>{});
+  }else{
+    npVideoEl.pause();
+    npVideoEl.removeAttribute('src');
+    npVideoEl.style.display = 'none';
+    npCover.style.display = '';
+  }
+}
+audioEl.addEventListener('play', ()=>{ if(npVideoEl.style.display !== 'none') npVideoEl.play().catch(()=>{}); });
+audioEl.addEventListener('pause', ()=>{ npVideoEl.pause(); });
+// Recale la vidéo sur la position audio si elles dérivent (léger décalage
+// possible après une recherche dans la barre de progression, un fondu, etc.).
+audioEl.addEventListener('timeupdate', ()=>{
+  if(npVideoEl.style.display === 'none') return;
+  if(Math.abs(npVideoEl.currentTime - audioEl.currentTime) > 0.3){
+    npVideoEl.currentTime = audioEl.currentTime;
+  }
+});
+audioEl.addEventListener('seeked', ()=>{
+  if(npVideoEl.style.display !== 'none') npVideoEl.currentTime = audioEl.currentTime;
+});
 
 /* Masquer/afficher manuellement la barre de lecture du bas (ex. sur
    l'accueil, pour libérer de la place) sans arrêter la musique. */
@@ -7439,6 +7497,7 @@ async function playTrackById(trackId, direction, opts){
     const [blobUrl] = await Promise.all([blobUrlPromise, crossfadeReady]);
     if(currentTrackId !== trackId){ trackChangeInFlight = false; return; } // l'utilisateur a changé de morceau entre-temps
     audioEl.src = blobUrl; // à partir d'ici, l'ancien morceau ne peut plus déclencher "ended" : le changement n'est plus "en vol"
+    updateNpVideoForTrack(track, blobUrl);
     trackChangeInFlight = false;
     document.getElementById('p-artist').textContent = track.artist || 'Artiste inconnu';
     ensureAnalyser();
@@ -7495,6 +7554,7 @@ function togglePlayPause(){
 function stopPlayback(){
   audioEl.pause();
   audioEl.removeAttribute('src');
+  updateNpVideoForTrack(null); // plus de titre en cours : masque une éventuelle vidéo et réaffiche la pochette
   crossfadeEchoes.forEach(echo=>{ try{ echo.pause(); echo.src=''; }catch(e){} });
   crossfadeEchoes = [];
   currentTrackId = null;
