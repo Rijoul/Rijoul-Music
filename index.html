@@ -988,17 +988,19 @@ input,textarea{ font-family:inherit; }
 .np-art-cover-wrap .np-art{ width:100%; height:100%; }
 .np-art-cover-wrap .concert-badge{ top:10px; left:10px; }
 .np-art-cover-wrap .hd-badge{ bottom:10px; left:10px; }
-/* Titre vidéo dans le grand lecteur : la boîte adopte le ratio réel de la
-   vidéo (16:9, portrait, carré...) au lieu du carré fixe utilisé pour la
-   pochette, pour ne plus la recadrer (object-fit:cover). --np-video-ratio
-   est posée en JS dès que les dimensions de la vidéo sont connues
-   (voir loadedmetadata sur #np-video). La boîte reste bornée par le même
-   encombrement max que la pochette carrée pour ne pas bouleverser la mise
-   en page du grand lecteur. */
+/* Titre vidéo dans le grand lecteur : la boîte occupe toute la largeur (et
+   toute la hauteur disponible) du lecteur au lieu du carré fixe utilisé
+   pour la pochette — voir .np-art-track.has-video ci-dessous, qui donne à
+   la piste une hauteur définie (100% de .np-art-wrap) pour que ce
+   pourcentage se résolve correctement. La vidéo elle-même reste en
+   object-fit:contain : elle ne remplit cette boîte qu'en respectant son
+   ratio d'origine, sans jamais être étirée/déformée (de simples bandes
+   noires apparaissent au besoin). Les vignettes titre précédent/suivant
+   sont masquées pendant ce temps (voir .np-art-track.has-video .np-art-side
+   et updateNpVideoForTrack en JS) pour libérer toute la largeur. */
 .np-art-cover-wrap.is-video{
-  width:auto; height:auto;
-  max-width:min(56vw,260px); max-height:min(56vw,260px);
-  aspect-ratio:var(--np-video-ratio, 16/9);
+  width:100%; height:100%;
+  max-width:100%; max-height:100%;
 }
 .np-art-cover-wrap.is-video .np-art{ width:100%; height:100%; object-fit:contain; background:#000; border-radius:22px; }
 .np-art-side{
@@ -1009,6 +1011,12 @@ input,textarea{ font-family:inherit; }
   transition:opacity .2s, transform .2s, filter .2s;
 }
 .np-art-side:hover{ opacity:.7; transform:scale(.97); filter:brightness(.7) saturate(1); }
+/* Titre vidéo en cours : on masque les vignettes précédent/suivant pour que
+   la vidéo puisse occuper toute la largeur de .np-art-track (voir JS), et on
+   donne à la piste toute la hauteur disponible du lecteur pour que la boîte
+   vidéo (en % ci-dessus) puisse s'y déployer pleinement. */
+.np-art-track.has-video{ height:100%; }
+.np-art-track.has-video .np-art-side{ display:none; }
 @keyframes npArtSlideLeft{ from{ transform:translateX(30px); opacity:0; } to{ transform:translateX(0); opacity:1; } }
 @keyframes npArtSlideRight{ from{ transform:translateX(-30px); opacity:0; } to{ transform:translateX(0); opacity:1; } }
 @keyframes npArtFade{ from{ transform:scale(.96); opacity:0; } to{ transform:scale(1); opacity:1; } }
@@ -1140,7 +1148,7 @@ input,textarea{ font-family:inherit; }
   .np-controls{ gap:26px; }
   .np-art{ width:min(50vw,240px); height:min(50vw,240px); }
   .np-art-cover-wrap{ width:min(50vw,240px); height:min(50vw,240px); }
-  .np-art-cover-wrap.is-video{ width:auto; height:auto; max-width:min(50vw,240px); max-height:min(50vw,240px); }
+  .np-art-cover-wrap.is-video{ width:100%; height:100%; max-width:100%; max-height:100%; }
   .np-art-side{ width:min(17vw,90px); height:min(17vw,90px); }
   .np-art-track{ gap:8px; }
   /* Mode concert optimisé mobile : on remplace entièrement les 5 faisceaux
@@ -7096,6 +7104,7 @@ const playerBar = document.getElementById('player');
    barre du bas, les listes, etc. continuent d'afficher la pochette. */
 const npVideoEl = document.getElementById('np-video');
 const npCoverWrapEl = document.getElementById('np-cover-wrap');
+const npArtTrackEl = document.getElementById('np-art-track');
 function isVideoTrack(track){
   return !!(track && track.audioMimeType && track.audioMimeType.startsWith('video/'));
 }
@@ -7117,6 +7126,7 @@ function updateNpVideoForTrack(track, blobUrl){
     }
     npVideoEl.style.display = '';
     npCoverWrapEl.classList.add('is-video');
+    npArtTrackEl.classList.add('has-video'); // masque les vignettes précédent/suivant pour laisser toute la largeur à la vidéo
     npCover.style.display = 'none';
     applyNpVideoRatio(); // déjà en cache si la vidéo était préchargée
     if(!audioEl.paused) npVideoEl.play().catch(()=>{});
@@ -7125,6 +7135,7 @@ function updateNpVideoForTrack(track, blobUrl){
     npVideoEl.removeAttribute('src');
     npVideoEl.style.display = 'none';
     npCoverWrapEl.classList.remove('is-video');
+    npArtTrackEl.classList.remove('has-video');
     npCoverWrapEl.style.removeProperty('--np-video-ratio');
     npCover.style.display = '';
   }
