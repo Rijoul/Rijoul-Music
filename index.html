@@ -620,7 +620,13 @@ input,textarea{ font-family:inherit; }
 /* Permet de masquer manuellement la barre de lecture (ex. sur l'accueil)
    sans arrêter la musique : elle reste "visible" côté lecture, seule sa
    présence à l'écran est cachée jusqu'à ce qu'on la fasse réapparaître. */
-.player.visible.user-hidden{ transform:translateY(140%); }
+/* animation:none est nécessaire ici : .player.visible porte une animation
+   d'entrée (voir plus bas, "player-in") avec fill-mode "both", qui reste
+   active en permanence une fois terminée et fige transform:translateY(0)
+   au-dessus de n'importe quelle règle CSS classique — y compris celle
+   ci-dessous. On l'annule explicitement dès que .user-hidden est présent
+   pour que le transform:translateY(140%) reprenne bien la main. */
+.player.visible.user-hidden{ transform:translateY(140%); animation:none; }
 /* Bannière "reprendre sur cet appareil" : apparaît quand un autre appareil
    du même compte a une lecture en cours (ou en pause) plus récente que ce
    qui est chargé localement. Flotte au-dessus de la barre de lecture. */
