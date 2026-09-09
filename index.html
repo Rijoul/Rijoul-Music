@@ -1853,6 +1853,31 @@ input,textarea{ font-family:inherit; }
 </button>
 <audio id="audio-el" preload="metadata" crossorigin="anonymous"></audio>
 
+<script>
+/* Masquer/afficher la barre de lecture — posé ici, tout de suite après le
+   markup du lecteur, via délégation sur document. Ainsi le bouton continue
+   de fonctionner même si une erreur JS survient plus loin dans le gros
+   script principal (qui empêcherait sinon l'attache de cet écouteur). */
+(function(){
+  document.addEventListener('click', function(e){
+    var hideBtn = e.target.closest('#p-hide-btn');
+    var revealBtn = e.target.closest('#player-reveal-btn');
+    if(!hideBtn && !revealBtn) return;
+    var bar = document.getElementById('player');
+    var reveal = document.getElementById('player-reveal-btn');
+    if(!bar || !reveal) return;
+    if(hideBtn){
+      e.stopPropagation();
+      bar.classList.add('user-hidden');
+      reveal.style.display = 'flex';
+    } else {
+      bar.classList.remove('user-hidden');
+      reveal.style.display = 'none';
+    }
+  }, true);
+})();
+</script>
+
 <!-- =========================================================
      LECTURE PLEIN ÉCRAN ("Now Playing")
      S'ouvre en cliquant sur le bandeau du lecteur (hors boutons).
