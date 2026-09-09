@@ -344,6 +344,20 @@ input,textarea{ font-family:inherit; }
   font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:.08em;
   line-height:1; cursor:default;
 }
+/* Badge "VIDÉO" : affiché en bas à droite de la pochette des titres marqués
+   par un modo comme contenant une vidéo (via le modal "Modifier le
+   titre") — en bas à droite pour ne jamais se superposer aux badges
+   CONCERT (haut-gauche) et HD (bas-gauche) qui peuvent coexister sur la
+   même pochette. */
+.video-badge{
+  position:absolute; bottom:8px; right:8px; z-index:2;
+  display:flex; align-items:center; justify-content:center;
+  width:22px; height:18px; border-radius:6px;
+  background:rgba(6,14,16,0.78); backdrop-filter:blur(6px);
+  border:1px solid rgba(75,227,224,0.55);
+  color:var(--cyan);
+  font-size:10.5px; line-height:1; cursor:default;
+}
 /* Bouton de certification dans le modal d'édition (réservé aux modos) :
    surligné en copper une fois le titre certifié. */
 .edit-concert-toggle{ border-color:var(--glass-border-strong); }
@@ -568,6 +582,7 @@ input,textarea{ font-family:inherit; }
 .ranking-cover img{ width:100%; height:100%; object-fit:cover; }
 .ranking-cover .card-play{ width:28px; height:28px; right:0; left:0; top:0; bottom:0; margin:auto; }
 .ranking-cover .hd-badge{ bottom:2px; left:2px; padding:1px 4px; font-size:7.5px; border-radius:4px; }
+.ranking-cover .video-badge{ bottom:2px; right:2px; width:15px; height:13px; font-size:8px; border-radius:4px; }
 .ranking-info{ min-width:0; overflow:hidden; }
 .ranking-title{ font-weight:700; font-size:13.5px; margin:0 0 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ranking-artist{ font-size:12px; color:var(--text-dim); margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -994,6 +1009,7 @@ input,textarea{ font-family:inherit; }
 .np-art-cover-wrap .np-art{ width:100%; height:100%; }
 .np-art-cover-wrap .concert-badge{ top:10px; left:10px; }
 .np-art-cover-wrap .hd-badge{ bottom:10px; left:10px; }
+.np-art-cover-wrap .video-badge{ bottom:10px; right:10px; width:26px; height:22px; font-size:13px; }
 /* Titre vidéo dans le grand lecteur : la boîte occupe toute la largeur (et
    toute la hauteur disponible) du lecteur au lieu du carré fixe utilisé
    pour la pochette — voir .np-art-track.has-video ci-dessous, qui donne à
@@ -2000,6 +2016,7 @@ input,textarea{ font-family:inherit; }
             <video class="np-art" id="np-video" muted playsinline style="display:none"></video>
             <span class="concert-badge" tabindex="0" id="np-cover-concert-badge" data-tooltip="Ce titre est certifié pour être adapté au mode concert." style="display:none">🎤 CONCERT</span>
             <span class="hd-badge" id="np-cover-hd-badge" style="display:none">HD</span>
+            <span class="video-badge" id="np-cover-video-badge" title="Contient une vidéo" style="display:none">🎥</span>
           </div>
           <img class="np-art-side" id="np-art-next" alt="" aria-hidden="true">
         </div>
@@ -2273,6 +2290,14 @@ input,textarea{ font-family:inherit; }
     <button type="button" class="btn btn-ghost btn-sm edit-concert-toggle" id="edit-hd-toggle" style="margin-top:10px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;">
       <span id="edit-hd-toggle-icon">🟡</span>
       <span id="edit-hd-toggle-label">Ajouter le badge HD</span>
+    </button>
+
+    <!-- Badge VIDÉO : signale que ce titre contient une vidéo. Se sauvegarde
+         immédiatement au clic, comme les autres badges ci-dessus
+         (indépendant du bouton "Enregistrer"). -->
+    <button type="button" class="btn btn-ghost btn-sm edit-concert-toggle" id="edit-video-badge-toggle" style="margin-top:10px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;">
+      <span id="edit-video-badge-toggle-icon">🎥</span>
+      <span id="edit-video-badge-toggle-label">Ajouter le badge Vidéo</span>
     </button>
 
     <!-- Volume propre à ce titre certifié : l'admin règle le curseur (simple
@@ -5612,6 +5637,7 @@ function paintGrid(gridId, emptyId, countId, list, texts){
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge" tabindex="0" data-tooltip="Ce titre est certifié pour être adapté au mode concert.">🎤 CONCERT</span>` : ''}
         ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
+        ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
         </button>
@@ -5877,6 +5903,7 @@ function renderRanking(){
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge-mini" aria-hidden="true">🎤</span>` : ''}
         ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
+        ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
         </button>
@@ -6203,6 +6230,7 @@ function renderHistory(){
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge-mini" aria-hidden="true">🎤</span>` : ''}
         ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
+        ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
         </button>
@@ -6275,6 +6303,7 @@ let editCoverDataUrl = null;
 let editConcertCertified = false;
 let editEventFeatured = false;
 let editHdCertified = false;
+let editVideoBadge = false;
 let editConcertVolume = 80; // valeur affichée sur le curseur (simple aperçu tant que non verrouillé)
 let editConcertVolumeLocked = false; // reflète track.concertVolume (présence = verrouillé)
 function refreshEditEventToggleUI(){
@@ -6290,6 +6319,13 @@ function refreshEditHdToggleUI(){
   if(!btn || !label) return;
   btn.classList.toggle('is-active', editHdCertified);
   label.textContent = editHdCertified ? 'Badge HD ✓' : 'Ajouter le badge HD';
+}
+function refreshEditVideoBadgeToggleUI(){
+  const btn = document.getElementById('edit-video-badge-toggle');
+  const label = document.getElementById('edit-video-badge-toggle-label');
+  if(!btn || !label) return;
+  btn.classList.toggle('is-active', editVideoBadge);
+  label.textContent = editVideoBadge ? 'Badge Vidéo ✓' : 'Ajouter le badge Vidéo';
 }
 function refreshEditConcertToggleUI(){
   const btn = document.getElementById('edit-concert-toggle');
@@ -6332,6 +6368,8 @@ function openEditModal(trackId){
   editHdCertified = !!track.hdCertified;
   refreshEditEventToggleUI();
   refreshEditHdToggleUI();
+  editVideoBadge = !!track.videoBadge;
+  refreshEditVideoBadgeToggleUI();
   editConcertVolumeLocked = typeof track.concertVolume === 'number';
   editConcertVolume = editConcertVolumeLocked ? track.concertVolume : 80;
   document.getElementById('edit-concert-volume').value = editConcertVolume;
@@ -6449,6 +6487,31 @@ document.getElementById('edit-hd-toggle').addEventListener('click', async ()=>{
   }catch(err){
     console.error(err);
     showToast('Impossible de mettre à jour le badge HD.');
+  }finally{
+    btn.disabled = false;
+  }
+});
+/* Badge VIDÉO : signale qu'un titre contient une vidéo, se sauvegarde
+   immédiatement au clic, indépendamment du bouton "Enregistrer". Le badge
+   apparaît/disparaît sur la carte du titre dès la mise à jour Firestore
+   (via onSnapshot). */
+document.getElementById('edit-video-badge-toggle').addEventListener('click', async ()=>{
+  if(!isAdmin || !editingTrackId) return;
+  const btn = document.getElementById('edit-video-badge-toggle');
+  const newVal = !editVideoBadge;
+  btn.disabled = true;
+  try{
+    if(newVal){
+      await tracksRef.doc(editingTrackId).update({ videoBadge: true });
+    }else{
+      await tracksRef.doc(editingTrackId).update({ videoBadge: firebase.firestore.FieldValue.delete() });
+    }
+    editVideoBadge = newVal;
+    refreshEditVideoBadgeToggleUI();
+    showToast(newVal ? 'Badge Vidéo ajouté.' : 'Badge Vidéo retiré.');
+  }catch(err){
+    console.error(err);
+    showToast('Impossible de mettre à jour le badge Vidéo.');
   }finally{
     btn.disabled = false;
   }
@@ -8812,8 +8875,10 @@ refreshAiEnhanceMenuUI(); // état par défaut (off) tant que le profil du compt
 function updateNpCoverBadges(track){
   const concertBadge = document.getElementById('np-cover-concert-badge');
   const hdBadge = document.getElementById('np-cover-hd-badge');
+  const videoBadge = document.getElementById('np-cover-video-badge');
   if(concertBadge) concertBadge.style.display = (track && track.concertCertified) ? '' : 'none';
   if(hdBadge) hdBadge.style.display = (track && track.hdCertified) ? '' : 'none';
+  if(videoBadge) videoBadge.style.display = (track && track.videoBadge) ? '' : 'none';
 }
 
 /* =========================================================
