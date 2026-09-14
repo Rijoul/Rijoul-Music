@@ -2619,9 +2619,10 @@ const googleProvider = new firebase.auth.GoogleAuthProvider();
    documents ("chunks") stockés dans une sous-collection du titre,
    puis réassemblés au moment de la lecture.
    ========================================================= */
-const AUDIO_CHUNK_SIZE = 700000; // caractères base64 par document (~700 Ko, sous la limite de 1 Mo)
+const AUDIO_CHUNK_SIZE = 900000; // caractères base64 par document (~900 Ko, sous la limite de 1 Mo Firestore) — plus gros = moins de documents à lire donc lecture plus rapide
 const MAX_AUDIO_BYTES = 20 * 1024 * 1024; // 20 Mo max par fichier audio d'origine
 const audioBlobCache = new Map(); // trackId -> URL de blob déjà reconstruite (évite de retélécharger)
+const audioBlobFetchInFlight = new Map(); // trackId -> Promise en cours (évite les doubles téléchargements simultanés)
 
 /* =========================================================
    ÉCOUTE HORS-LIGNE — stockage local (IndexedDB) des morceaux
@@ -3525,6 +3526,7 @@ function paintArtistRows(tracks){
   wrap.querySelectorAll('[data-artist-add]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); openAddToPlaylistModal(btn.dataset.artistAdd); });
   });
+  bindHoverPrefetch(wrap);
 }
 document.getElementById('artist-detail-back').addEventListener('click', ()=> switchView('library'));
 document.getElementById('artist-detail-play').addEventListener('click', ()=>{
@@ -4380,6 +4382,7 @@ function paintPlaylistRows(list, isOwner){
   wrap.querySelectorAll('[data-pl-remove]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); removeTrackFromPlaylist(currentPlaylistId, btn.dataset.plRemove); });
   });
+  bindHoverPrefetch(wrap);
 }
 
 async function movePlaylistTrack(trackId, delta){
@@ -5678,6 +5681,7 @@ function paintGrid(gridId, emptyId, countId, list, texts){
   grid.querySelectorAll('[data-edit]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); openEditModal(btn.dataset.edit); });
   });
+  bindHoverPrefetch(grid);
 }
 
 /* =========================================================
@@ -5934,6 +5938,7 @@ function renderRanking(){
   list.querySelectorAll('[data-history]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); openRankingHistory(btn.dataset.history); });
   });
+  bindHoverPrefetch(list);
 
   // Bouton "Voir plus" : Top20 -> Top max, puis disparaît (le maximum
   // affiché dépend de la période, voir rankingPeriodMaxTracks).
@@ -6255,6 +6260,7 @@ function renderHistory(){
   list.querySelectorAll('[data-add-to-playlist]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); openAddToPlaylistModal(btn.dataset.addToPlaylist); });
   });
+  bindHoverPrefetch(list);
 }
 
 async function toggleLike(trackId){
@@ -7083,30 +7089,79 @@ async function getTrackAudioBlobUrl(track){
   if(!navigator.onLine){
     throw new Error("Ce titre n'est pas téléchargé et tu es hors connexion.");
   }
-  const snap = await tracksRef.doc(track.id).collection('audioChunks').orderBy('index').get();
-  if(snap.empty) throw new Error("Fichier audio introuvable.");
-  let base64 = '';
-  snap.forEach(doc => { base64 += doc.data().data || ''; });
-  const byteChars = atob(base64);
-  const bytes = new Uint8Array(byteChars.length);
-  for(let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
-  const blob = new Blob([bytes], { type: track.audioMimeType || 'audio/mpeg' });
-  const url = URL.createObjectURL(blob);
-  audioBlobCache.set(track.id, url);
-  return url;
+  // Si une récupération est déjà en cours pour ce titre (ex: préchargement
+  // lancé pendant que l'utilisateur clique déjà dessus), on réutilise la
+  // même promesse au lieu de relire les mêmes documents Firestore deux fois.
+  if(audioBlobFetchInFlight.has(track.id)) return audioBlobFetchInFlight.get(track.id);
+  const fetchPromise = (async ()=>{
+    // Récupère tous les morceaux en parallèle (par index connu) plutôt
+    // qu'avec une requête orderBy séquentielle : légèrement plus rapide,
+    // surtout sur les connexions à latence élevée (mobile).
+    const chunkCount = track.audioChunkCount || 0;
+    let base64 = '';
+    if(chunkCount > 0){
+      const chunksCol = tracksRef.doc(track.id).collection('audioChunks');
+      const docs = await Promise.all(
+        Array.from({length: chunkCount}, (_, i) => chunksCol.doc(String(i)).get())
+      );
+      base64 = docs.map(d => (d.exists ? (d.data().data || '') : '')).join('');
+    }else{
+      // Ancien titre sans audioChunkCount enregistré : repli sur la requête.
+      const snap = await tracksRef.doc(track.id).collection('audioChunks').orderBy('index').get();
+      if(snap.empty) throw new Error("Fichier audio introuvable.");
+      snap.forEach(doc => { base64 += doc.data().data || ''; });
+    }
+    if(!base64) throw new Error("Fichier audio introuvable.");
+    // Décodage base64 -> binaire via fetch() sur une data: URL plutôt qu'une
+    // boucle atob()/charCodeAt() en JS : le navigateur décode nativement
+    // (bien plus rapide et sans bloquer le thread principal pour les gros
+    // fichiers), ce qui réduit nettement le temps avant que le titre démarre.
+    const mime = track.audioMimeType || 'audio/mpeg';
+    const blob = await (await fetch(`data:${mime};base64,${base64}`)).blob();
+    const url = URL.createObjectURL(blob);
+    audioBlobCache.set(track.id, url);
+    return url;
+  })();
+  audioBlobFetchInFlight.set(track.id, fetchPromise);
+  try{
+    return await fetchPromise;
+  }finally{
+    audioBlobFetchInFlight.delete(track.id);
+  }
 }
 // Récupère en arrière-plan les morceaux audio du titre suivant dans la file
 // (sans le jouer) pour qu'il soit déjà en cache et démarre instantanément
 // une fois son tour venu. N'échoue jamais bruyamment : un titre suivant qui
 // ne se précharge pas correctement sera simplement chargé normalement le
 // moment venu, comme avant.
+function prefetchTrackById(trackId){
+  if(!trackId || audioBlobCache.has(trackId) || audioBlobFetchInFlight.has(trackId)) return;
+  const t = allTracks.find(tr => tr.id === trackId);
+  if(!t) return;
+  getTrackAudioBlobUrl(t).catch(err=> console.error('Préchargement impossible :', err));
+}
 function prefetchNextTrack(){
   if(currentQueue.length < 2 || currentTrackIndex < 0) return;
   let idx = currentTrackIndex + 1;
   if(idx >= currentQueue.length) idx = 0;
   const next = currentQueue[idx];
-  if(!next || audioBlobCache.has(next.id)) return;
-  getTrackAudioBlobUrl(next).catch(err=> console.error("Préchargement du titre suivant impossible :", err));
+  if(next) prefetchTrackById(next.id);
+}
+// Précharge un titre dès que le curseur/le doigt s'attarde sur sa carte,
+// avant même que l'utilisateur clique sur "lire" : sur desktop, le survol
+// (mouseenter) laisse en général assez de temps pour que le fichier soit
+// déjà en cache au moment du clic. Un léger délai évite de déclencher un
+// téléchargement inutile si la souris ne fait que passer devant la carte.
+function bindHoverPrefetch(container){
+  if(!container) return;
+  let hoverTimer = null;
+  container.addEventListener('pointerenter', (e)=>{
+    const card = e.target.closest ? e.target.closest('[data-track-id]') : null;
+    if(!card) return;
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(()=> prefetchTrackById(card.dataset.trackId), 180);
+  }, true);
+  container.addEventListener('pointerleave', ()=>{ clearTimeout(hoverTimer); }, true);
 }
 
 document.getElementById('upload-submit').addEventListener('click', async ()=>{
@@ -8179,9 +8234,11 @@ audioEl.addEventListener('timeupdate', ()=>{
   // réelle dans le titre complet (indépendante de l'extrait affiché).
   const pct = audioEl.duration ? (audioEl.currentTime / audioEl.duration) * 100 : 0;
   // Précharge le titre suivant (récupère ses morceaux audio en arrière-plan,
-  // sans le lancer) une fois 30% du titre en cours écouté, pour qu'il
-  // démarre instantanément le moment venu.
-  if(!nextTrackPrefetchTriggered && pct >= 30){
+  // sans le lancer) dès le tout début du titre en cours, pour qu'il démarre
+  // instantanément le moment venu (déclenché tôt plutôt qu'à 30% : le
+  // téléchargement en arrière-plan ne ralentit pas le titre en cours et on
+  // a ainsi le maximum de temps pour qu'il soit prêt).
+  if(!nextTrackPrefetchTriggered && pct >= 1){
     nextTrackPrefetchTriggered = true;
     prefetchNextTrack();
   }
