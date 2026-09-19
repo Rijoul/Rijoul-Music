@@ -1971,6 +1971,34 @@ input[type="range"]{ accent-color:var(--copper); }
   </div>
 </div>
 
+<script>
+/* Fermeture de la bannière de synchro — posé ici, tout de suite après son
+   markup, via délégation sur document (même remède que pour le bouton
+   masquer/afficher la barre de lecture juste en dessous). Le gros script
+   principal attache normalement son propre écouteur sur cette croix, mais
+   tout en bas d'un script de plusieurs milliers de lignes : la moindre
+   erreur JS plus haut dans ce script empêche alors cet attachement, et la
+   croix reste morte. En la posant ici, tôt et en délégation, elle continue
+   de fonctionner quoi qu'il arrive plus loin. L'état partagé passe par
+   `window` (et non par de simples variables du script principal) pour
+   rester accessible même si ce script-là ne s'exécute jamais entièrement. */
+(function(){
+  document.addEventListener('click', function(e){
+    var btn = e.target.closest('#sync-banner-dismiss');
+    if(!btn) return;
+    var banner = document.getElementById('sync-banner');
+    if(!banner) return;
+    e.stopPropagation();
+    // Retient le titre ignoré pour que les écritures périodiques de
+    // position (toutes les ~4s, tant que l'autre appareil joue) ne
+    // refassent pas apparaître la bannière pour ce même titre.
+    window.__syncBannerDismissedTrackId = banner.dataset.trackId || null;
+    window.__syncBannerPendingState = null;
+    banner.classList.remove('visible');
+  }, true);
+})();
+</script>
+
 <!-- =========================================================
      PLAYER BAR
      ========================================================= -->
@@ -3170,7 +3198,9 @@ let playbackSyncUnsub = null;
 let ignoreNextPlaybackSyncWrite = false; // vrai pendant qu'on applique un état distant (évite de le réécrire aussitôt)
 let lastPlaybackSyncWriteAt = 0;         // throttle des écritures périodiques pendant la lecture
 let lastAppliedRemoteUpdatedAtMs = 0;    // évite de re-proposer la même bannière plusieurs fois
-let pendingSyncState = null;             // état distant en attente d'action de l'utilisateur (bannière)
+// pendingSyncState vit désormais sur window.__syncBannerPendingState (voir le
+// petit script posé juste après le markup de la bannière) : ainsi la croix de
+// fermeture peut fonctionner même si ce gros script n'arrive jamais jusqu'ici.
 
 // --- Historique d'écoute personnel ---
 let historyUnsub = null;
@@ -8456,8 +8486,6 @@ async function pushPlaybackState(opts){
   }
 }
 
-let dismissedSyncTrackId = null; // titre distant explicitement ignoré via la croix, pour ne pas le reproposer en boucle
-
 function subscribeToPlaybackSync(uid){
   if(playbackSyncUnsub) playbackSyncUnsub();
   playbackSyncUnsub = playbackSyncRef.doc(uid).onSnapshot((snap)=>{
@@ -8473,8 +8501,8 @@ function subscribeToPlaybackSync(uid){
     // L'utilisateur a fermé la bannière pour ce titre : les écritures
     // périodiques de position (toutes les ~4s) ne doivent pas la refaire
     // apparaître tant que le titre distant ne change pas.
-    if(data.trackId === dismissedSyncTrackId) return;
-    pendingSyncState = data;
+    if(data.trackId === window.__syncBannerDismissedTrackId) return;
+    window.__syncBannerPendingState = data;
     showSyncBanner(data);
   }, (err)=>{
     console.error("Erreur de synchronisation de lecture :", err);
@@ -8483,6 +8511,7 @@ function subscribeToPlaybackSync(uid){
 
 function showSyncBanner(data){
   const banner = document.getElementById('sync-banner');
+  banner.dataset.trackId = data.trackId || '';
   document.getElementById('sync-banner-cover-img').src = data.trackCover || fallbackCoverSvg();
   document.getElementById('sync-banner-title').textContent = data.trackTitle || 'Sans titre';
   document.getElementById('sync-banner-sub').textContent = (data.trackArtist || 'Artiste inconnu') + ' · ' + formatTime(data.position || 0);
@@ -8494,17 +8523,16 @@ function showSyncBanner(data){
 }
 function hideSyncBanner(){
   document.getElementById('sync-banner').classList.remove('visible');
-  pendingSyncState = null;
+  window.__syncBannerPendingState = null;
 }
-document.getElementById('sync-banner-dismiss').addEventListener('click', ()=>{
-  // Fermeture explicite : on retient le titre pour ne pas le reproposer
-  // à chaque écriture périodique de l'autre appareil (toutes les ~4s).
-  if(pendingSyncState) dismissedSyncTrackId = pendingSyncState.trackId;
-  hideSyncBanner();
-});
+// Le bouton de fermeture (croix) est géré en délégation précoce juste après
+// le markup de la bannière (voir plus haut dans la page) : c'est celui-là
+// qui fait réellement foi, pour rester fiable même si ce script-ci échoue
+// avant d'arriver jusqu'ici. Pas de second écouteur posé ici pour éviter
+// toute logique dupliquée ou incohérente entre les deux.
 document.getElementById('sync-banner-resume').addEventListener('click', async ()=>{
-  if(!pendingSyncState) { hideSyncBanner(); return; }
-  const data = pendingSyncState;
+  if(!window.__syncBannerPendingState) { hideSyncBanner(); return; }
+  const data = window.__syncBannerPendingState;
   const targetTime = data.position || 0;
   hideSyncBanner();
   // On applique l'état distant sans le réécrire aussitôt dans Firestore
