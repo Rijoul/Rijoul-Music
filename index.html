@@ -8456,6 +8456,8 @@ async function pushPlaybackState(opts){
   }
 }
 
+let dismissedSyncTrackId = null; // titre distant explicitement ignoré via la croix, pour ne pas le reproposer en boucle
+
 function subscribeToPlaybackSync(uid){
   if(playbackSyncUnsub) playbackSyncUnsub();
   playbackSyncUnsub = playbackSyncRef.doc(uid).onSnapshot((snap)=>{
@@ -8468,6 +8470,10 @@ function subscribeToPlaybackSync(uid){
     // proposer une reprise (on suit déjà, ou c'est notre propre lecture).
     if(data.trackId === currentTrackId) { lastAppliedRemoteUpdatedAtMs = updatedAtMs; return; }
     lastAppliedRemoteUpdatedAtMs = updatedAtMs;
+    // L'utilisateur a fermé la bannière pour ce titre : les écritures
+    // périodiques de position (toutes les ~4s) ne doivent pas la refaire
+    // apparaître tant que le titre distant ne change pas.
+    if(data.trackId === dismissedSyncTrackId) return;
     pendingSyncState = data;
     showSyncBanner(data);
   }, (err)=>{
@@ -8490,7 +8496,12 @@ function hideSyncBanner(){
   document.getElementById('sync-banner').classList.remove('visible');
   pendingSyncState = null;
 }
-document.getElementById('sync-banner-dismiss').addEventListener('click', hideSyncBanner);
+document.getElementById('sync-banner-dismiss').addEventListener('click', ()=>{
+  // Fermeture explicite : on retient le titre pour ne pas le reproposer
+  // à chaque écriture périodique de l'autre appareil (toutes les ~4s).
+  if(pendingSyncState) dismissedSyncTrackId = pendingSyncState.trackId;
+  hideSyncBanner();
+});
 document.getElementById('sync-banner-resume').addEventListener('click', async ()=>{
   if(!pendingSyncState) { hideSyncBanner(); return; }
   const data = pendingSyncState;
