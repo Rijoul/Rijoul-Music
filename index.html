@@ -2149,6 +2149,18 @@ input[type="range"]{ accent-color:var(--copper); }
               <input type="checkbox" id="np-menu-ai-enhance-toggle" class="np-toggle-input">
               <span class="np-toggle-switch" aria-hidden="true"></span>
             </label>
+            <!-- Basses profondes : effet "caisson de basses" (sub + punch, sans
+                 saturation grâce à un limiteur). Réglage sauvegardé (compte +
+                 appareil) — voir setBassBoost en JS. -->
+            <label class="np-menu-item np-menu-item-toggle" for="np-menu-bass-toggle" id="np-menu-bass-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="3"/><circle cx="12" cy="14.5" r="3.6"/><circle cx="12" cy="7" r="1.1"/></svg>
+              <span class="np-menu-item-label">
+                Basses profondes
+                <span class="np-menu-item-toggle-hint">Effet caisson · sans saturation</span>
+              </span>
+              <input type="checkbox" id="np-menu-bass-toggle" class="np-toggle-input">
+              <span class="np-toggle-switch" aria-hidden="true"></span>
+            </label>
             <label class="np-menu-item np-menu-item-toggle" for="np-menu-concert-toggle">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4L12 2z"/></svg>
               <span class="np-menu-item-label">Mode concert</span>
@@ -3424,6 +3436,13 @@ function subscribeToProfile(uid){
     // activée par défaut et synchronisée via le compte pour rester
     // identique sur tous les appareils connectés au même compte.
     if(typeof setAiEnhance === 'function') setAiEnhance(data.aiEnhance !== false, { save:false });
+    // Basses profondes : désactivées par défaut. Si le compte a déjà un
+    // réglage, il prime (synchro entre appareils) ; sinon on garde l'état
+    // local et on l'enregistre sur le compte.
+    if(typeof setBassBoost === 'function'){
+      if(typeof data.bassBoost === 'boolean') setBassBoost(data.bassBoost, { save:false });
+      else if(bassBoostOn) saveBassBoostSetting(true);
+    }
     // Mode Lyrics : même principe que le mode concert / l'amélioration IA
     // ci-dessus, mais DÉSACTIVÉ par défaut (fonctionnalité optionnelle) tant
     // que l'utilisateur ne l'a pas explicitement activée sur son compte.
@@ -7533,6 +7552,13 @@ let eqLow = null, eqMid = null, eqHigh = null, masterGain = null;
 let aiEnhanceComp = null, aiEnhanceShelf = null;
 let aiEnhanceOn = true; // état voulu par l'utilisateur (persisté) — activé par défaut
 let aiEnhanceLockedOff = false; // vrai quand le titre en cours est certifié "mode concert"
+// Basses profondes ("caisson de basses") : étage de filtres + limiteur toujours
+// présents dans la chaîne mais neutres (bypass) tant que le réglage est coupé.
+// Désactivé par défaut. L'état est mémorisé sur l'appareil (localStorage) ET
+// sur le compte connecté (usersRef.bassBoost) — voir setBassBoost plus bas.
+let bassBoostOn = false;
+try{ bassBoostOn = localStorage.getItem('rijoulBassBoost') === '1'; }catch(e){}
+let bassBoostNodes = null, bassLimiter = null;
 // Réglages d'égaliseur liés au compte (sauvegardés dans usersRef) afin de se
 // retrouver identiques sur n'importe quel appareil une fois connecté.
 let savedEq = { bass: 0, mid: 0, treble: 0 };
@@ -7602,15 +7628,24 @@ function ensureAnalyser(){
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 64;
 
+    // Basses profondes : étage de filtres AVANT le gain maître, et limiteur
+    // APRÈS (il voit donc le niveau réellement envoyé aux enceintes, quel que
+    // soit le volume) pour que les basses gonflées ne saturent jamais.
+    bassBoostNodes = createBassBoostNodes(audioCtx);
+    bassLimiter = audioCtx.createDynamicsCompressor();
+
     analyserSource.connect(eqLow);
     eqLow.connect(eqMid);
     eqMid.connect(eqHigh);
     eqHigh.connect(aiEnhanceComp);
     aiEnhanceComp.connect(aiEnhanceShelf);
-    aiEnhanceShelf.connect(masterGain);
-    masterGain.connect(analyser);
+    aiEnhanceShelf.connect(bassBoostNodes.input);
+    bassBoostNodes.output.connect(masterGain);
+    masterGain.connect(bassLimiter);
+    bassLimiter.connect(analyser);
     analyser.connect(audioCtx.destination);
     applyAiEnhanceParams();
+    applyBassBoostParams(true);
 
     // Le volume réel est désormais géré par le noeud de gain ; l'élément
     // <audio> reste à 1 pour laisser le Web Audio API tout contrôler.
@@ -7705,8 +7740,16 @@ function crossfadeOutgoing(blobUrl, fromTime, ms){
           hi.gain.value = eqHigh ? eqHigh.gain.value : savedEq.treble;
           echoGain = audioCtx.createGain();
           echoGain.gain.value = perceptualGain(startVol);
-          src.connect(lo); lo.connect(mid); mid.connect(hi); hi.connect(echoGain);
-          echoGain.connect(analyser || audioCtx.destination);
+          src.connect(lo); lo.connect(mid); mid.connect(hi);
+          // Même rendu "basses profondes" que le lecteur principal pendant le fondu.
+          if(bassBoostOn && typeof createBassBoostNodes === 'function'){
+            const bb = createBassBoostNodes(audioCtx);
+            setBassBoostNodes(bb, true, true);
+            hi.connect(bb.input); bb.output.connect(echoGain);
+          }else{
+            hi.connect(echoGain);
+          }
+          echoGain.connect(bassLimiter || analyser || audioCtx.destination);
           echo.volume = 1; // le volume réel est piloté par echoGain
           return true;
         }catch(e){ return false; }
@@ -9116,6 +9159,90 @@ document.getElementById('np-menu-ai-enhance-toggle').addEventListener('change', 
   setAiEnhance(this.checked);
 });
 refreshAiEnhanceMenuUI(); // état par défaut (off) tant que le profil du compte n'est pas encore chargé
+
+/* =========================================================
+   BASSES PROFONDES — effet "caisson de basses de boîte de nuit"
+   ---------------------------------------------------------
+   Chaîne (voir ensureAnalyser) :
+     ... -> pré-gain (marge) -> passe-haut 25 Hz (coupe l'infra inutile qui
+     mange de la marge) -> shelf 120 Hz (corps/punch) -> cloche 50 Hz (sub)
+     -> creux 300 Hz (retire le "boueux" pour des basses nettes)
+     -> gain maître -> LIMITEUR -> sortie.
+   Pas de saturation : on ne déforme jamais le signal (pas de waveshaper),
+   on baisse un peu le niveau avant les boosts (marge) et le limiteur final
+   attrape les crêtes que les basses gonflées pourraient créer.
+   ========================================================= */
+const BASS_BOOST_ON  = { pre:0.6, hp:25, shelfGain:3.5, peakGain:5, mudGain:-2.5 };
+const BASS_BOOST_OFF = { pre:1,   hp:5,  shelfGain:0,   peakGain:0, mudGain:0 };
+function createBassBoostNodes(ctx){
+  const pre = ctx.createGain();
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass'; hp.Q.value = 0.707;
+  const shelf = ctx.createBiquadFilter();
+  shelf.type = 'lowshelf'; shelf.frequency.value = 120;
+  const peak = ctx.createBiquadFilter();
+  peak.type = 'peaking'; peak.frequency.value = 50; peak.Q.value = 1.1;
+  const mud = ctx.createBiquadFilter();
+  mud.type = 'peaking'; mud.frequency.value = 300; mud.Q.value = 0.8;
+  pre.connect(hp); hp.connect(shelf); shelf.connect(peak); peak.connect(mud);
+  const nodes = { input:pre, output:mud, pre, hp, shelf, peak, mud };
+  setBassBoostNodes(nodes, false, true);
+  return nodes;
+}
+function setBassBoostNodes(n, active, immediate){
+  const p = active ? BASS_BOOST_ON : BASS_BOOST_OFF;
+  const ctx = n.pre.context;
+  const t = ctx.currentTime;
+  const set = (param, v)=>{
+    if(immediate){ param.cancelScheduledValues(t); param.value = v; }
+    else param.setTargetAtTime(v, t, 0.06); // transition douce, sans clic
+  };
+  set(n.pre.gain, p.pre);
+  set(n.hp.frequency, p.hp);
+  set(n.shelf.gain, p.shelfGain);
+  set(n.peak.gain, p.peakGain);
+  set(n.mud.gain, p.mudGain);
+}
+function applyBassBoostParams(immediate){
+  if(!audioCtx || !bassBoostNodes || !bassLimiter) return;
+  setBassBoostNodes(bassBoostNodes, bassBoostOn, !!immediate);
+  const t = audioCtx.currentTime;
+  const lim = bassBoostOn
+    ? { threshold:-3, knee:4, ratio:20, attack:0.002, release:0.18 }
+    : { threshold:0,  knee:0, ratio:1,  attack:0.003, release:0.25 }; // bypass : le limiteur n'agit jamais
+  ['threshold','knee','ratio','attack','release'].forEach(k=>{
+    if(immediate){ bassLimiter[k].cancelScheduledValues(t); bassLimiter[k].value = lim[k]; }
+    else bassLimiter[k].setTargetAtTime(lim[k], t, 0.05);
+  });
+}
+function refreshBassBoostMenuUI(){
+  const toggle = document.getElementById('np-menu-bass-toggle');
+  if(toggle) toggle.checked = bassBoostOn;
+}
+// Active/désactive les basses profondes (case + état + effet audio) et
+// enregistre le choix : sur l'appareil (localStorage, marche aussi sans
+// compte) et sur le compte connecté (Firestore) pour le retrouver partout.
+// `save:false` = on applique juste une valeur déjà connue (snapshot Firestore).
+function setBassBoost(enabled, opts){
+  const save = !opts || opts.save !== false;
+  bassBoostOn = !!enabled;
+  applyBassBoostParams();
+  refreshBassBoostMenuUI();
+  try{ localStorage.setItem('rijoulBassBoost', bassBoostOn ? '1' : '0'); }catch(e){}
+  if(save) saveBassBoostSetting(bassBoostOn);
+}
+function saveBassBoostSetting(enabled){
+  const uid = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser.uid : null;
+  if(!uid) return;
+  usersRef.doc(uid).set({
+    bassBoost: enabled,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge:true }).catch(err=> console.error("Impossible d'enregistrer les basses profondes :", err));
+}
+document.getElementById('np-menu-bass-toggle').addEventListener('change', function(){
+  setBassBoost(this.checked);
+});
+refreshBassBoostMenuUI(); // reflète l'état mémorisé sur l'appareil dès l'ouverture de la page
 
 /* =========================================================
    BADGES HD / CONCERT — grand lecteur + info-bulle flottante
