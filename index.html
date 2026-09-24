@@ -2161,6 +2161,18 @@ input[type="range"]{ accent-color:var(--copper); }
               <input type="checkbox" id="np-menu-bass-toggle" class="np-toggle-input">
               <span class="np-toggle-switch" aria-hidden="true"></span>
             </label>
+            <!-- Spatialisation stéréo : élargit l'image stéréo (médiums/aigus
+                 uniquement, graves laissés centrés) et reste compatible mono.
+                 Réglage sauvegardé (compte + appareil) — voir setStereoEnhance. -->
+            <label class="np-menu-item np-menu-item-toggle" for="np-menu-stereo-toggle" id="np-menu-stereo-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.6" fill="currentColor"/><path d="M7.8 8a5.8 5.8 0 0 0 0 8M16.2 8a5.8 5.8 0 0 1 0 8M4.6 5a10 10 0 0 0 0 14M19.4 5a10 10 0 0 1 0 14"/></svg>
+              <span class="np-menu-item-label">
+                Spatialisation stéréo
+                <span class="np-menu-item-toggle-hint">Son plus large et enveloppant</span>
+              </span>
+              <input type="checkbox" id="np-menu-stereo-toggle" class="np-toggle-input">
+              <span class="np-toggle-switch" aria-hidden="true"></span>
+            </label>
             <label class="np-menu-item np-menu-item-toggle" for="np-menu-concert-toggle">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4L12 2z"/></svg>
               <span class="np-menu-item-label">Mode concert</span>
@@ -3442,6 +3454,11 @@ function subscribeToProfile(uid){
     if(typeof setBassBoost === 'function'){
       if(typeof data.bassBoost === 'boolean') setBassBoost(data.bassBoost, { save:false });
       else if(bassBoostOn) saveBassBoostSetting(true);
+    }
+    // Spatialisation stéréo : même logique que les basses profondes ci-dessus.
+    if(typeof setStereoEnhance === 'function'){
+      if(typeof data.stereoEnhance === 'boolean') setStereoEnhance(data.stereoEnhance, { save:false });
+      else if(stereoEnhanceOn) saveStereoEnhanceSetting(true);
     }
     // Mode Lyrics : même principe que le mode concert / l'amélioration IA
     // ci-dessus, mais DÉSACTIVÉ par défaut (fonctionnalité optionnelle) tant
@@ -7559,6 +7576,12 @@ let aiEnhanceLockedOff = false; // vrai quand le titre en cours est certifié "m
 let bassBoostOn = false;
 try{ bassBoostOn = localStorage.getItem('rijoulBassBoost') === '1'; }catch(e){}
 let bassBoostNodes = null, bassLimiter = null;
+// Spatialisation stéréo : même principe (étage toujours présent, neutre quand
+// coupé). Désactivée par défaut ; mémorisée sur l'appareil (localStorage) et
+// sur le compte (usersRef.stereoEnhance).
+let stereoEnhanceOn = false;
+try{ stereoEnhanceOn = localStorage.getItem('rijoulStereoEnhance') === '1'; }catch(e){}
+let stereoNodes = null;
 // Réglages d'égaliseur liés au compte (sauvegardés dans usersRef) afin de se
 // retrouver identiques sur n'importe quel appareil une fois connecté.
 let savedEq = { bass: 0, mid: 0, treble: 0 };
@@ -7633,6 +7656,9 @@ function ensureAnalyser(){
     // soit le volume) pour que les basses gonflées ne saturent jamais.
     bassBoostNodes = createBassBoostNodes(audioCtx);
     bassLimiter = audioCtx.createDynamicsCompressor();
+    // Spatialisation stéréo : si sa création échoue, on saute simplement cet
+    // étage au lieu de casser toute la chaîne audio.
+    try{ stereoNodes = createStereoNodes(audioCtx); }catch(e){ stereoNodes = null; console.warn('Spatialisation stéréo indisponible :', e); }
 
     analyserSource.connect(eqLow);
     eqLow.connect(eqMid);
@@ -7640,12 +7666,18 @@ function ensureAnalyser(){
     eqHigh.connect(aiEnhanceComp);
     aiEnhanceComp.connect(aiEnhanceShelf);
     aiEnhanceShelf.connect(bassBoostNodes.input);
-    bassBoostNodes.output.connect(masterGain);
+    if(stereoNodes){
+      bassBoostNodes.output.connect(stereoNodes.input);
+      stereoNodes.output.connect(masterGain);
+    }else{
+      bassBoostNodes.output.connect(masterGain);
+    }
     masterGain.connect(bassLimiter);
     bassLimiter.connect(analyser);
     analyser.connect(audioCtx.destination);
     applyAiEnhanceParams();
     applyBassBoostParams(true);
+    applyStereoParams(true);
 
     // Le volume réel est désormais géré par le noeud de gain ; l'élément
     // <audio> reste à 1 pour laisser le Web Audio API tout contrôler.
@@ -7741,14 +7773,22 @@ function crossfadeOutgoing(blobUrl, fromTime, ms){
           echoGain = audioCtx.createGain();
           echoGain.gain.value = perceptualGain(startVol);
           src.connect(lo); lo.connect(mid); mid.connect(hi);
-          // Même rendu "basses profondes" que le lecteur principal pendant le fondu.
+          // Même rendu "basses profondes" + spatialisation que le lecteur
+          // principal pendant le fondu.
+          let tail = hi;
           if(bassBoostOn && typeof createBassBoostNodes === 'function'){
             const bb = createBassBoostNodes(audioCtx);
             setBassBoostNodes(bb, true, true);
-            hi.connect(bb.input); bb.output.connect(echoGain);
-          }else{
-            hi.connect(echoGain);
+            tail.connect(bb.input); tail = bb.output;
           }
+          if(stereoEnhanceOn && typeof createStereoNodes === 'function'){
+            try{
+              const st = createStereoNodes(audioCtx);
+              setStereoNodes(st, true, true);
+              tail.connect(st.input); tail = st.output;
+            }catch(e){}
+          }
+          tail.connect(echoGain);
           echoGain.connect(bassLimiter || analyser || audioCtx.destination);
           echo.volume = 1; // le volume réel est piloté par echoGain
           return true;
@@ -9207,7 +9247,7 @@ function applyBassBoostParams(immediate){
   if(!audioCtx || !bassBoostNodes || !bassLimiter) return;
   setBassBoostNodes(bassBoostNodes, bassBoostOn, !!immediate);
   const t = audioCtx.currentTime;
-  const lim = bassBoostOn
+  const lim = (bassBoostOn || stereoEnhanceOn)
     ? { threshold:-3, knee:4, ratio:20, attack:0.002, release:0.18 }
     : { threshold:0,  knee:0, ratio:1,  attack:0.003, release:0.25 }; // bypass : le limiteur n'agit jamais
   ['threshold','knee','ratio','attack','release'].forEach(k=>{
@@ -9243,6 +9283,97 @@ document.getElementById('np-menu-bass-toggle').addEventListener('change', functi
   setBassBoost(this.checked);
 });
 refreshBassBoostMenuUI(); // reflète l'état mémorisé sur l'appareil dès l'ouverture de la page
+
+/* =========================================================
+   SPATIALISATION STÉRÉO — élargissement de l'image stéréo (Mid/Side)
+   ---------------------------------------------------------
+   Principe : Mid = (G+D)/2 (ce qui est au centre), Side = (G-D)/2 (ce qui
+   fait la largeur). On renforce UNIQUEMENT le Side, en ajoutant à chaque
+   canal une copie du Side filtré :
+       G' = G + k·HP(Side)      D' = D − k·HP(Side)
+   - Le Side est passe-haut (200 Hz) : les graves restent centrés et
+     puissants (indispensable avec les basses profondes, et pour la
+     cohérence de phase sur enceinte).
+   - Léger halo d'air (+3 dB > 5 kHz) sur le Side pour l'ouverture.
+   - Compatible mono : G'+D' = G+D, donc rien ne s'annule si l'appareil
+     ou l'enceinte additionne les deux canaux.
+   - Sur un titre mono (Side = 0) l'effet est nul : c'est normal.
+   Hors service, k = 0 -> le signal passe strictement à l'identique.
+   ========================================================= */
+const STEREO_ON  = { side:0.8, out:0.89 }; // largeur x1.8 ; petite marge de niveau
+const STEREO_OFF = { side:0,   out:1 };
+function createStereoNodes(ctx){
+  // Entrée forcée en stéréo (un titre mono est dupliqué sur G et D).
+  const input = ctx.createGain();
+  input.channelCount = 2; input.channelCountMode = 'explicit'; input.channelInterpretation = 'speakers';
+  const splitter = ctx.createChannelSplitter(2);
+  const merger = ctx.createChannelMerger(2);
+  const halfL = ctx.createGain(); halfL.gain.value = 0.5;
+  const halfR = ctx.createGain(); halfR.gain.value = -0.5;
+  const sideSum = ctx.createGain();            // Side = (G-D)/2
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 200; hp.Q.value = 0.707;
+  const air = ctx.createBiquadFilter();
+  air.type = 'highshelf'; air.frequency.value = 5000; air.gain.value = 3;
+  const amt = ctx.createGain(); amt.gain.value = 0;   // k (0 = bypass)
+  const inv = ctx.createGain(); inv.gain.value = -1;
+  const out = ctx.createGain();
+  input.connect(splitter);
+  splitter.connect(merger, 0, 0);              // G direct
+  splitter.connect(merger, 1, 1);              // D direct
+  splitter.connect(halfL, 0);
+  splitter.connect(halfR, 1);
+  halfL.connect(sideSum); halfR.connect(sideSum);
+  sideSum.connect(hp); hp.connect(air); air.connect(amt);
+  amt.connect(merger, 0, 0);                   // G + k·Side
+  amt.connect(inv); inv.connect(merger, 0, 1); // D − k·Side
+  merger.connect(out);
+  const nodes = { input, output:out, amt, out };
+  setStereoNodes(nodes, false, true);
+  return nodes;
+}
+function setStereoNodes(n, active, immediate){
+  const p = active ? STEREO_ON : STEREO_OFF;
+  const t = n.amt.context.currentTime;
+  const set = (param, v)=>{
+    if(immediate){ param.cancelScheduledValues(t); param.value = v; }
+    else param.setTargetAtTime(v, t, 0.08); // transition douce, sans clic
+  };
+  set(n.amt.gain, p.side);
+  set(n.out.gain, p.out);
+}
+function applyStereoParams(immediate){
+  if(!audioCtx || !stereoNodes) return;
+  setStereoNodes(stereoNodes, stereoEnhanceOn, !!immediate);
+}
+function refreshStereoMenuUI(){
+  const toggle = document.getElementById('np-menu-stereo-toggle');
+  if(toggle) toggle.checked = stereoEnhanceOn;
+}
+// Active/désactive la spatialisation stéréo (case + état + effet audio) et
+// enregistre le choix sur l'appareil (localStorage) et sur le compte
+// connecté (Firestore). `save:false` = simple application d'une valeur connue.
+function setStereoEnhance(enabled, opts){
+  const save = !opts || opts.save !== false;
+  stereoEnhanceOn = !!enabled;
+  applyStereoParams();
+  applyBassBoostParams(); // le limiteur de sortie protège aussi cet effet
+  refreshStereoMenuUI();
+  try{ localStorage.setItem('rijoulStereoEnhance', stereoEnhanceOn ? '1' : '0'); }catch(e){}
+  if(save) saveStereoEnhanceSetting(stereoEnhanceOn);
+}
+function saveStereoEnhanceSetting(enabled){
+  const uid = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser.uid : null;
+  if(!uid) return;
+  usersRef.doc(uid).set({
+    stereoEnhance: enabled,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge:true }).catch(err=> console.error("Impossible d'enregistrer la spatialisation stéréo :", err));
+}
+document.getElementById('np-menu-stereo-toggle').addEventListener('change', function(){
+  setStereoEnhance(this.checked);
+});
+refreshStereoMenuUI(); // reflète l'état mémorisé sur l'appareil dès l'ouverture de la page
 
 /* =========================================================
    BADGES HD / CONCERT — grand lecteur + info-bulle flottante
