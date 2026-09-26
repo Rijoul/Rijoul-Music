@@ -615,6 +615,48 @@ input,textarea{ font-family:inherit; }
 .ranking-history-line b{ color:var(--text); }
 .ranking-history-loading{ color:var(--text-faint); font-size:13px; padding:8px 2px; }
 
+/* --- "Mon Rewind" : résumé perso façon Wrapped (titre en dégradé animé,
+   grandes statistiques, tops titres/artistes) --- */
+.rewind-modal{ max-width:480px; }
+.rewind-title{
+  background:linear-gradient(100deg, var(--copper-bright), var(--pink) 40%, var(--violet) 70%, var(--cyan) 88%, var(--copper-bright));
+  background-size:320% auto; -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent;
+  animation:grad-flow 9s ease-in-out infinite;
+}
+.rewind-body{ display:flex; flex-direction:column; gap:20px; }
+.rewind-stats-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.rewind-stat-card{
+  background:linear-gradient(155deg, rgba(255,176,32,0.14), rgba(169,114,255,0.10));
+  border:1px solid var(--glass-border); border-radius:var(--radius-sm);
+  padding:14px 16px; display:flex; flex-direction:column; gap:2px;
+}
+.rewind-stat-num{ font-family:var(--display); font-size:26px; font-weight:800; letter-spacing:-0.02em; color:var(--text); }
+.rewind-stat-label{ font-size:12px; color:var(--text-faint); }
+.rewind-section-title{ font-size:13px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.04em; margin:0 0 10px; }
+.rewind-top-list{ display:flex; flex-direction:column; gap:8px; }
+.rewind-top-row{
+  display:flex; align-items:center; gap:12px; padding:8px 10px; border-radius:14px;
+  background:var(--panel); border:1px solid var(--line);
+}
+.rewind-rank{
+  width:24px; flex-shrink:0; font-family:var(--mono); font-size:13px; font-weight:700; color:var(--text-faint); text-align:center;
+}
+.rewind-top-row:nth-child(1) .rewind-rank{ color:#FFD37A; }
+.rewind-top-row:nth-child(2) .rewind-rank{ color:#d9d9e2; }
+.rewind-top-row:nth-child(3) .rewind-rank{ color:#d3915a; }
+.rewind-cover, .rewind-avatar{ width:38px; height:38px; border-radius:11px; object-fit:cover; flex-shrink:0; background:var(--panel-2); }
+.rewind-avatar{ border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; color:var(--text-dim); }
+.rewind-top-info{ flex:1; min-width:0; }
+.rewind-top-name{ margin:0; font-size:13.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rewind-top-sub{ margin:0; font-size:11.5px; color:var(--text-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rewind-top-plays{ flex-shrink:0; font-family:var(--mono); font-size:11.5px; color:var(--text-faint); }
+.rewind-fact{
+  font-size:13px; line-height:1.5; color:var(--text-dim);
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 14px;
+}
+.rewind-fact b{ color:var(--copper-bright); }
+.rewind-empty{ color:var(--text-faint); font-size:13.5px; padding:10px 2px; text-align:center; }
+
 /* --- Filtre de période du Classement (Semaine / Mois / Année / Toujours) --- */
 .ranking-period-tabs{ display:flex; gap:8px; overflow-x:auto; margin-bottom:16px; scrollbar-width:none; }
 .ranking-period-tabs::-webkit-scrollbar{ display:none; }
@@ -1890,7 +1932,10 @@ input[type="range"]{ accent-color:var(--copper); }
   <section id="view-historique" style="display:none;">
     <div class="section-head">
       <h2 class="section-title">Historique</h2>
-      <span class="section-count" id="historique-count">0 titre</span>
+      <div class="section-head-actions">
+        <span class="section-count" id="historique-count">0 titre</span>
+        <button class="btn btn-gold btn-sm" id="rewind-open-btn">🎁 Mon Rewind</button>
+      </div>
     </div>
     <div class="ranking-list" id="history-list"></div>
     <div class="empty-state" id="historique-empty" style="display:none;">
@@ -2627,6 +2672,29 @@ input[type="range"]{ accent-color:var(--copper); }
     </div>
     <div class="ranking-history-body" id="ranking-history-body">
       <div class="ranking-history-loading">Calcul de l'historique du classement…</div>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================
+     MON REWIND — résumé perso (façon "Wrapped") généré à partir de
+     l'historique d'écoute personnel : top titres, top artistes, temps
+     d'écoute total, sur la période choisie (Semaine/Mois/Année/Toujours).
+     ========================================================= -->
+<div class="overlay" id="rewind-overlay">
+  <div class="modal modal-wide rewind-modal">
+    <div class="modal-head">
+      <h3 class="modal-title rewind-title">Mon Rewind</h3>
+      <button class="modal-close" data-close="rewind-overlay">✕</button>
+    </div>
+    <div class="ranking-period-tabs" id="rewind-period-tabs">
+      <button class="ranking-period-btn" data-rewind-period="week">Semaine</button>
+      <button class="ranking-period-btn" data-rewind-period="month">Mois</button>
+      <button class="ranking-period-btn active" data-rewind-period="year">Année</button>
+      <button class="ranking-period-btn" data-rewind-period="all">Depuis toujours</button>
+    </div>
+    <div class="rewind-body" id="rewind-body">
+      <div class="ranking-history-loading">Calcul de ton Rewind…</div>
     </div>
   </div>
 </div>
@@ -6483,6 +6551,174 @@ function renderHistory(){
   });
   bindHoverPrefetch(list);
 }
+
+/* =========================================================
+   MON REWIND — résumé perso façon "Wrapped", calculé à partir de
+   l'historique d'écoute personnel (musicHistory/{uid}/entries). Contrairement
+   à l'abonnement "subscribeToHistory" (limité aux 100 dernières écoutes pour
+   l'affichage de l'onglet Historique), on interroge ici l'historique complet
+   sur la période choisie afin que les statistiques (temps d'écoute, tops...)
+   soient exactes même au-delà des 100 dernières écoutes.
+   ========================================================= */
+let rewindPeriod = 'year';
+let rewindLoadToken = 0; // identifie la requête en cours, pour ignorer une réponse obsolète
+
+function rewindPeriodCutoffDate(period){
+  if(period === 'all') return null; // pas de borne : tout l'historique
+  return rankingPeriodCutoffDate(period); // réutilise Semaine/Mois/Année déjà défini pour le Classement
+}
+
+function rewindPeriodLabel(period){
+  return { week:'cette semaine', month:'ce mois-ci', year:'cette année', all:'depuis toujours' }[period] || '';
+}
+
+async function openRewind(){
+  const user = auth.currentUser;
+  if(!user || user.isAnonymous){ clearAuthErrors(); openOverlay('account-overlay'); return; }
+  openOverlay('rewind-overlay');
+  document.querySelectorAll('#rewind-period-tabs .ranking-period-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.rewindPeriod === rewindPeriod);
+  });
+  loadRewindPeriod(rewindPeriod);
+}
+
+async function loadRewindPeriod(period){
+  rewindPeriod = period;
+  document.querySelectorAll('#rewind-period-tabs .ranking-period-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.rewindPeriod === period);
+  });
+  const body = document.getElementById('rewind-body');
+  const token = ++rewindLoadToken;
+  body.innerHTML = '<div class="ranking-history-loading">Calcul de ton Rewind…</div>';
+
+  const user = auth.currentUser;
+  if(!user || user.isAnonymous){ body.innerHTML = '<p class="rewind-empty">Connecte-toi pour voir ton Rewind.</p>'; return; }
+
+  try{
+    const cutoff = rewindPeriodCutoffDate(period);
+    let query = musicHistoryEntriesRef(user.uid);
+    if(cutoff) query = query.where('playedAt', '>=', cutoff);
+    const snap = await query.get();
+    if(token !== rewindLoadToken) return; // une autre période a été demandée entre-temps
+    renderRewind(snap.docs.map(d => d.data()), period);
+  }catch(err){
+    console.error("Impossible de calculer le Rewind :", err);
+    if(token !== rewindLoadToken) return;
+    body.innerHTML = '<p class="rewind-empty">Impossible de calculer ton Rewind pour le moment.</p>';
+  }
+}
+
+function renderRewind(entries, period){
+  const body = document.getElementById('rewind-body');
+
+  // Ne garde que les écoutes dont le titre existe encore.
+  const matched = entries
+    .map(h => ({ h, track: allTracks.find(t => t.id === h.trackId) }))
+    .filter(e => !!e.track);
+
+  if(!matched.length){
+    body.innerHTML = `<p class="rewind-empty">Pas encore assez d'écoutes ${rewindPeriodLabel(period)} pour générer ton Rewind.<br>Continue à écouter, il apparaîtra ici ✨</p>`;
+    return;
+  }
+
+  // --- Statistiques globales ---
+  const totalPlays = matched.length;
+  const totalSeconds = matched.reduce((sum, e)=> sum + (e.track.duration || 0), 0);
+
+  // --- Top titres ---
+  const trackCounts = {};
+  matched.forEach(e=>{ trackCounts[e.track.id] = (trackCounts[e.track.id] || 0) + 1; });
+  const topTracks = Object.entries(trackCounts)
+    .sort((a, b)=> b[1] - a[1])
+    .slice(0, 5)
+    .map(([id, count])=> ({ track: allTracks.find(t => t.id === id), count }))
+    .filter(e => !!e.track);
+
+  // --- Top artistes ---
+  const artistCounts = {};
+  matched.forEach(e=>{
+    const name = e.track.artist || 'Artiste inconnu';
+    artistCounts[name] = (artistCounts[name] || 0) + 1;
+  });
+  const topArtists = Object.entries(artistCounts).sort((a, b)=> b[1] - a[1]).slice(0, 5);
+
+  // --- Jour le plus actif ---
+  const dayCounts = {};
+  matched.forEach(e=>{
+    const ts = e.h.playedAt;
+    if(!ts || !ts.toDate) return;
+    const key = ts.toDate().toDateString();
+    dayCounts[key] = (dayCounts[key] || 0) + 1;
+  });
+  const bestDayEntry = Object.entries(dayCounts).sort((a, b)=> b[1] - a[1])[0];
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.round((totalSeconds % 3600) / 60);
+  const timeLabel = hours > 0 ? `${hours} h ${String(minutes).padStart(2,'0')}` : `${minutes} min`;
+
+  body.innerHTML = `
+    <div class="rewind-stats-row">
+      <div class="rewind-stat-card">
+        <span class="rewind-stat-num">${timeLabel}</span>
+        <span class="rewind-stat-label">d'écoute ${rewindPeriodLabel(period)}</span>
+      </div>
+      <div class="rewind-stat-card">
+        <span class="rewind-stat-num">${totalPlays}</span>
+        <span class="rewind-stat-label">${totalPlays > 1 ? 'écoutes' : 'écoute'} au total</span>
+      </div>
+    </div>
+
+    ${topTracks.length ? `
+    <div>
+      <p class="rewind-section-title">Tes titres du moment</p>
+      <div class="rewind-top-list">
+        ${topTracks.map((e, i)=> `
+        <div class="rewind-top-row" data-play="${e.track.id}">
+          <span class="rewind-rank">${i + 1}</span>
+          <img class="rewind-cover" src="${escapeHtml(e.track.coverURL || fallbackCoverSvg())}" alt="">
+          <div class="rewind-top-info">
+            <p class="rewind-top-name">${escapeHtml(e.track.title || 'Sans titre')}</p>
+            <p class="rewind-top-sub artist-link" data-artist-link="${escapeHtml(e.track.artist || '')}">${escapeHtml(e.track.artist || 'Artiste inconnu')}</p>
+          </div>
+          <span class="rewind-top-plays">${e.count}×</span>
+        </div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    ${topArtists.length ? `
+    <div>
+      <p class="rewind-section-title">Tes artistes du moment</p>
+      <div class="rewind-top-list">
+        ${topArtists.map(([name, count], i)=> `
+        <div class="rewind-top-row artist-link" data-artist-link="${escapeHtml(name)}">
+          <span class="rewind-rank">${i + 1}</span>
+          <span class="rewind-avatar">${escapeHtml((name || '?').slice(0,1).toUpperCase())}</span>
+          <div class="rewind-top-info">
+            <p class="rewind-top-name">${escapeHtml(name)}</p>
+          </div>
+          <span class="rewind-top-plays">${count}×</span>
+        </div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    ${bestDayEntry ? `<p class="rewind-fact">Ton jour le plus musical ${rewindPeriodLabel(period)} : <b>${escapeHtml(new Date(bestDayEntry[0]).toLocaleDateString('fr-FR', { day:'numeric', month:'long' }))}</b>, avec ${bestDayEntry[1]} écoute${bestDayEntry[1] > 1 ? 's' : ''}.</p>` : ''}
+  `;
+
+  body.querySelectorAll('[data-play]').forEach(el=>{
+    el.addEventListener('click', (e)=>{ e.stopPropagation(); closeOverlay('rewind-overlay'); playTrackById(el.dataset.play); });
+  });
+  body.querySelectorAll('[data-artist-link]').forEach(el=>{
+    el.addEventListener('click', (e)=>{ e.stopPropagation(); closeOverlay('rewind-overlay'); openArtistPage(el.dataset.artistLink); });
+  });
+}
+
+document.getElementById('rewind-open-btn').addEventListener('click', openRewind);
+document.querySelectorAll('#rewind-period-tabs .ranking-period-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    if(btn.dataset.rewindPeriod === rewindPeriod) return;
+    loadRewindPeriod(btn.dataset.rewindPeriod);
+  });
+});
 
 async function toggleLike(trackId){
   const user = auth.currentUser;
