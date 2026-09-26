@@ -3945,12 +3945,16 @@ function renderArtistSearchResults(){
   const seen = new Set();
   const matches = [];
   allTracks.forEach(t=>{
-    const name = (t.artist || '').trim();
-    if(!name) return;
-    const key = artistKeyOf(name);
-    if(seen.has(key) || !key.includes(searchTerm)) return;
-    seen.add(key);
-    matches.push({ key, name });
+    // Un titre en featuring ("Artiste A - Artiste B") compte pour DEUX
+    // artistes distincts dans les résultats de recherche, et non un seul
+    // artiste combiné "Artiste A - Artiste B".
+    splitArtistNames(t.artist).forEach(name=>{
+      if(!name) return;
+      const key = artistKeyOf(name);
+      if(seen.has(key) || !key.includes(searchTerm)) return;
+      seen.add(key);
+      matches.push({ key, name });
+    });
   });
   if(!matches.length) return;
   // Des artistes correspondent : même si aucun titre ne correspond (grille
@@ -5111,8 +5115,7 @@ function renderHero(){
     else eyebrow.textContent = featured ? "🎉 Musique de l'événement" : 'Dernier ajout';
   }
   document.getElementById('hero-title').textContent = t.title || 'Sans titre';
-  document.getElementById('hero-artist').textContent = t.artist || 'Artiste inconnu';
-  document.getElementById('hero-artist').dataset.artistLink = t.artist || '';
+  document.getElementById('hero-artist').innerHTML = artistLinksMarkup(t.artist);
   document.getElementById('hero-cover').src = t.coverURL || fallbackCoverSvg();
   const up = document.getElementById('hero-uploader');
   up.innerHTML = `${t.uploaderPhoto ? `<img src="${escapeHtml(t.uploaderPhoto)}" alt="">` : ''}<span>Ajouté par ${escapeHtml(t.uploaderName || 'un membre')}</span>`;
@@ -5134,6 +5137,19 @@ function matchesSearch(t){
    "rijoul " et "RIJOUL" sont bien traités comme le même artiste partout
    dans l'app.
    ========================================================= */
+// Sépare un champ "artiste" en featuring en ses artistes individuels,
+// quand ils sont séparés par un tiret ENTOURÉ D'ESPACES ("Artiste A -
+// Artiste B" -> ["Artiste A", "Artiste B"]). Un tiret SANS espace autour
+// n'est volontairement PAS coupé, pour ne pas casser un nom d'artiste qui
+// contient lui-même un tiret (ex. "Jay-Z", "T-Pain"). Sans séparateur, on
+// obtient simplement un tableau à un seul élément (comportement identique
+// à avant pour un artiste unique).
+function splitArtistNames(raw){
+  return String(raw || '')
+    .split(/\s+-\s+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
 function artistKeyOf(name){
   return (name || '').trim().toLowerCase();
 }
@@ -5145,10 +5161,11 @@ function artistDocId(key){
 }
 // Tous les titres d'un artiste (par clé normalisée), triés du plus au
 // moins populaire (nombre total d'écoutes, même compteur que le Classement
-// "Depuis toujours").
+// "Depuis toujours"). Un titre en featuring ("A - B") appartient à la fois
+// à la page de A et à celle de B, au lieu de créer un artiste combiné "A - B".
 function tracksByArtistKey(key){
   return allTracks
-    .filter(t => artistKeyOf(t.artist) === key)
+    .filter(t => splitArtistNames(t.artist).some(n => artistKeyOf(n) === key))
     .slice()
     .sort((a, b) => (b.plays || 0) - (a.plays || 0));
 }
@@ -5156,13 +5173,25 @@ function tracksByArtistKey(key){
 // premier titre trouvé (la clé normalisée elle-même est toujours en
 // minuscules, donc pas idéale à afficher telle quelle).
 function artistDisplayName(key){
-  const t = allTracks.find(t => artistKeyOf(t.artist) === key);
-  return (t && t.artist) || key || 'Artiste inconnu';
+  for(const t of allTracks){
+    const match = splitArtistNames(t.artist).find(n => artistKeyOf(n) === key);
+    if(match) return match;
+  }
+  return key || 'Artiste inconnu';
 }
 function artistPhotoURL(key){
   const docId = artistDocId(key);
   const data = docId ? allArtistPhotos[docId] : null;
   return (data && data.photoURL) || null;
+}
+// Construit le HTML cliquable d'un champ "artiste" pouvant contenir
+// plusieurs artistes en featuring : un <span class="artist-link"> distinct
+// par artiste (chacun ouvre sa propre page, via le même mécanisme de
+// délégation que pour un artiste unique), séparés par " & " à l'affichage.
+function artistLinksMarkup(raw){
+  const names = splitArtistNames(raw);
+  if(!names.length) return escapeHtml('Artiste inconnu');
+  return names.map(n => `<span class="artist-link" data-artist-link="${escapeHtml(n)}">${escapeHtml(n)}</span>`).join(' &amp; ');
 }
 
 /* =========================================================
@@ -5945,7 +5974,7 @@ function paintGrid(gridId, emptyId, countId, list, texts){
         ${(canDelete || canEdit) ? `<div class="card-owner-actions">${canEdit ? `<button class="icon-btn" data-edit="${t.id}" aria-label="Modifier"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>` : ''}${canDelete ? `<button class="icon-btn" data-delete="${t.id}" aria-label="Supprimer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>` : ''}</div>` : ''}
       </div>
       <p class="card-title">${escapeHtml(t.title || 'Sans titre')}</p>
-      <p class="card-artist artist-link" data-artist-link="${escapeHtml(t.artist || '')}">${escapeHtml(t.artist || 'Artiste inconnu')}</p>
+      <p class="card-artist">${artistLinksMarkup(t.artist)}</p>
       <div class="card-meta">
         <div class="card-uploader">${t.uploaderPhoto ? `<img src="${escapeHtml(t.uploaderPhoto)}" alt="">` : ''}<span>${escapeHtml(t.uploaderName || 'Membre')}</span></div>
         <button class="like-btn ${liked ? 'liked' : ''}" data-like="${t.id}">
@@ -6212,7 +6241,7 @@ function renderRanking(){
       </div>
       <div class="ranking-info">
         <p class="ranking-title">${escapeHtml(t.title || 'Sans titre')}</p>
-        <p class="ranking-artist artist-link" data-artist-link="${escapeHtml(t.artist || '')}">${escapeHtml(t.artist || 'Artiste inconnu')}</p>
+        <p class="ranking-artist">${artistLinksMarkup(t.artist)}</p>
       </div>
       <span class="ranking-plays">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5v14l11-7z"/></svg>
@@ -6540,7 +6569,7 @@ function renderHistory(){
       </div>
       <div class="ranking-info">
         <p class="ranking-title">${escapeHtml(t.title || 'Sans titre')}</p>
-        <p class="ranking-artist artist-link" data-artist-link="${escapeHtml(t.artist || '')}">${escapeHtml(t.artist || 'Artiste inconnu')}</p>
+        <p class="ranking-artist">${artistLinksMarkup(t.artist)}</p>
       </div>
       <span class="ranking-plays">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
@@ -6643,11 +6672,14 @@ function renderRewind(entries, period){
     .map(([id, count])=> ({ track: allTracks.find(t => t.id === id), count }))
     .filter(e => !!e.track);
 
-  // --- Top artistes ---
+  // --- Top artistes --- (un titre en featuring "A - B" crédite les deux
+  // artistes séparément, plutôt qu'un artiste combiné "A - B")
   const artistCounts = {};
   matched.forEach(e=>{
-    const name = e.track.artist || 'Artiste inconnu';
-    artistCounts[name] = (artistCounts[name] || 0) + 1;
+    const names = splitArtistNames(e.track.artist);
+    (names.length ? names : ['Artiste inconnu']).forEach(name=>{
+      artistCounts[name] = (artistCounts[name] || 0) + 1;
+    });
   });
   const topArtists = Object.entries(artistCounts).sort((a, b)=> b[1] - a[1]).slice(0, 5);
 
@@ -6687,7 +6719,7 @@ function renderRewind(entries, period){
           <img class="rewind-cover" src="${escapeHtml(e.track.coverURL || fallbackCoverSvg())}" alt="">
           <div class="rewind-top-info">
             <p class="rewind-top-name">${escapeHtml(e.track.title || 'Sans titre')}</p>
-            <p class="rewind-top-sub artist-link" data-artist-link="${escapeHtml(e.track.artist || '')}">${escapeHtml(e.track.artist || 'Artiste inconnu')}</p>
+            <p class="rewind-top-sub">${artistLinksMarkup(e.track.artist)}</p>
           </div>
           <span class="rewind-top-plays">${e.count}×</span>
         </div>`).join('')}
