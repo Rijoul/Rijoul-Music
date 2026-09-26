@@ -1434,6 +1434,33 @@ input,textarea{ font-family:inherit; }
 .playlist-inline-create input{ flex:1; background:rgba(255,255,255,0.07); border:1px solid var(--line); color:var(--text); border-radius:14px; padding:10px 13px; font-size:13.5px; }
 .playlist-inline-create input:focus{ border-color:var(--glass-border-strong); background:rgba(255,255,255,0.11); }
 
+/* --- Écrans "PC" pas assez larges (fenêtre de navigateur non maximisée,
+   laptop 13"-14", zoom navigateur…) : au lieu de laisser le bouton
+   "Compte"/le chip utilisateur sortir de l'écran (nav-right avait
+   flex-shrink:0 et ne cédait jamais de place), on compacte la nav sur une
+   seule ligne : boutons secondaires réduits à leur icône, onglets et
+   barre de recherche autorisés à rétrécir (et à défiler si besoin). Tout
+   reste sur une seule ligne, contrairement à la version mobile ci-dessous
+   qui repasse sur plusieurs lignes. --- */
+@media (max-width:1400px) and (min-width:761px){
+  .topnav{ gap:10px; padding:9px 14px; }
+  .tabs{ min-width:0; overflow-x:auto; scrollbar-width:none; -ms-overflow-style:none; }
+  .tabs::-webkit-scrollbar{ display:none; }
+  .tab-btn{ flex-shrink:0; }
+  .search-wrap{ max-width:220px; min-width:80px; }
+  .nav-right{ gap:6px; }
+  .nav-right .nav-action-btn{ width:38px; height:38px; padding:0; border-radius:50%; justify-content:center; }
+  .nav-right .nav-action-btn .btn-label{ display:none; }
+  .nav-right .nav-action-btn .btn-icon{ width:15px; height:15px; }
+  .user-chip{ padding:4px 8px 4px 4px; }
+  .user-chip-name{ display:none; }
+  .chip-caret{ display:none; }
+}
+@media (max-width:1000px) and (min-width:761px){
+  .search-wrap{ max-width:140px; }
+  .brand-word{ font-size:16px; }
+}
+
 @media (max-width:760px){
   .pl-detail-head{ flex-direction:column; text-align:center; }
   .pl-detail-cover{ width:150px; height:150px; }
@@ -1851,11 +1878,11 @@ input[type="range"]{ accent-color:var(--copper); }
       <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13m0 0l-4.5-4.5M12 16l4.5-4.5"/><path d="M4 17v2.4A1.6 1.6 0 005.6 21h12.8a1.6 1.6 0 001.6-1.6V17"/></svg>
       <span class="btn-label">Installer l'app</span>
     </button>
-    <button class="btn btn-gold nav-action-btn" id="upload-open-btn">
+    <button class="btn btn-gold nav-action-btn" id="upload-open-btn" title="Ajouter un titre">
       <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       <span class="btn-label">Ajouter un titre</span>
     </button>
-    <button class="btn btn-ghost nav-action-btn" id="account-btn">
+    <button class="btn btn-ghost nav-action-btn" id="account-btn" title="Se connecter">
       <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-1.6a4.4 4.4 0 00-4.4-4.4H8.4A4.4 4.4 0 004 19.4V21"/><circle cx="12" cy="7.2" r="3.8"/></svg>
       <span class="btn-label">Se connecter</span>
     </button>
