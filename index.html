@@ -3258,6 +3258,15 @@ let uploadCoverDataUrl = null;
 let loopModeActive = false;    // "Lire en boucle" (grand lecteur) : rejoue le même titre à sa fin
 let shuffleModeActive = false; // "Lecture aléatoire" (grand lecteur) : pioche le titre suivant au hasard dans currentQueue
 
+// --- Comptage différé des vues : une écoute n'est comptabilisée (compteur
+// "plays", journal du Classement, historique perso) qu'après 15 secondes
+// d'écoute RÉELLE (temps de lecture effectif, pas juste "ouvert") — voir
+// bloc "COMPTAGE DIFFÉRÉ DES VUES" plus bas pour le détail du mécanisme. ---
+const VIEW_COUNT_THRESHOLD = 15; // secondes d'écoute réelle avant de compter une vue
+let viewCountPendingId = null;   // id du titre en cours d'accumulation (pas encore compté)
+let viewCountAccumulated = 0;    // secondes d'écoute réelle déjà accumulées pour ce titre
+let viewCountLastTime = null;    // dernier audioEl.currentTime observé (pour calculer le delta écoulé)
+
 let allPlaylists = [];     // playlists de l'utilisateur connecté (onSnapshot filtré par ownerId)
 let playlistsUnsub = null;
 let currentPlaylistId = null; // playlist affichée en vue détail
@@ -8147,29 +8156,21 @@ async function playTrackById(trackId, direction, opts){
   updateAiEnhanceUIForTrack(track); // coupe/grise l'amélioration IA si ce titre est certifié "mode concert"
   updateNpCoverBadges(track); // badges HD/CONCERT sur la pochette du grand lecteur
   updateLyricsUIForTrack(track); // recharge/affiche les paroles de ce titre si le mode Lyrics est actif
-  // Incrémente le compteur d'écoutes du titre (utilisé par le Classement).
-  // Doit fonctionner pour TOUT visiteur (connecté ou non) — si ça échoue,
-  // c'est presque toujours une règle de sécurité Firestore trop stricte
-  // sur le champ "plays" (log conservé pour diagnostic).
-  // IMPORTANT : en mode Radio Direct (opts.radio === true), on NE fait PAS
-  // cet incrément individuel ici, car chaque auditeur appelle cette fonction
-  // en parallèle sur son propre appareil quand la radio enchaîne un titre.
-  // Le crédit des vues radio est déjà géré une seule fois, de façon groupée
-  // et anti-doublon, par tryLogRadioPlay() (voir plus bas / radioTick).
-  // Sans cette exclusion, les deux mécanismes s'additionnent : chaque
-  // auditeur ajoute +1 via playTrackById ET le crédit radio ajoute encore
-  // +listeners, ce qui gonfle artificiellement le compteur de vues.
-  if(!(opts && opts.radio)){
-    tracksRef.doc(trackId).update({ plays: firebase.firestore.FieldValue.increment(1) })
-      .catch(err => console.error('Échec incrément "plays" (vérifier les règles Firestore) :', err));
-    // Horodate cette écoute dans le journal global (utilisé par le Classement
-    // "Semaine"/"Mois"/"Année"). Doit fonctionner pour TOUT visiteur, comme
-    // l'incrément de "plays" ci-dessus. Idem : exclu en mode radio, déjà géré
-    // par tryLogRadioPlay() via playLogsRef.add({ ..., source:'radio' }).
-    playLogsRef.add({ trackId, playedAt: firebase.firestore.FieldValue.serverTimestamp() })
-      .catch(err => console.error('Échec écriture "musicPlayLogs" (vérifier les règles Firestore) :', err));
-  }
-  recordListenHistory(trackId);
+  // Ne compte PAS l'écoute instantanément : on démarre juste l'accumulation
+  // d'écoute réelle pour ce titre. Le compteur "plays" (Classement), le
+  // journal global "musicPlayLogs" et l'historique perso ne sont écrits
+  // qu'après VIEW_COUNT_THRESHOLD secondes d'écoute effective — voir le
+  // bloc "COMPTAGE DIFFÉRÉ DES VUES" (commitViewCount / listener timeupdate)
+  // plus bas dans le fichier.
+  // IMPORTANT : en mode Radio Direct (opts.radio === true), on continue à
+  // exclure l'incrément individuel du compteur global "plays"/"musicPlayLogs",
+  // car chaque auditeur appelle cette fonction en parallèle sur son propre
+  // appareil quand la radio enchaîne un titre : le crédit des vues radio est
+  // déjà géré une seule fois, de façon groupée et anti-doublon, par
+  // tryLogRadioPlay() (voir plus bas / radioTick). Sans cette exclusion, les
+  // deux mécanismes s'additionnent. L'historique perso, lui, reste alimenté
+  // même en Radio Direct (une fois le seuil de 15s atteint).
+  startViewCounting(trackId, { skipGlobal: !!(opts && opts.radio) });
   document.getElementById('p-cover').src = track.coverURL || fallbackCoverSvg();
   document.getElementById('p-title').textContent = track.title || 'Sans titre';
   document.getElementById('p-artist').textContent = (track.artist || 'Artiste inconnu') + ' · chargement…';
@@ -8384,11 +8385,10 @@ function replayCurrentTrackForLoop(){
   }catch(e){}
   crossfadeTriggered = false;
   nextTrackPrefetchTriggered = false;
-  tracksRef.doc(currentTrackId).update({ plays: firebase.firestore.FieldValue.increment(1) })
-    .catch(err => console.error('Échec incrément "plays" (lecture en boucle) :', err));
-  playLogsRef.add({ trackId: currentTrackId, playedAt: firebase.firestore.FieldValue.serverTimestamp() })
-    .catch(err => console.error('Échec écriture "musicPlayLogs" (lecture en boucle) :', err));
-  recordListenHistory(currentTrackId);
+  // Comme pour tout démarrage de lecture, cette relecture n'est comptée comme
+  // une nouvelle vue qu'après VIEW_COUNT_THRESHOLD secondes d'écoute réelle
+  // (voir bloc "COMPTAGE DIFFÉRÉ DES VUES").
+  startViewCounting(currentTrackId, { skipGlobal: false });
 }
 
 /* =========================================================
@@ -8659,6 +8659,72 @@ function setupRadioEmojiReactor(ids){
 }
 setupRadioEmojiReactor({ react:'p-emoji-react', reel:'p-emoji-reel', prev:'p-emoji-item-prev', current:'p-emoji-item-current', next:'p-emoji-item-next' });
 setupRadioEmojiReactor({ react:'np-emoji-react', reel:'np-emoji-reel', prev:'np-emoji-item-prev', current:'np-emoji-item-current', next:'np-emoji-item-next' });
+
+/* =========================================================
+   COMPTAGE DIFFÉRÉ DES VUES — une vue (compteur "plays" du Classement,
+   journal "musicPlayLogs", entrée d'historique perso) n'est écrite
+   qu'après VIEW_COUNT_THRESHOLD secondes d'ÉCOUTE RÉELLE d'un titre, et
+   non dès le lancement de la lecture. Ça évite qu'un simple clic ou un
+   passage rapide d'un titre à l'autre ne gonfle artificiellement les
+   compteurs. L'accumulation se fait via l'évènement "timeupdate" : comme
+   celui-ci ne se déclenche pas pendant une pause, le temps passé en pause
+   n'est naturellement jamais compté. Une avance/retour rapide sur la barre
+   de progression (gros saut de currentTime) n'est pas non plus compté comme
+   de l'écoute. ========================================================= */
+let viewCountSkipGlobal = false; // true en Radio Direct : n'écrit pas "plays"/"musicPlayLogs" (déjà crédités ailleurs), garde juste l'historique perso
+
+// (Ré)initialise l'accumulation pour un titre qui démarre (nouvelle lecture
+// ou relecture en boucle) : reparts de zéro, la vue précédente éventuelle
+// (déjà comptée ou non) n'a plus d'incidence.
+function startViewCounting(trackId, opts){
+  viewCountPendingId = trackId;
+  viewCountAccumulated = 0;
+  viewCountLastTime = null;
+  viewCountSkipGlobal = !!(opts && opts.skipGlobal);
+}
+
+// Écrit réellement la vue une fois le seuil atteint (ou un titre écouté
+// jusqu'au bout, voir listener "ended" plus bas).
+function commitViewCount(trackId, skipGlobal){
+  if(!skipGlobal){
+    tracksRef.doc(trackId).update({ plays: firebase.firestore.FieldValue.increment(1) })
+      .catch(err => console.error('Échec incrément "plays" (vérifier les règles Firestore) :', err));
+    playLogsRef.add({ trackId, playedAt: firebase.firestore.FieldValue.serverTimestamp() })
+      .catch(err => console.error('Échec écriture "musicPlayLogs" (vérifier les règles Firestore) :', err));
+  }
+  recordListenHistory(trackId);
+}
+
+audioEl.addEventListener('timeupdate', ()=>{
+  if(!viewCountPendingId || viewCountPendingId !== currentTrackId) return; // rien à accumuler, ou plus le titre courant
+  const t = audioEl.currentTime;
+  if(viewCountLastTime !== null){
+    const delta = t - viewCountLastTime;
+    // N'accumule que les petits écarts "naturels" entre deux évènements
+    // timeupdate : un saut plus large (l'utilisateur fait glisser la barre,
+    // une boucle qui revient à 0, un changement d'extrait...) n'est pas
+    // considéré comme de l'écoute réelle.
+    if(delta > 0 && delta < 2) viewCountAccumulated += delta;
+  }
+  viewCountLastTime = t;
+  if(viewCountAccumulated >= VIEW_COUNT_THRESHOLD){
+    const id = viewCountPendingId;
+    const skip = viewCountSkipGlobal;
+    viewCountPendingId = null; // évite tout double comptage
+    commitViewCount(id, skip);
+  }
+});
+// Filet de sécurité : un titre plus court que VIEW_COUNT_THRESHOLD (ex. un
+// extrait) mais écouté jusqu'à sa toute fin compte quand même comme une vue,
+// même si le seuil de 15s n'a pas été atteint.
+audioEl.addEventListener('ended', ()=>{
+  if(viewCountPendingId && viewCountPendingId === currentTrackId){
+    const id = viewCountPendingId;
+    const skip = viewCountSkipGlobal;
+    viewCountPendingId = null;
+    commitViewCount(id, skip);
+  }
+});
 
 const pPlayIcon = document.getElementById('p-play-icon');
 const npPlayIcon = document.getElementById('np-play-icon');
