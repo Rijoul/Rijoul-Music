@@ -153,16 +153,37 @@ input,textarea{ font-family:inherit; }
 .tab-btn{ border:0; background:transparent; color:var(--text-dim); padding:8px 16px; border-radius:999px; font-size:13.5px; font-weight:700; transition:.2s cubic-bezier(.4,0,.2,1); white-space:nowrap; }
 .tab-btn.active{ background:var(--text); color:#000; box-shadow:0 2px 8px rgba(0,0,0,0.3); }
 .tab-btn:not(.active):hover{ color:var(--text); }
-.search-wrap{ flex:1; max-width:420px; position:relative; }
-.search-wrap svg{ position:absolute; left:14px; top:50%; transform:translateY(-50%); opacity:.55; }
-#search-input{
-  width:100%; background:rgba(255,255,255,0.07); border:1px solid var(--line); color:var(--text);
-  border-radius:999px; padding:10px 14px 10px 38px; font-size:14px; transition:.2s;
+/* --- Barre de recherche (nav) : pilule "verre liquide" qui s'élargit
+   légèrement au focus, icône qui change de couleur, bouton "effacer" qui
+   apparaît uniquement quand il y a du texte. --- */
+.search-wrap{
+  flex:1; max-width:420px; min-width:150px; position:relative;
+  transition:max-width .32s var(--ease-spring, cubic-bezier(.4,0,.2,1));
 }
-#search-input:focus{ border-color:var(--glass-border-strong); background:rgba(255,255,255,0.11); }
+.search-wrap svg.search-icon{
+  position:absolute; left:15px; top:50%; transform:translateY(-50%);
+  opacity:.5; color:var(--text-dim); pointer-events:none;
+}
+#search-input{
+  width:100%; background:rgba(255,255,255,0.055); border:1px solid var(--line); color:var(--text);
+  border-radius:999px; padding:11px 36px 11px 40px; font-size:14px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.05);
+}
+#search-input:hover{ background:rgba(255,255,255,0.085); }
+#search-input:focus{ border-color:rgba(169,114,255,0.45); background:rgba(255,255,255,0.1); }
 #search-input::placeholder{ color:var(--text-faint); }
 #search-input::-webkit-search-cancel-button,
 #search-input::-webkit-search-decoration{ -webkit-appearance:none; appearance:none; }
+.search-clear-btn{
+  position:absolute; right:6px; top:50%; transform:translateY(-50%) scale(.75);
+  width:23px; height:23px; border-radius:50%; border:0; padding:0;
+  background:rgba(255,255,255,0.1); color:var(--text-dim);
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; pointer-events:none;
+  transition:opacity .16s var(--ease-out,ease), transform .16s var(--ease-spring,ease), background .16s, color .16s;
+}
+.search-wrap.has-value .search-clear-btn{ opacity:1; pointer-events:auto; transform:translateY(-50%) scale(1); }
+.search-clear-btn:hover{ background:var(--copper); color:#241a06; }
 .nav-right{ display:flex; align-items:center; gap:10px; margin-left:auto; flex-shrink:0; }
 .btn{ border:0; border-radius:999px; padding:10px 18px; font-size:13.5px; font-weight:800; transition:.18s cubic-bezier(.4,0,.2,1); }
 .nav-action-btn{ display:inline-flex; align-items:center; gap:7px; }
@@ -461,18 +482,66 @@ input,textarea{ font-family:inherit; }
 }
 .radio-listener-count{ display:inline-flex; align-items:center; gap:5px; color:#ff8080; font-weight:600; }
 
-/* --- Résultats "artiste" de la recherche : cartes au même format que les
-   titres (voir .card / .card-cover ci-dessus), insérées directement dans
-   la même grille que les résultats de titres, avec un badge "ARTISTE"
-   pour les distinguer d'un coup d'œil. --- */
-.card-artist-result .card-cover{ background:linear-gradient(145deg, rgba(255,176,32,0.22), rgba(255,255,255,0.04)); display:flex; align-items:center; justify-content:center; }
-.card-artist-result .card-cover img{ border-radius:50%; width:72%; height:72%; margin:auto; }
-.card-artist-fallback{ font-size:34px; }
-.card-artist-result .card-cover-badge{
-  position:absolute; left:8px; top:8px; z-index:1; font-size:10.5px; font-weight:700;
-  padding:3px 8px; border-radius:20px; background:rgba(0,0,0,0.55); color:var(--copper-bright);
-  letter-spacing:.02em; backdrop-filter:blur(6px);
+/* --- Résultats "artiste" de la recherche : même grille/format que les
+   cartes titres (voir .card / .card-cover ci-dessus), mais habillage dédié
+   et plus premium pour les distinguer d'un coup d'œil : avatar rond cerclé
+   d'un halo dégradé tournant, badge "verre" avec icône micro, lueur violette
+   au survol, bouton "ouvrir" qui apparaît en bas à droite. --- */
+.card-artist-result{
+  background:linear-gradient(165deg, rgba(169,114,255,0.12), rgba(255,255,255,0.03) 55%);
+  border-color:rgba(169,114,255,0.2);
 }
+.card-artist-result:hover{
+  border-color:rgba(169,114,255,0.45);
+  box-shadow:0 30px 56px -22px rgba(0,0,0,0.78), 0 0 0 1px rgba(169,114,255,0.35), 0 0 36px -10px rgba(169,114,255,0.45);
+}
+.card-artist-result .card-cover{
+  background:none; overflow:visible;
+  display:flex; align-items:center; justify-content:center;
+}
+.card-artist-result .card-cover::before{
+  content:''; position:absolute; inset:6%;
+  border-radius:50%;
+  background:conic-gradient(from 0deg, var(--violet), var(--pink), var(--copper), var(--cyan), var(--violet));
+  opacity:.6; filter:blur(.3px);
+  -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+          mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  animation: artist-ring-spin 7s linear infinite;
+}
+@keyframes artist-ring-spin{ to{ transform:rotate(360deg); } }
+.card-artist-result .card-cover img,
+.card-artist-result .card-cover .card-artist-fallback{
+  position:relative; z-index:1; border-radius:50%;
+  width:74%; height:74%; margin:auto; object-fit:cover;
+  box-shadow:0 0 0 4px var(--bg), 0 10px 22px -10px rgba(0,0,0,0.6);
+}
+.card-artist-result .card-cover .card-artist-fallback{
+  display:flex; align-items:center; justify-content:center;
+  background:var(--panel-solid);
+}
+.card-artist-fallback{ font-size:30px; }
+.card-artist-result .card-cover-badge{
+  position:absolute; left:8px; top:8px; z-index:2;
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+  padding:4px 9px 4px 7px; border-radius:20px;
+  background:rgba(18,12,30,0.65); color:var(--violet);
+  border:1px solid rgba(169,114,255,0.35);
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+}
+.card-artist-result .card-cover-badge svg{ width:10px; height:10px; flex-shrink:0; }
+.card-artist-result .card-open-hint{
+  position:absolute; right:8px; bottom:8px; z-index:2;
+  width:34px; height:34px; border-radius:50%;
+  background:var(--violet); color:#1a0f2e;
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; transform:translateY(6px) scale(.9);
+  transition:.2s cubic-bezier(.4,0,.2,1);
+  box-shadow:0 10px 22px -6px rgba(169,114,255,0.6);
+}
+.card-artist-result:hover .card-open-hint{ opacity:1; transform:none; }
+.card-artist-result .card-title,
+.card-artist-result .card-artist{ text-align:center; }
 
 /* --- Lecteur en mode "Radio Direct" : précédent/suivant retirés
    visuellement (la diffusion est la même pour tout le monde, on ne peut
@@ -1510,10 +1579,11 @@ input,textarea{ font-family:inherit; }
 }
 .tab-btn:not(.active):hover{ transform:translateY(-1px); }
 .tab-btn:not(.active):hover::after{ transform:scaleX(1); }
-.search-wrap svg{ transition:opacity .2s, color .2s; }
+.search-wrap svg.search-icon{ transition:opacity .2s, color .2s; }
 #search-input{ border-radius:999px; transition:border-color .25s, background .25s, box-shadow .25s; }
-#search-input:focus{ box-shadow:0 0 0 4px rgba(255,176,32,0.16), inset 0 1px 0 rgba(255,255,255,0.06); }
-#search-input:focus + svg, .search-wrap:focus-within svg{ opacity:.9; color:var(--copper-bright); }
+#search-input:focus{ outline:none; box-shadow:0 0 0 4px rgba(169,114,255,0.16), inset 0 1px 0 rgba(255,255,255,0.06); }
+.search-wrap:focus-within{ max-width:480px; }
+.search-wrap:focus-within svg.search-icon{ opacity:.9; color:var(--copper-bright); }
 .user-chip{ transition:background .25s, box-shadow .25s; }
 .user-chip:hover{ box-shadow:0 4px 16px -6px rgba(0,0,0,0.5); }
 .user-dd{ border-radius:22px; animation:pop-in .22s var(--ease-spring) both; transform-origin:top right; }
@@ -1765,9 +1835,12 @@ input[type="range"]{ accent-color:var(--copper); }
        pour qu'il ne se colle jamais dans la vraie barre de recherche juste en dessous. -->
   <input type="text" name="username" autocomplete="username" class="visually-hidden" tabindex="-1" aria-hidden="true">
   <input type="password" name="password" autocomplete="current-password" class="visually-hidden" tabindex="-1" aria-hidden="true">
-  <div class="search-wrap">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+  <div class="search-wrap" id="search-wrap">
+    <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
     <input id="search-input" type="search" placeholder="Chercher un titre, un artiste…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="rijoul-search-q" role="searchbox" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onmousedown="this.removeAttribute('readonly')" onclick="this.removeAttribute('readonly')" ontouchstart="this.removeAttribute('readonly')">
+    <button type="button" class="search-clear-btn" id="search-clear-btn" aria-label="Effacer la recherche" tabindex="-1">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+    </button>
   </div>
   <div class="nav-right">
     <button class="btn btn-ghost nav-action-btn" id="share-app-btn" title="Partager RIJOUL MUSIC">
@@ -3968,8 +4041,9 @@ function renderArtistSearchResults(){
     return `
     <div class="card card-artist-result" data-open-artist="${escapeHtml(m.name)}">
       <div class="card-cover">
-        <span class="card-cover-badge">ARTISTE</span>
+        <span class="card-cover-badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z"/><path d="M19 11a1 1 0 10-2 0 5 5 0 01-10 0 1 1 0 10-2 0 7 7 0 006 6.93V20H9a1 1 0 100 2h6a1 1 0 100-2h-2v-2.07A7 7 0 0019 11z"/></svg>Artiste</span>
         ${photoURL ? `<img src="${escapeHtml(photoURL)}" alt="">` : `<span class="card-artist-fallback">🎤</span>`}
+        <span class="card-open-hint" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
       </div>
       <p class="card-title">${escapeHtml(m.name)}</p>
       <p class="card-artist">${count} ${count > 1 ? 'titres' : 'titre'}</p>
@@ -4124,7 +4198,17 @@ if(shareAppBtn){
 
 document.getElementById('search-input').addEventListener('input', (e)=>{
   searchTerm = e.target.value.trim().toLowerCase();
+  document.getElementById('search-wrap').classList.toggle('has-value', e.target.value.length > 0);
   renderTracks();
+});
+/* Bouton "×" de la barre de recherche : vide le champ et relance la
+   recherche (équivalent d'une saisie vide), sans jamais voler le focus
+   au clavier (tabindex="-1"). */
+document.getElementById('search-clear-btn').addEventListener('click', ()=>{
+  const input = document.getElementById('search-input');
+  input.value = '';
+  input.dispatchEvent(new Event('input'));
+  input.focus();
 });
 
 /* =========================================================
