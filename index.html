@@ -1232,6 +1232,7 @@ input,textarea{ font-family:inherit; }
 .np-meta{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex-shrink:0; margin-bottom:20px; }
 .np-meta-text{ min-width:0; position:relative; }
 .np-title{ font-family:var(--display); font-size:21px; font-weight:800; letter-spacing:-0.02em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.np-release-date{ font-size:11.5px; color:var(--text-dim); opacity:.6; margin-top:2px; letter-spacing:.02em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .np-artist{ font-size:14px; color:var(--text-dim); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .np-meta-actions{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
 .np-like{ flex-shrink:0; background:transparent; border:0; color:var(--text-dim); display:flex; }
@@ -2396,6 +2397,7 @@ input[type="range"]{ accent-color:var(--copper); }
           <div class="np-emoji-fly-layer" id="np-emoji-fly-layer" aria-hidden="true"></div>
           <div class="np-title" id="np-title">—</div>
           <div class="np-artist artist-link" id="np-artist">—</div>
+          <div class="np-release-date" id="np-release-date" style="display:none;"></div>
           <div class="np-radio-info" id="np-radio-info" style="display:none;">
             <span class="live-dot"></span><span id="np-radio-info-text">En direct</span>
           </div>
@@ -7932,6 +7934,18 @@ function syncNowPlayingUI(){
   document.getElementById('np-title').textContent = document.getElementById('p-title').textContent;
   document.getElementById('np-artist').textContent = document.getElementById('p-artist').textContent;
   document.getElementById('np-artist').dataset.artistLink = document.getElementById('p-artist').dataset.artistLink || '';
+  // Date de sortie d'origine (discrète, seulement si renseignée)
+  const npDateEl = document.getElementById('np-release-date');
+  const npTrack = (typeof allTracks !== 'undefined' && currentTrackId) ? allTracks.find(t => t.id === currentTrackId) : null;
+  const npRd = npTrack && /^(\d{4})-(\d{2})-(\d{2})$/.exec(npTrack.releaseDate || '');
+  if(npRd){
+    const d = new Date(Number(npRd[1]), Number(npRd[2]) - 1, Number(npRd[3]));
+    npDateEl.textContent = 'Sorti le ' + d.toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' });
+    npDateEl.style.display = '';
+  }else{
+    npDateEl.textContent = '';
+    npDateEl.style.display = 'none';
+  }
   document.getElementById('np-like-btn').classList.toggle('liked', document.getElementById('p-like-btn').classList.contains('liked'));
   document.getElementById('np-play-icon').innerHTML = document.getElementById('p-play-icon').innerHTML;
   document.getElementById('np-time-current').textContent = document.getElementById('p-time-current').textContent;
