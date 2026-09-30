@@ -1841,6 +1841,37 @@ input[type="range"]{ accent-color:var(--copper); }
 .extract-range-handle{ transition:transform .18s var(--ease-spring), box-shadow .18s; }
 .extract-range-handle:hover{ transform:translateY(-50%) scale(1.12); }
 
+/* =========================================================
+   POCHETTES NETTES — rendu "HD/4K"
+   Un filtre ne peut pas créer de détails qui n'existent pas dans l'image
+   d'origine, mais il améliore nettement la netteté perçue :
+   - miniatures (grilles, listes, classement…) : contraste + couleurs
+     légèrement renforcés (léger, sans coût pendant le scroll) ;
+   - grandes pochettes (lecteur plein écran, disque, playlist) : en plus,
+     masque de netteté (unsharp mask) via le filtre SVG #cover-sharpen.
+   Les vignettes précédent/suivant du lecteur (volontairement assombries)
+   gardent leur propre filtre.
+   ========================================================= */
+.card-cover img,
+.extract-card-cover img,
+.extract-form-cover img,
+.ranking-cover img,
+.sync-banner-cover img,
+.p-cover img,
+.pl-row-cover img,
+.picker-item-cover img,
+.rewind-cover{
+  filter:contrast(1.05) saturate(1.07);
+  image-rendering:auto;
+}
+.np-art,
+#hero-cover,
+.pl-detail-cover img,
+.p-cover img{
+  filter:url(#cover-sharpen) contrast(1.05) saturate(1.07);
+  image-rendering:auto;
+}
+
 /* --- Réduction de mouvement : on respecte le choix utilisateur --- */
 @media (prefers-reduced-motion: reduce){
   *, *::before, *::after{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; scroll-behavior:auto !important; }
@@ -1849,6 +1880,15 @@ input[type="range"]{ accent-color:var(--copper); }
 </style>
 </head>
 <body>
+
+<!-- Filtre de netteté ("unsharp mask") réutilisé par les grandes pochettes -->
+<svg width="0" height="0" style="position:absolute;pointer-events:none;" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="cover-sharpen" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feConvolveMatrix order="3" preserveAlpha="true" kernelMatrix="0 -0.32 0  -0.32 2.28 -0.32  0 -0.32 0"/>
+    </filter>
+  </defs>
+</svg>
 
 <!-- Info-bulle flottante partagée par les badges CONCERT pleine taille
      (voir showFloatingTooltip/bindConcertBadgeTooltip) : position:fixed,
