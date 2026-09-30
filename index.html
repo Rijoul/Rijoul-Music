@@ -1332,6 +1332,9 @@ input,textarea{ font-family:inherit; }
 .field label{ display:block; font-size:12px; color:var(--text-dim); margin-bottom:6px; font-weight:600; }
 .field input{ width:100%; background:rgba(255,255,255,0.07); border:1px solid var(--line); color:var(--text); border-radius:14px; padding:11px 13px; font-size:14px; transition:.2s; }
 .field input:focus{ border-color:var(--glass-border-strong); background:rgba(255,255,255,0.11); }
+.field input[type="date"]{ color-scheme:dark; min-height:44px; }
+.release-date-row{ display:flex; gap:8px; align-items:center; }
+.release-date-row input{ flex:1; min-width:0; }
 .field textarea{ width:100%; background:rgba(255,255,255,0.07); border:1px solid var(--line); color:var(--text); border-radius:14px; padding:11px 13px; font-size:14px; line-height:1.6; transition:.2s; resize:vertical; }
 .field textarea:focus{ border-color:var(--glass-border-strong); background:rgba(255,255,255,0.11); }
 .field-check{ display:flex; align-items:flex-start; gap:8px; font-size:12px; color:var(--text-dim); margin:14px 0; }
@@ -2570,6 +2573,12 @@ input[type="range"]{ accent-color:var(--copper); }
 
     <div class="field" style="margin-top:14px;"><label>Titre</label><input type="text" id="upload-title" placeholder="Nom du morceau"></div>
     <div class="field"><label>Artiste</label><input type="text" id="upload-artist" placeholder="Nom de l'artiste"></div>
+    <div class="field"><label>Date de sortie d'origine <span style="font-weight:400;opacity:.7;">(optionnel)</span></label>
+      <div class="release-date-row">
+        <input type="date" id="upload-release-date" max="9999-12-31">
+        <button type="button" class="btn btn-ghost btn-sm" id="upload-release-date-clear">Effacer</button>
+      </div>
+    </div>
 
     <div class="upload-progress" id="upload-progress">
       <div class="upload-progress-bar"><div class="upload-progress-fill" id="upload-progress-fill"></div></div>
@@ -2600,6 +2609,12 @@ input[type="range"]{ accent-color:var(--copper); }
 
     <div class="field" style="margin-top:14px;"><label>Titre</label><input type="text" id="edit-title" placeholder="Nom du morceau"></div>
     <div class="field"><label>Artiste</label><input type="text" id="edit-artist" placeholder="Nom de l'artiste"></div>
+    <div class="field"><label>Date de sortie d'origine <span style="font-weight:400;opacity:.7;">(optionnel)</span></label>
+      <div class="release-date-row">
+        <input type="date" id="edit-release-date" max="9999-12-31">
+        <button type="button" class="btn btn-ghost btn-sm" id="edit-release-date-clear">Effacer</button>
+      </div>
+    </div>
 
     <!-- Réservé à l'admin : remplace le fichier audio du titre, quel que
          soit le membre qui l'a envoyé à l'origine. Action indépendante du
@@ -6994,6 +7009,7 @@ function openEditModal(trackId){
   document.getElementById('edit-error').style.display = 'none';
   document.getElementById('edit-title').value = track.title || '';
   document.getElementById('edit-artist').value = track.artist || '';
+  document.getElementById('edit-release-date').value = /^\d{4}-\d{2}-\d{2}$/.test(track.releaseDate || '') ? track.releaseDate : '';
   const preview = document.getElementById('edit-cover-preview');
   if(editCoverDataUrl){
     preview.style.background = 'transparent';
@@ -7282,6 +7298,8 @@ async function toggleEditPreview(){
   }
 }
 document.getElementById('edit-concert-preview-play').addEventListener('click', toggleEditPreview);
+document.getElementById('upload-release-date-clear').addEventListener('click', ()=>{ document.getElementById('upload-release-date').value = ''; });
+document.getElementById('edit-release-date-clear').addEventListener('click', ()=>{ document.getElementById('edit-release-date').value = ''; });
 document.getElementById('edit-submit').addEventListener('click', async ()=>{
   if(!isAdmin){ showToast("Seul l'admin peut modifier les infos d'un titre."); return; }
   if(!editingTrackId) return;
@@ -7289,13 +7307,15 @@ document.getElementById('edit-submit').addEventListener('click', async ()=>{
   errEl.style.display = 'none';
   const title = document.getElementById('edit-title').value.trim();
   const artist = document.getElementById('edit-artist').value.trim();
+  const releaseDate = document.getElementById('edit-release-date').value; // 'YYYY-MM-DD' ou ''
   if(!title){ showEditError("Merci d'indiquer un titre."); return; }
   const btn = document.getElementById('edit-submit');
   btn.disabled = true; btn.textContent = 'Enregistrement…';
   try{
     await tracksRef.doc(editingTrackId).update({
       title, artist: artist || null,
-      coverURL: editCoverDataUrl || null
+      coverURL: editCoverDataUrl || null,
+      releaseDate: releaseDate ? releaseDate : firebase.firestore.FieldValue.delete()
     });
     showToast('Titre mis à jour.');
     closeOverlay('edit-overlay');
@@ -7588,6 +7608,7 @@ function resetUploadForm(){
   uploadCoverDataUrl = null;
   document.getElementById('upload-title').value = '';
   document.getElementById('upload-artist').value = '';
+  document.getElementById('upload-release-date').value = '';
   document.getElementById('upload-audio-drop').classList.remove('has-file');
   document.getElementById('upload-audio-label').textContent = isAdmin
     ? 'Choisir un fichier audio (MP3, WAV…) ou une vidéo MP4'
@@ -7780,6 +7801,7 @@ document.getElementById('upload-submit').addEventListener('click', async ()=>{
   errEl.style.display = 'none';
   const title = document.getElementById('upload-title').value.trim();
   const artist = document.getElementById('upload-artist').value.trim();
+  const releaseDate = document.getElementById('upload-release-date').value; // 'YYYY-MM-DD' ou '' (optionnel)
   if(!uploadAudioFile){ showUploadError("Choisis d'abord un fichier audio."); return; }
   if(!title){ showUploadError("Merci d'indiquer un titre."); return; }
 
@@ -7800,6 +7822,7 @@ document.getElementById('upload-submit').addEventListener('click', async ()=>{
 
     await trackRef.set({
       title, artist: artist || null,
+      ...(releaseDate ? { releaseDate } : {}),
       coverURL: uploadCoverDataUrl || null,
       audioChunkCount: chunkCount,
       audioMimeType: mimeType,
