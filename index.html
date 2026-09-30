@@ -74,6 +74,20 @@
   --ease-silk: cubic-bezier(.19,1,.22,1);
 }
 *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+/* Couleurs d'ambiance adaptatives (remplacées en JS par les couleurs de la
+   pochette en cours de lecture). Déclarées avec @property pour que le
+   changement de couleur se fasse en fondu doux au lieu d'un saut brutal.
+   Valeurs par défaut = ambre + violet d'origine. */
+@property --ar1{ syntax:'<number>'; inherits:true; initial-value:255; }
+@property --ag1{ syntax:'<number>'; inherits:true; initial-value:176; }
+@property --ab1{ syntax:'<number>'; inherits:true; initial-value:32; }
+@property --ar2{ syntax:'<number>'; inherits:true; initial-value:169; }
+@property --ag2{ syntax:'<number>'; inherits:true; initial-value:114; }
+@property --ab2{ syntax:'<number>'; inherits:true; initial-value:255; }
+:root{
+  transition: --ar1 1.6s ease, --ag1 1.6s ease, --ab1 1.6s ease,
+              --ar2 1.6s ease, --ag2 1.6s ease, --ab2 1.6s ease;
+}
 html,body{ min-height:100%; }
 /* Le fond vit sur <html> (couleur unie) : il ne se répète plus et ne se
    coupe plus quand on scrolle au-delà de la hauteur de l'écran. */
@@ -102,11 +116,12 @@ body::before{
   left:-12%; top:-12%; width:124%;
   height:124vh; height:124lvh;
   background:
-    radial-gradient(46% 40% at 10% 8%,  rgba(255,176,32,0.20), rgba(255,176,32,0) 70%),
-    radial-gradient(44% 42% at 92% 6%,  rgba(169,114,255,0.26), rgba(169,114,255,0) 72%),
+    radial-gradient(46% 40% at 10% 8%,  rgba(var(--ar1),var(--ag1),var(--ab1),0.22), rgba(var(--ar1),var(--ag1),var(--ab1),0) 70%),
+    radial-gradient(44% 42% at 92% 6%,  rgba(var(--ar2),var(--ag2),var(--ab2),0.26), rgba(var(--ar2),var(--ag2),var(--ab2),0) 72%),
     radial-gradient(40% 36% at 96% 58%, rgba(255,95,168,0.15), rgba(255,95,168,0) 72%),
     radial-gradient(48% 40% at 6% 62%,  rgba(84,104,255,0.17), rgba(84,104,255,0) 72%),
-    radial-gradient(52% 40% at 50% 104%, rgba(70,232,227,0.16), rgba(70,232,227,0) 72%),
+    radial-gradient(52% 40% at 50% 104%, rgba(70,232,227,0.10), rgba(70,232,227,0) 72%),
+    radial-gradient(50% 38% at 50% 106%, rgba(var(--ar1),var(--ag1),var(--ab1),0.12), rgba(var(--ar1),var(--ag1),var(--ab1),0) 72%),
     radial-gradient(70% 55% at 50% 40%, rgba(24,14,48,0.55), rgba(24,14,48,0) 80%),
     linear-gradient(180deg, #05050f 0%, #080618 48%, #0c0720 100%);
   transform: translate3d(0,0,0);
@@ -1872,6 +1887,8 @@ input[type="range"]{ accent-color:var(--copper); }
   image-rendering:auto;
 }
 
+.card-lyric-snippet{ margin:3px 0 0; font-size:11px; font-style:italic; color:var(--text-faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
 /* --- Réduction de mouvement : on respecte le choix utilisateur --- */
 @media (prefers-reduced-motion: reduce){
   *, *::before, *::after{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; scroll-behavior:auto !important; }
@@ -1917,7 +1934,7 @@ input[type="range"]{ accent-color:var(--copper); }
   <input type="password" name="password" autocomplete="current-password" class="visually-hidden" tabindex="-1" aria-hidden="true">
   <div class="search-wrap" id="search-wrap">
     <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-    <input id="search-input" type="search" placeholder="Chercher un titre, un artiste…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="rijoul-search-q" role="searchbox" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onmousedown="this.removeAttribute('readonly')" onclick="this.removeAttribute('readonly')" ontouchstart="this.removeAttribute('readonly')">
+    <input id="search-input" type="search" placeholder="Chercher un titre, un artiste, des paroles…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="rijoul-search-q" role="searchbox" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onmousedown="this.removeAttribute('readonly')" onclick="this.removeAttribute('readonly')" ontouchstart="this.removeAttribute('readonly')">
     <button type="button" class="search-clear-btn" id="search-clear-btn" aria-label="Effacer la recherche" tabindex="-1">
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
     </button>
@@ -3413,6 +3430,9 @@ let allTracks = [];      // tout le catalogue, tel que reçu de Firestore (onSna
 let currentQueue = [];    // liste actuellement affichée (filtrée / vue active)
 let currentView = 'library'; // 'library' | 'mine' | 'playlists' | 'playlist-detail' | 'classement'
 let searchTerm = '';
+let searchNorm = '';        // requête normalisée (sans accents/ponctuation)
+let searchTokens = [];      // mots de la requête normalisée
+const searchIndexCache = new WeakMap(); // index de recherche par titre (recalculé si le titre/artiste/paroles changent)
 let currentTrackId = null;
 let rankingVisibleCount = 20; // Top20 -> Top50 -> Top100 via le bouton "Voir plus"
 let rankingPeriod = 'all';    // 'week' | 'month' | 'year' | 'all' — période affichée dans le Classement
@@ -4117,7 +4137,7 @@ function renderArtistSearchResults(){
     splitArtistNames(t.artist).forEach(name=>{
       if(!name) return;
       const key = artistKeyOf(name);
-      if(seen.has(key) || !key.includes(searchTerm)) return;
+      if(seen.has(key) || !artistNameMatchesSearch(name)) return;
       seen.add(key);
       matches.push({ key, name });
     });
@@ -4291,6 +4311,8 @@ if(shareAppBtn){
 
 document.getElementById('search-input').addEventListener('input', (e)=>{
   searchTerm = e.target.value.trim().toLowerCase();
+  searchNorm = normalizeSearchText(searchTerm);
+  searchTokens = searchNorm ? searchNorm.split(' ') : [];
   document.getElementById('search-wrap').classList.toggle('has-value', e.target.value.length > 0);
   renderTracks();
 });
@@ -5202,10 +5224,13 @@ function renderAddTracksList(filter){
   if(!pl) return;
   const ids = Array.isArray(pl.trackIds) ? pl.trackIds : [];
   const wrap = document.getElementById('add-tracks-list');
-  const filtered = allTracks.filter(t=>{
-    if(!filter) return true;
-    return (t.title||'').toLowerCase().includes(filter) || (t.artist||'').toLowerCase().includes(filter);
-  });
+  // Même moteur de recherche que la barre principale (accents, fautes de
+  // frappe, paroles) : on lui prête temporairement la saisie de ce champ.
+  const saved = { t: searchTerm, n: searchNorm, k: searchTokens };
+  searchTerm = filter || ''; searchNorm = normalizeSearchText(searchTerm); searchTokens = searchNorm ? searchNorm.split(' ') : [];
+  let filtered;
+  try{ filtered = sortBySearchRelevance(allTracks.filter(matchesSearch)); }
+  finally{ searchTerm = saved.t; searchNorm = saved.n; searchTokens = saved.k; }
   if(!filtered.length){
     wrap.innerHTML = `<p style="color:var(--text-faint); font-size:13px; padding:8px 2px;">Aucun titre trouvé.</p>`;
     return;
@@ -5303,10 +5328,164 @@ function fallbackCoverSvg(){
   return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Crect width="100" height="100" fill="%23181818"/%3E%3Ccircle cx="50" cy="50" r="22" fill="none" stroke="%23FFB020" stroke-width="2"/%3E%3Ccircle cx="50" cy="50" r="4" fill="%23FFB020"/%3E%3C/svg%3E';
 }
 
-function matchesSearch(t){
-  if(!searchTerm) return true;
-  return (t.title||'').toLowerCase().includes(searchTerm) || (t.artist||'').toLowerCase().includes(searchTerm);
+/* SEARCH_BLOCK_START */
+/* =========================================================
+   RECHERCHE PUISSANTE
+   - insensible aux accents, à la casse et à la ponctuation
+     (« beyonce » trouve « Beyoncé », « jayz » trouve « Jay-Z ») ;
+   - tolérante aux fautes de frappe (« rihana » trouve « Rihanna »,
+     inversion de lettres comprise) ;
+   - cherche aussi dans les paroles (les repères de temps [mm:ss.xx] des
+     paroles synchronisées sont ignorés).
+   Les résultats sont triés par pertinence : titre/artiste d'abord,
+   paroles ensuite.
+   ========================================================= */
+function normalizeSearchText(str){
+  return String(str == null ? '' : str).toLowerCase()
+    .replace(/œ/g, 'oe').replace(/æ/g, 'ae').replace(/ß/g, 'ss')
+    .replace(/ø/g, 'o').replace(/đ/g, 'd').replace(/ł/g, 'l')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 }
+// Distance d'édition (Levenshtein + inversion de deux lettres voisines),
+// abandonnée dès qu'elle dépasse `max` pour rester rapide.
+function osaDistance(a, b, max){
+  const al = a.length, bl = b.length;
+  if(Math.abs(al - bl) > max) return max + 1;
+  let prev2 = null, prev = new Array(bl + 1), cur = new Array(bl + 1);
+  for(let j = 0; j <= bl; j++) prev[j] = j;
+  for(let i = 1; i <= al; i++){
+    cur[0] = i; let rowMin = cur[0];
+    for(let j = 1; j <= bl; j++){
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      let v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      if(i > 1 && j > 1 && a.charCodeAt(i - 1) === b.charCodeAt(j - 2) && a.charCodeAt(i - 2) === b.charCodeAt(j - 1)){
+        v = Math.min(v, prev2[j - 2] + 1);
+      }
+      cur[j] = v; if(v < rowMin) rowMin = v;
+    }
+    if(rowMin > max) return max + 1;
+    prev2 = prev; prev = cur; cur = new Array(bl + 1);
+  }
+  return prev[bl];
+}
+// 2 = le mot contient exactement la saisie (début ou milieu de mot),
+// 1 = correspondance avec une faute de frappe, 0 = aucune.
+function fuzzyWordMatch(tok, word){
+  if(word.includes(tok)) return 2;
+  const n = tok.length;
+  if(n < 5) return 0; // trop court pour tolérer une faute sans faux positifs
+  const max = n >= 8 ? 2 : 1;
+  if(osaDistance(tok, word, max) <= max) return 1;
+  if(word.length > n){ // saisie encore incomplète : on compare au début du mot
+    for(let L = n - 1; L <= n + 1; L++){
+      if(L < 4 || L >= word.length) continue;
+      if(osaDistance(tok, word.slice(0, L), max) <= max) return 1;
+    }
+  }
+  return 0;
+}
+function getTrackSearchIndex(t){
+  const lyr = t.lyrics || '';
+  let idx = searchIndexCache.get(t);
+  if(idx && idx.title === t.title && idx.artist === t.artist && idx.lyr === lyr) return idx;
+  const meta = normalizeSearchText((t.title || '') + ' ' + (t.artist || ''));
+  idx = {
+    title: t.title, artist: t.artist, lyr,
+    meta, compact: meta.replace(/ /g, ''),
+    words: meta ? Array.from(new Set(meta.split(' '))) : [],
+    lyricsNorm: null, lyricWords: null
+  };
+  searchIndexCache.set(t, idx);
+  return idx;
+}
+const LYRICS_BRACKETS_RE = /\[[^\]]*\]|<\d{1,3}:\d{2}(?:[.:]\d{1,3})?>/g;
+function getLyricsNorm(idx){
+  if(idx.lyricsNorm === null) idx.lyricsNorm = idx.lyr ? normalizeSearchText(idx.lyr.replace(LYRICS_BRACKETS_RE, ' ')) : '';
+  return idx.lyricsNorm;
+}
+function getLyricWords(idx){
+  if(idx.lyricWords === null) idx.lyricWords = Array.from(new Set(getLyricsNorm(idx).split(' '))).filter(w => w.length >= 4);
+  return idx.lyricWords;
+}
+// Pertinence : 4 = phrase trouvée dans titre/artiste, 3 = tous les mots
+// trouvés, 2 = tous les mots trouvés avec faute(s) de frappe, 1 = trouvé
+// uniquement dans les paroles, 0 = pas de résultat.
+function getSearchScore(t){
+  if(!searchTerm) return 1;
+  if(!searchTokens.length){ // requête faite uniquement de symboles : ancien comportement
+    return ((t.title||'').toLowerCase().includes(searchTerm) || (t.artist||'').toLowerCase().includes(searchTerm)) ? 3 : 0;
+  }
+  const idx = getTrackSearchIndex(t);
+  if(idx.meta.includes(searchNorm) || idx.compact.includes(searchNorm.replace(/ /g, ''))) return 4;
+  let allOk = true, allExact = true;
+  for(const tok of searchTokens){
+    let best = 0;
+    for(const w of idx.words){
+      const m = fuzzyWordMatch(tok, w);
+      if(m > best) best = m;
+      if(best === 2) break;
+    }
+    if(!best){ allOk = false; break; }
+    if(best < 2) allExact = false;
+  }
+  if(allOk) return allExact ? 3 : 2;
+  if(idx.lyr){
+    const ln = getLyricsNorm(idx);
+    if(ln){
+      if(searchNorm.length >= 3 && ln.includes(searchNorm)) return 1;
+      if(searchTokens.length >= 2 && searchTokens.every(k => k.length >= 3 && ln.includes(k))) return 1;
+      if(searchTokens.length === 1 && searchTokens[0].length >= 5){
+        const tok = searchTokens[0];
+        if(getLyricWords(idx).some(w => fuzzyWordMatch(tok, w) > 0)) return 1;
+      }
+    }
+  }
+  return 0;
+}
+function matchesSearch(t){
+  return getSearchScore(t) > 0;
+}
+function isLyricsOnlyMatch(t){
+  return !!searchTerm && getSearchScore(t) === 1;
+}
+function sortBySearchRelevance(list){
+  if(!searchTerm) return list;
+  return list
+    .map((t, i) => ({ t, i, s: getSearchScore(t) }))
+    .sort((a, b) => (b.s - a.s) || (a.i - b.i))
+    .map(x => x.t);
+}
+// Ligne de paroles (texte d'origine, avec accents) qui correspond à la
+// recherche, pour l'afficher sous le titre quand seul le texte correspond.
+function findLyricsSnippet(t){
+  if(!t || !t.lyrics || !searchTokens.length) return '';
+  const lines = String(t.lyrics).split(/\r?\n/).map(raw => raw.replace(LYRICS_BRACKETS_RE, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const norm = lines.map(normalizeSearchText);
+  let hit = norm.findIndex(n => searchNorm.length >= 3 && n.includes(searchNorm));
+  if(hit < 0) hit = norm.findIndex(n => searchTokens.length >= 2 && searchTokens.every(k => k.length >= 3 && n.includes(k)));
+  if(hit < 0) hit = norm.findIndex(n => searchTokens.some(k => k.length >= 3 && n.includes(k)));
+  if(hit < 0) return '';
+  const line = lines[hit];
+  return line.length > 90 ? line.slice(0, 88) + '…' : line;
+}
+function searchLyricSnippetHtml(t){
+  if(!isLyricsOnlyMatch(t)) return '';
+  const line = findLyricsSnippet(t);
+  return `<p class="card-lyric-snippet" title="Trouvé dans les paroles">📝 ${line ? '« ' + escapeHtml(line) + ' »' : 'Trouvé dans les paroles'}</p>`;
+}
+// Un artiste correspond-il à la recherche (accents/fautes tolérés) ?
+function artistNameMatchesSearch(name){
+  if(!searchTerm) return false;
+  if(!searchTokens.length) return artistKeyOf(name).includes(searchTerm);
+  const norm = normalizeSearchText(name);
+  if(!norm) return false;
+  if(norm.includes(searchNorm) || norm.replace(/ /g, '').includes(searchNorm.replace(/ /g, ''))) return true;
+  const words = norm.split(' ');
+  return searchTokens.every(tok => words.some(w => fuzzyWordMatch(tok, w) > 0));
+}
+/* SEARCH_BLOCK_END */
 
 /* =========================================================
    PAGES ARTISTE — clé normalisée (identique à celle déjà utilisée pour le
@@ -6082,7 +6261,7 @@ document.getElementById('home-pl-see-all').addEventListener('click', ()=> switch
 function renderTracks(){
   const uid = auth.currentUser ? auth.currentUser.uid : null;
   if(currentView === 'library'){
-    const list = getOrderedLibraryTracks().filter(matchesSearch);
+    const list = sortBySearchRelevance(getOrderedLibraryTracks().filter(matchesSearch));
     currentQueue = list;
     paintGrid('library-grid', 'library-empty', 'library-count', list, {
       emptyTitle: searchTerm ? 'Aucun résultat' : "Aucun titre pour l'instant",
@@ -6092,7 +6271,7 @@ function renderTracks(){
     // au début de #library-grid, qui vient d'être (re)rempli ci-dessus.
     renderArtistSearchResults();
   }else if(currentView === 'mine'){
-    const list = allTracks.filter(t => uid && t.uploaderId === uid).filter(matchesSearch);
+    const list = sortBySearchRelevance(allTracks.filter(t => uid && t.uploaderId === uid).filter(matchesSearch));
     currentQueue = list;
     paintGrid('mine-grid', 'mine-empty', 'mine-count', list, {
       emptyTitle: "Tu n'as encore rien ajouté",
@@ -6152,6 +6331,7 @@ function paintGrid(gridId, emptyId, countId, list, texts){
       </div>
       <p class="card-title">${escapeHtml(t.title || 'Sans titre')}</p>
       <p class="card-artist">${artistLinksMarkup(t.artist)}</p>
+      ${searchLyricSnippetHtml(t)}
       <div class="card-meta">
         <div class="card-uploader">${t.uploaderPhoto ? `<img src="${escapeHtml(t.uploaderPhoto)}" alt="">` : ''}<span>${escapeHtml(t.uploaderName || 'Membre')}</span></div>
         <button class="like-btn ${liked ? 'liked' : ''}" data-like="${t.id}">
@@ -7976,6 +8156,112 @@ document.getElementById('player-reveal-btn').addEventListener('click', ()=>{
 /* =========================================================
    LECTURE PLEIN ÉCRAN ("Now Playing")
    ========================================================= */
+
+/* =========================================================
+   THÈME ADAPTATIF — le fond et ses halos prennent les couleurs de la
+   pochette du titre en cours (fondu doux via @property). Sans pochette,
+   ou si l'image ne peut pas être lue, on revient à l'ambre/violet d'origine.
+   ========================================================= */
+const ADAPT_DEFAULT_C1 = [255, 176, 32];
+const ADAPT_DEFAULT_C2 = [169, 114, 255];
+let adaptiveThemeKey = null;
+function setAdaptiveColors(c1, c2){
+  const st = document.documentElement.style;
+  st.setProperty('--ar1', Math.round(c1[0])); st.setProperty('--ag1', Math.round(c1[1])); st.setProperty('--ab1', Math.round(c1[2]));
+  st.setProperty('--ar2', Math.round(c2[0])); st.setProperty('--ag2', Math.round(c2[1])); st.setProperty('--ab2', Math.round(c2[2]));
+}
+function adaptRgbToHsl(r, g, b){
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+  let h = 0, s = 0;
+  if(max !== min){
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if(max === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if(max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+  }
+  return [h, s, l];
+}
+function adaptHslToRgb(h, s, l){
+  h = ((h % 360) + 360) % 360 / 360;
+  if(s === 0){ const v = l * 255; return [v, v, v]; }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+  const f = t => { t = (t + 1) % 1; if(t < 1/6) return p + (q - p) * 6 * t; if(t < 1/2) return q; if(t < 2/3) return p + (q - p) * (2/3 - t) * 6; return p; };
+  return [f(h + 1/3) * 255, f(h) * 255, f(h - 1/3) * 255];
+}
+// Rend une couleur de pochette exploitable comme halo de fond : assez
+// saturée et lumineuse pour se voir, jamais éblouissante.
+function adaptVivid(rgb){
+  const [h, s, l] = adaptRgbToHsl(rgb[0], rgb[1], rgb[2]);
+  if(s < 0.14) return adaptHslToRgb(h, s, Math.min(0.66, Math.max(0.5, l))); // pochette grise : reste sobre
+  return adaptHslToRgb(h, Math.min(0.95, Math.max(0.55, s * 1.1)), Math.min(0.62, Math.max(0.46, l)));
+}
+function extractAdaptivePalette(img){
+  try{
+    if(!img || !img.naturalWidth) return null;
+    const size = 32;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, size, size);
+    const d = ctx.getImageData(0, 0, size, size).data; // lève une erreur si l'image est cross-origin sans CORS
+    const buckets = new Map();
+    for(let i = 0; i < d.length; i += 4){
+      if(d[i + 3] < 128) continue;
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      const l = (max + min) / 510;
+      if(l < 0.1 || l > 0.93) continue; // presque noir / presque blanc : pas une couleur
+      const s = max === min ? 0 : (max - min) / (255 - Math.abs(max + min - 255));
+      const w = 0.25 + s * s * 3; // les couleurs saturées comptent davantage que les gris
+      const key = (r >> 5) + ',' + (g >> 5) + ',' + (b >> 5);
+      let e = buckets.get(key);
+      if(!e){ e = { r: 0, g: 0, b: 0, w: 0 }; buckets.set(key, e); }
+      e.r += r * w; e.g += g * w; e.b += b * w; e.w += w;
+    }
+    const list = Array.from(buckets.values()).map(e => ({ rgb: [e.r / e.w, e.g / e.w, e.b / e.w], w: e.w })).sort((a, b) => b.w - a.w);
+    if(!list.length) return null;
+    const first = list[0];
+    const h1 = adaptRgbToHsl(first.rgb[0], first.rgb[1], first.rgb[2])[0];
+    // 2e couleur : la plus présente dont la teinte diffère nettement de la 1re
+    const second = list.find(c => {
+      if(c === first || c.w < first.w * 0.12) return false;
+      const [h, s] = adaptRgbToHsl(c.rgb[0], c.rgb[1], c.rgb[2]);
+      const dh = Math.abs(((h - h1 + 540) % 360) - 180);
+      return s > 0.2 && dh >= 40;
+    });
+    let c2;
+    if(second) c2 = adaptVivid(second.rgb);
+    else { // pochette quasi monochrome : on décale la teinte pour garder un dégradé
+      const [h, s, l] = adaptRgbToHsl(first.rgb[0], first.rgb[1], first.rgb[2]);
+      c2 = adaptVivid(adaptHslToRgb(h + 38, Math.max(s, 0.5), Math.min(0.6, Math.max(0.5, l))));
+    }
+    return { c1: adaptVivid(first.rgb), c2 };
+  }catch(err){
+    return null; // image cross-origin non autorisée pour le canevas : on garde les couleurs par défaut
+  }
+}
+function applyAdaptiveTheme(track){
+  const cover = track && track.coverURL;
+  if(!cover){
+    if(adaptiveThemeKey !== 'default'){ adaptiveThemeKey = 'default'; setAdaptiveColors(ADAPT_DEFAULT_C1, ADAPT_DEFAULT_C2); }
+    return;
+  }
+  const key = track.id + '|' + cover.length + '|' + cover.slice(-32);
+  if(key === adaptiveThemeKey) return; // même titre, même pochette : rien à recalculer
+  adaptiveThemeKey = key;
+  const img = new Image();
+  if(!/^(data|blob):/.test(cover)) img.crossOrigin = 'anonymous';
+  img.onload = ()=>{
+    if(adaptiveThemeKey !== key) return; // un autre titre est passé entre-temps
+    const p = extractAdaptivePalette(img);
+    if(p) setAdaptiveColors(p.c1, p.c2); else setAdaptiveColors(ADAPT_DEFAULT_C1, ADAPT_DEFAULT_C2);
+  };
+  img.onerror = ()=>{ if(adaptiveThemeKey === key) setAdaptiveColors(ADAPT_DEFAULT_C1, ADAPT_DEFAULT_C2); };
+  img.src = cover;
+}
 function syncNowPlayingUI(){
   const pCover = document.getElementById('p-cover');
   document.getElementById('np-cover').src = pCover.src;
@@ -7986,6 +8272,7 @@ function syncNowPlayingUI(){
   // Date de sortie d'origine (discrète, seulement si renseignée)
   const npDateEl = document.getElementById('np-release-date');
   const npTrack = (typeof allTracks !== 'undefined' && currentTrackId) ? allTracks.find(t => t.id === currentTrackId) : null;
+  applyAdaptiveTheme(npTrack); // fond aux couleurs de la pochette
   const npRd = npTrack && /^(\d{4})-(\d{2})-(\d{2})$/.exec(npTrack.releaseDate || '');
   if(npRd){
     const d = new Date(Number(npRd[1]), Number(npRd[2]) - 1, Number(npRd[3]));
