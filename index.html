@@ -1894,6 +1894,36 @@ input[type="range"]{ accent-color:var(--copper); }
   *, *::before, *::after{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; scroll-behavior:auto !important; }
   body::before{ animation:none !important; }
 }
+/* ===== MODE DJ (admin) ===== */
+#dj-overlay{position:fixed;inset:0;z-index:300;display:none;flex-direction:column;background:radial-gradient(120% 80% at 50% 0,#1a1030,#05040a 70%);color:var(--text);padding:12px;gap:10px;overflow-y:auto}
+#dj-overlay.open{display:flex}
+.dj-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dj-top h2{font-size:17px;letter-spacing:.14em;margin:0;flex:1;color:var(--copper-bright)}
+.dj-st{font-size:12px;color:var(--text-faint);font-family:monospace}
+.dj-main{display:grid;grid-template-columns:1fr 150px 1fr;gap:10px}
+.dj-deck,.dj-mix,.dj-lib{background:rgba(255,255,255,.05);border:1px solid var(--glass-border);border-radius:16px;padding:12px}
+.dj-deck[data-d=a]{--c:var(--cyan)}.dj-deck[data-d=b]{--c:var(--pink)}
+.dj-ttl{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--c)}
+.dj-time{font:600 26px monospace;margin:4px 0}
+.dj-bar{height:34px;border-radius:8px;background:#000;position:relative;cursor:pointer;overflow:hidden;border:1px solid var(--line-strong)}
+.dj-bar i{position:absolute;inset:0 auto 0 0;width:0;background:linear-gradient(90deg,transparent,var(--c));opacity:.6}
+.dj-btns{display:flex;gap:8px;margin:10px 0}
+.dj-btns button{flex:1;padding:14px 0;border-radius:12px;border:1px solid var(--c);background:transparent;color:var(--c);font-weight:800;cursor:pointer}
+.dj-btns button.on{background:var(--c);color:#000}
+.dj-knobs{display:flex;gap:8px;justify-content:space-around;align-items:flex-end}
+.dj-k{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--text-dim)}
+.dj-k input[type=range]{accent-color:var(--c,var(--copper))}
+.dj-k.v input{writing-mode:vertical-lr;direction:rtl;height:110px}
+.dj-mix{display:flex;flex-direction:column;gap:14px;justify-content:center;align-items:stretch}
+.dj-lib input[type=text]{width:100%;padding:9px;border-radius:10px;border:1px solid var(--glass-border);background:rgba(0,0,0,.4);color:#fff;margin-bottom:8px}
+.dj-list{max-height:34vh;overflow-y:auto}
+.dj-row{display:flex;gap:6px;align-items:center;padding:6px 4px;border-bottom:1px solid var(--line);font-size:13px}
+.dj-row span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dj-row button{padding:5px 12px;border-radius:8px;border:0;font-weight:800;cursor:pointer}
+.dj-learn [data-ctl]{outline:1px dashed var(--copper);outline-offset:2px}
+.dj-armed{outline:2px solid var(--copper)!important;animation:djp .8s infinite alternate}
+@keyframes djp{to{outline-color:transparent}}
+@media(max-width:700px){.dj-main{grid-template-columns:1fr}.dj-mix{order:-1}}
 </style>
 </head>
 <body>
@@ -1963,6 +1993,7 @@ input[type="range"]{ accent-color:var(--copper); }
       <div class="user-dd">
         <button class="dd-item" id="dd-edit-profile">👤 Modifier le profil</button>
         <button class="dd-item" id="dd-my-uploads">🎵 Mes ajouts</button>
+        <button class="dd-item" id="dd-dj" style="display:none">🎛️ Mode DJ</button>
         <div class="dd-sep"></div>
         <button class="dd-item danger" id="dd-logout">↪ Se déconnecter</button>
       </div>
@@ -2279,6 +2310,18 @@ input[type="range"]{ accent-color:var(--copper); }
 <button class="player-reveal-btn" id="player-reveal-btn" aria-label="Afficher la barre de lecture" title="Afficher la barre de lecture">
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
 </button>
+<div id="dj-overlay" aria-label="Mode DJ">
+  <div class="dj-top"><h2>🎛️ RIJOUL DJ</h2><span class="dj-st" id="dj-st">MIDI : non connecté</span>
+    <button class="btn btn-ghost btn-sm" id="dj-midi">Connecter MIDI</button>
+    <button class="btn btn-ghost btn-sm" id="dj-learn">Assigner</button>
+    <button class="btn btn-ghost btn-sm" id="dj-reset">Réinit. MIDI</button>
+    <button class="btn btn-gold btn-sm" id="dj-close">✕ Fermer</button></div>
+  <div class="dj-main"><div class="dj-deck" data-d="a" id="dj-da"></div>
+    <div class="dj-mix"><label class="dj-k">Master<input type="range" min="0" max="1" step=".001" value=".8" data-ctl="master"></label>
+      <label class="dj-k">Crossfader A ⟷ B<input type="range" min="0" max="1" step=".001" value=".5" data-ctl="xfade"></label></div>
+    <div class="dj-deck" data-d="b" id="dj-db"></div></div>
+  <div class="dj-lib"><input type="text" id="dj-q" placeholder="Rechercher un titre…"><div class="dj-list" id="dj-list"></div></div>
+</div>
 <audio id="audio-el" preload="metadata" crossorigin="anonymous"></audio>
 
 <script>
@@ -3540,7 +3583,7 @@ function positionUserDropdown(){
   userDropdown.style.setProperty('--dd-right', Math.max(8, window.innerWidth - r.right) + 'px');
 }
 userChip.addEventListener('click', (e)=>{
-  if(e.target.closest('#dd-logout') || e.target.closest('#dd-edit-profile') || e.target.closest('#dd-my-uploads')) return;
+  if(e.target.closest('#dd-logout') || e.target.closest('#dd-edit-profile') || e.target.closest('#dd-my-uploads') || e.target.closest('#dd-dj')) return;
   const willOpen = !userChip.classList.contains('open');
   userChip.classList.toggle('open', willOpen);
   // Le menu vit maintenant hors de .user-chip (déplacé dans <body>), donc le
@@ -3800,6 +3843,7 @@ document.getElementById('profile-save').addEventListener('click', async ()=>{
 auth.onAuthStateChanged(async (user)=>{
   const realUser = user && !user.isAnonymous ? user : null;
   isAdmin = !!(realUser && realUser.uid === ADMIN_UID);
+  const ddDj=document.getElementById('dd-dj'); if(ddDj) ddDj.style.display = isAdmin ? '' : 'none';
   if(realUser){
     accountBtn.style.display = 'none';
     userChip.classList.add('visible');
@@ -8977,6 +9021,96 @@ function setupMediaSessionHandlers(){
   });
 }
 setupMediaSessionHandlers();
+/* ===== MODE DJ (admin) : 2 platines, EQ 3 bandes, crossfader, Web MIDI (DDJ-200) ===== */
+(function(){
+const ov=document.getElementById('dj-overlay'), st=document.getElementById('dj-st');
+let ctx=null, master=null, learn=false, armed=null, midiOK=false;
+const decks={}, map=JSON.parse(localStorage.getItem('djmap')||'{}');
+const el=(id)=>document.getElementById(id);
+['a','b'].forEach(k=>{
+  el('dj-d'+k).innerHTML=`<div class="dj-ttl" id="t${k}">— Platine ${k.toUpperCase()} vide —</div><div class="dj-time" id="c${k}">0:00 / 0:00</div>
+  <div class="dj-bar" id="p${k}"><i></i></div>
+  <div class="dj-btns"><button data-ctl="${k}-play" id="pl${k}">▶ PLAY</button><button data-ctl="${k}-cue">CUE</button></div>
+  <div class="dj-knobs">${[['hi','HI'],['mid','MID'],['lo','LOW']].map(([n,l])=>`<label class="dj-k v">${l}<input type="range" min="0" max="1" step=".001" value=".5" data-ctl="${k}-${n}"></label>`).join('')}
+  <label class="dj-k v">VOL<input type="range" min="0" max="1" step=".001" value=".8" data-ctl="${k}-vol"></label>
+  <label class="dj-k v">PITCH<input type="range" min="0" max="1" step=".001" value=".5" data-ctl="${k}-pitch"></label></div>`;
+});
+function init(){
+  if(ctx) return;
+  ctx=new (window.AudioContext||window.webkitAudioContext)();
+  master=ctx.createGain(); master.connect(ctx.destination);
+  ['a','b'].forEach(k=>{
+    const a=new Audio(); a.preload='auto';
+    const s=ctx.createMediaElementSource(a), lo=ctx.createBiquadFilter(), mi=ctx.createBiquadFilter(), hi=ctx.createBiquadFilter(), vol=ctx.createGain(), xf=ctx.createGain();
+    lo.type='lowshelf'; lo.frequency.value=200; mi.type='peaking'; mi.frequency.value=1000; mi.Q.value=.7; hi.type='highshelf'; hi.frequency.value=3500;
+    s.connect(lo); lo.connect(mi); mi.connect(hi); hi.connect(vol); vol.connect(xf); xf.connect(master);
+    decks[k]={a,lo,mi,hi,vol,xf,cue:0};
+    a.addEventListener('timeupdate',()=>{ const d=a.duration||0; el('c'+k).textContent=formatTime(a.currentTime)+' / '+formatTime(d); el('p'+k).firstChild.style.width=(d?a.currentTime/d*100:0)+'%'; });
+    const sync=()=>el('pl'+k).classList.toggle('on',!a.paused);
+    a.addEventListener('play',sync); a.addEventListener('pause',sync);
+    el('p'+k).addEventListener('click',e=>{ if(learn||!a.duration) return; const r=e.currentTarget.getBoundingClientRect(); a.currentTime=(e.clientX-r.left)/r.width*a.duration; });
+  });
+  apply();
+}
+const db=(v)=>(v-.5)*36;
+function xfade(x){ if(!ctx) return; decks.a.xf.gain.value=Math.cos(x*Math.PI/2); decks.b.xf.gain.value=Math.sin(x*Math.PI/2); }
+function apply(){ ov.querySelectorAll('input[data-ctl]').forEach(i=>i.dispatchEvent(new Event('input'))); }
+ov.addEventListener('input',e=>{
+  const c=e.target.dataset&&e.target.dataset.ctl; if(!c||!ctx) return; const v=+e.target.value;
+  if(c==='master') master.gain.value=v*v;
+  else if(c==='xfade') xfade(v);
+  else { const [k,n]=c.split('-'), d=decks[k]; if(!d) return;
+    if(n==='vol') d.vol.gain.value=v*v; else if(n==='hi') d.hi.gain.value=db(v); else if(n==='mid') d.mi.gain.value=db(v);
+    else if(n==='lo') d.lo.gain.value=db(v); else if(n==='pitch') d.a.playbackRate.value=.92+v*.16; }
+});
+ov.addEventListener('click',e=>{
+  const t=e.target.closest('[data-ctl]');
+  if(learn&&t){ e.preventDefault(); e.stopPropagation(); ov.querySelectorAll('.dj-armed').forEach(x=>x.classList.remove('dj-armed')); armed=t.dataset.ctl; t.classList.add('dj-armed'); st.textContent='Bouge/appuie sur la commande du contrôleur…'; return; }
+  if(!t||!ctx) return; const [k,n]=t.dataset.ctl.split('-'), d=decks[k]; if(!d||!n) return;
+  if(n==='play'){ if(ctx.state!=='running') ctx.resume(); d.a.paused?d.a.play().catch(()=>{}):d.a.pause(); }
+  else if(n==='cue'){ d.a.pause(); d.a.currentTime=d.cue; }
+},true);
+async function load(k,id){
+  init(); if(ctx.state!=='running') ctx.resume();
+  const tr=allTracks.find(t=>t.id===id); if(!tr) return;
+  try{ const url=await getTrackAudioBlobUrl(tr), d=decks[k]; d.a.pause(); d.a.src=url; d.cue=0; d.a.load();
+    el('t'+k).textContent=(tr.artist?tr.artist+' – ':'')+(tr.title||'Sans titre'); showToast('Titre chargé sur la platine '+k.toUpperCase()); }
+  catch(e){ showToast('Impossible de charger ce titre.'); }
+}
+function renderList(){
+  const q=el('dj-q').value.trim().toLowerCase();
+  el('dj-list').innerHTML=allTracks.filter(t=>!q||((t.title||'')+' '+(t.artist||'')).toLowerCase().includes(q)).slice(0,80).map(t=>
+   `<div class="dj-row"><span>${escapeHtml((t.artist?t.artist+' – ':'')+(t.title||'Sans titre'))}</span><button style="background:var(--cyan)" data-ld="a" data-id="${t.id}">A</button><button style="background:var(--pink)" data-ld="b" data-id="${t.id}">B</button></div>`).join('')||'<div class="dj-row">Aucun titre</div>';
+}
+el('dj-q').addEventListener('input',renderList);
+el('dj-list').addEventListener('click',e=>{ const b=e.target.closest('[data-ld]'); if(b) load(b.dataset.ld,b.dataset.id); });
+/* --- Web MIDI : mapping par apprentissage (les numéros de la DDJ-200 varient selon le mode) --- */
+const key=(m)=>{ const s=m[0], t=s&0xF0; return (t===0x80?(0x90|(s&15)):s)+':'+m[1]; };
+function onMidi(m){
+  const k=key(m.data), v=m.data[2]; st.textContent='MIDI '+[...m.data].join(' ');
+  if(learn&&armed){ map[k]=armed; localStorage.setItem('djmap',JSON.stringify(map)); showToast('Assigné : '+armed); ov.querySelectorAll('.dj-armed').forEach(x=>x.classList.remove('dj-armed')); armed=null; return; }
+  const c=map[k]; if(!c||!ctx&&!/-(play|cue)$/.test(c)&&c!=='master'&&c!=='xfade') { if(!c) return; }
+  const t=ov.querySelector(`[data-ctl="${c}"]`); if(!t) return;
+  if(t.tagName==='INPUT'){ t.value=v/127; t.dispatchEvent(new Event('input',{bubbles:true})); }
+  else if((m.data[0]&0xF0)===0x90&&v>0){ init(); t.click(); }
+}
+el('dj-midi').addEventListener('click',async()=>{
+  if(!navigator.requestMIDIAccess){ showToast('Web MIDI non supporté (utilise Chrome/Edge).'); return; }
+  try{ const a=await navigator.requestMIDIAccess(); const bind=()=>{ const n=[]; a.inputs.forEach(i=>{ i.onmidimessage=onMidi; n.push(i.name); }); midiOK=n.length>0; st.textContent=n.length?'MIDI : '+n.join(', '):'MIDI : aucun appareil'; };
+    a.onstatechange=bind; bind(); }catch(e){ st.textContent='MIDI : accès refusé'; }
+});
+el('dj-learn').addEventListener('click',()=>{ learn=!learn; armed=null; ov.classList.toggle('dj-learn',learn); el('dj-learn').textContent=learn?'Assigner : ON':'Assigner'; if(learn) st.textContent='Clique une commande à l\'écran, puis touche le contrôleur.'; });
+el('dj-reset').addEventListener('click',()=>{ for(const k in map) delete map[k]; localStorage.removeItem('djmap'); showToast('Assignations MIDI effacées.'); });
+function open(){
+  if(!isAdmin){ showToast('Mode DJ réservé à l\'admin.'); return; }
+  if(radioModeActive){ showToast('Quitte la Radio Direct avant d\'ouvrir le mode DJ. 🔴'); return; }
+  try{ audioEl.pause(); }catch(e){}
+  init(); renderList(); ov.classList.add('open');
+}
+function close(){ ov.classList.remove('open'); ['a','b'].forEach(k=>{ if(decks[k]) decks[k].a.pause(); }); }
+el('dj-close').addEventListener('click',close);
+el('dd-dj').addEventListener('click',open);
+})();
 // Filet de sécurité pour les claviers/télécommandes qui envoient les touches
 // multimédias comme de simples événements clavier (peu d'écouteurs le font,
 // mais certains claviers Bluetooth ou dongles le font).
