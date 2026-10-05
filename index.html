@@ -2312,7 +2312,8 @@ input[type="range"]{ accent-color:var(--copper); }
 </button>
 <div id="dj-overlay" aria-label="Mode DJ">
   <div class="dj-top"><h2>🎛️ RIJOUL DJ</h2><span class="dj-st" id="dj-st">MIDI : non connecté</span>
-    <button class="btn btn-ghost btn-sm" id="dj-midi">Connecter MIDI</button>
+    <button class="btn btn-ghost btn-sm" id="dj-ble">📶 Bluetooth</button>
+    <button class="btn btn-ghost btn-sm" id="dj-midi">USB / MIDI</button>
     <button class="btn btn-ghost btn-sm" id="dj-learn">Assigner</button>
     <button class="btn btn-ghost btn-sm" id="dj-reset">Réinit. MIDI</button>
     <button class="btn btn-gold btn-sm" id="dj-close">✕ Fermer</button></div>
@@ -9101,6 +9102,37 @@ el('dj-midi').addEventListener('click',async()=>{
 });
 el('dj-learn').addEventListener('click',()=>{ learn=!learn; armed=null; ov.classList.toggle('dj-learn',learn); el('dj-learn').textContent=learn?'Assigner : ON':'Assigner'; if(learn) st.textContent='Clique une commande à l\'écran, puis touche le contrôleur.'; });
 el('dj-reset').addEventListener('click',()=>{ for(const k in map) delete map[k]; localStorage.removeItem('djmap'); showToast('Assignations MIDI effacées.'); });
+/* --- Bluetooth direct (Web Bluetooth + BLE-MIDI) : pas besoin d'appairer dans les réglages Android --- */
+const BLE_SVC='03b80e5a-ede8-4b33-a751-6ce34ec4c700', BLE_CHR='7772e5db-3868-4112-a1a9-f2669d106bf3';
+function parseBle(dv){
+  const b=new Uint8Array(dv.buffer,dv.byteOffset,dv.byteLength); let i=1, status=0;
+  while(i<b.length){
+    const x=b[i];
+    if(x&0x80){
+      if(i+1<b.length && (b[i+1]&0x80)){ i++; continue; }          // octet d'horodatage
+      status=x; i++;
+      if(status===0xF0){ while(i<b.length && b[i]!==0xF7) i++; i++; status=0; continue; } // sysex ignoré
+    }
+    if(!status){ i++; continue; }
+    const n=(status&0xF0)===0xC0||(status&0xF0)===0xD0?1:2;
+    if(i+n>b.length) break;
+    onMidi({data:n===1?[status,b[i]]:[status,b[i],b[i+1]]}); i+=n;
+  }
+}
+el('dj-ble').addEventListener('click',async()=>{
+  if(!navigator.bluetooth){ showToast('Bluetooth web non supporté (utilise Chrome sur Android/PC).'); return; }
+  try{
+    st.textContent='Mets la platine en mode Bluetooth, puis choisis-la dans la liste…';
+    const dev=await navigator.bluetooth.requestDevice({filters:[{services:[BLE_SVC]},{namePrefix:'DDJ'}],optionalServices:[BLE_SVC]});
+    dev.addEventListener('gattserverdisconnected',()=>{ st.textContent='Bluetooth : '+(dev.name||'appareil')+' déconnecté'; });
+    const srv=await dev.gatt.connect(), svc=await srv.getPrimaryService(BLE_SVC), ch=await svc.getCharacteristic(BLE_CHR);
+    ch.addEventListener('characteristicvaluechanged',e=>parseBle(e.target.value));
+    await ch.startNotifications();
+    st.textContent='Bluetooth : '+(dev.name||'platine')+' connectée ✅'; showToast('Platine connectée en Bluetooth.');
+  }catch(e){
+    st.textContent='Bluetooth : '+(e&&e.name==='NotFoundError'?'aucun appareil choisi':'échec ('+(e&&e.message||e)+')');
+  }
+});
 function open(){
   if(!isAdmin){ showToast('Mode DJ réservé à l\'admin.'); return; }
   if(radioModeActive){ showToast('Quitte la Radio Direct avant d\'ouvrir le mode DJ. 🔴'); return; }
