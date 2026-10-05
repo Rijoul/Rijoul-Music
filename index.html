@@ -8749,11 +8749,24 @@ async function playTrackById(trackId, direction, opts){
     if(currentTrackId === trackId) stopPlayback();
   }
 }
+/* Relance la lecture ET remet réellement le son. Trois causes de "ça joue à
+   l'écran mais rien dans l'enceinte" (JBL / casque Bluetooth) :
+   1) l'AudioContext est "suspended" ou "interrupted" (changement de sortie
+      Bluetooth, écran verrouillé) : il faut le reprendre ;
+   2) le gain principal est resté à ~0 après un fondu de pause fait depuis
+      l'écran : il faut le remonter ;
+   3) l'ancien handler Media Session appelait seulement audioEl.play(). */
+function wakeAudioAndPlay(){
+  if(!audioEl.src) return;
+  if(audioCtx && audioCtx.state !== 'running'){
+    try{ audioCtx.resume().catch(()=>{}); }catch(e){}
+  }
+  audioEl.play().then(()=> fadeGainTo(getEffectiveVolume())).catch(()=>{});
+}
 function togglePlayPause(){
   if(!audioEl.src) return;
   if(audioEl.paused){
-    if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-    audioEl.play().then(()=> fadeGainTo(getEffectiveVolume())).catch(()=>{});
+    wakeAudioAndPlay();
   }else{
     // En Radio Direct, impossible de mettre en pause : la diffusion
     // continue pour tout le monde, on ne peut que la rejoindre ou la
@@ -8947,7 +8960,7 @@ function setupMediaSessionHandlers(){
   // laisserait l'ancien morceau jouer indéfiniment par-dessus le nouveau.
   safeSetHandler('nexttrack', ()=> playAdjacent(1, { crossfade:false }));
   safeSetHandler('previoustrack', ()=> playAdjacent(-1, { crossfade:false }));
-  safeSetHandler('play', ()=>{ if(audioEl.src) audioEl.play().catch(()=>{}); });
+  safeSetHandler('play', ()=> wakeAudioAndPlay());
   safeSetHandler('pause', ()=>{
     // Radio Direct : la pause n'est pas autorisée, même depuis l'écran de
     // verrouillage / les commandes du casque.
@@ -9253,6 +9266,11 @@ audioEl.addEventListener('play', ()=>{
   updateHeroPlayState();
   pushPlaybackState();
   if('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+});
+audioEl.addEventListener('playing', ()=>{
+  // Filet de sécurité (JBL, casque, télécommande, verrou d'écran) : si le
+  // moteur Web Audio dort encore, on le réveille pour que le son sorte.
+  if(audioCtx && audioCtx.state !== 'running'){ try{ audioCtx.resume().catch(()=>{}); }catch(e){} }
 });
 audioEl.addEventListener('pause', ()=>{
   pPlayIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
