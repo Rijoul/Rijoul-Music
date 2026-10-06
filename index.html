@@ -1946,6 +1946,7 @@ input[type="range"]{ accent-color:var(--copper); }
 .dj-learn [data-ctl]{outline:1px dashed var(--copper);outline-offset:2px}
 .dj-armed{outline:2px solid var(--copper)!important;animation:djp .8s infinite alternate}
 @keyframes djp{to{outline-color:transparent}}
+body:not(.is-admin) #upload-open-btn,body:not(.is-admin) #empty-upload-btn,body:not(.is-admin) #mine-upload-btn{display:none!important}
 </style>
 </head>
 <body>
@@ -3141,7 +3142,7 @@ const googleProvider = new firebase.auth.GoogleAuthProvider();
    puis réassemblés au moment de la lecture.
    ========================================================= */
 const AUDIO_CHUNK_SIZE = 900000; // caractères base64 par document (~900 Ko, sous la limite de 1 Mo Firestore) — plus gros = moins de documents à lire donc lecture plus rapide
-const MAX_AUDIO_BYTES = 20 * 1024 * 1024; // 20 Mo max par fichier audio d'origine
+const MAX_AUDIO_BYTES = 100 * 1024 * 1024; // 100 Mo max par fichier importé (audio ou vidéo)
 const audioBlobCache = new Map(); // trackId -> URL de blob déjà reconstruite (évite de retélécharger)
 const audioBlobFetchInFlight = new Map(); // trackId -> Promise en cours (évite les doubles téléchargements simultanés)
 
@@ -3863,6 +3864,7 @@ document.getElementById('profile-save').addEventListener('click', async ()=>{
 auth.onAuthStateChanged(async (user)=>{
   const realUser = user && !user.isAnonymous ? user : null;
   isAdmin = !!(realUser && realUser.uid === ADMIN_UID);
+  document.body.classList.toggle('is-admin', isAdmin);
   const ddDj=document.getElementById('dd-dj'); if(ddDj) ddDj.style.display = isAdmin ? '' : 'none';
   if(realUser){
     accountBtn.style.display = 'none';
@@ -7895,6 +7897,7 @@ uploadOpenBtns.forEach(id=>{
 });
 function openUploadModal(){
   if(!auth.currentUser){ clearAuthErrors(); openOverlay('account-overlay'); return; }
+  if(!isAdmin){ showToast("L'import de musiques est réservé à l'admin."); return; }
   resetUploadForm();
   openOverlay('upload-overlay');
 }
@@ -7980,9 +7983,8 @@ function chunkString(str, size){
 async function uploadAudioToFirestore(trackRef, file, uploaderId, onProgress){
   // Pas de limite de taille pour une vidéo MP4 envoyée par l'admin (seul
   // cas où un fichier vidéo peut arriver ici, cf. validation à la sélection).
-  const isVideoFile = (file.type || '').startsWith('video/');
-  const bypassSizeLimit = isVideoFile && isAdmin;
-  if(!bypassSizeLimit && file.size > MAX_AUDIO_BYTES){
+  if(!isAdmin) throw new Error("Seul l'admin peut importer des musiques.");
+  if(file.size > MAX_AUDIO_BYTES){
     throw new Error(`Fichier trop volumineux (max ${Math.round(MAX_AUDIO_BYTES / (1024*1024))} Mo).`);
   }
   const base64 = await readFileAsBase64(file);
@@ -8092,6 +8094,7 @@ function bindHoverPrefetch(container){
 document.getElementById('upload-submit').addEventListener('click', async ()=>{
   const user = auth.currentUser;
   if(!user){ clearAuthErrors(); openOverlay('account-overlay'); return; }
+  if(!isAdmin){ showToast("L'import de musiques est réservé à l'admin."); return; }
   const errEl = document.getElementById('upload-error');
   errEl.style.display = 'none';
   const title = document.getElementById('upload-title').value.trim();
