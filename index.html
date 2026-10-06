@@ -1948,12 +1948,12 @@ input[type="range"]{ accent-color:var(--copper); }
 @keyframes djp{to{outline-color:transparent}}
 body:not(.is-admin) #upload-open-btn,body:not(.is-admin) #empty-upload-btn,body:not(.is-admin) #mine-upload-btn{display:none!important}
 /* Badge "WAV" (admin) : pochette en affichage premium (liseré doré, lueur, reflet animé) */
-.wav-badge{position:absolute;top:8px;right:8px;z-index:3;padding:3px 8px;border-radius:6px;background:linear-gradient(135deg,#fff3c4,#ffb020 45%,#b86a00);color:#2a1700;font-family:var(--mono);font-size:9.5px;font-weight:800;letter-spacing:.1em;line-height:1;box-shadow:0 0 12px rgba(255,176,32,.7),inset 0 1px 0 rgba(255,255,255,.6);cursor:default}
+.wav-badge{position:absolute;bottom:8px;left:8px;z-index:3;padding:3px 8px;border-radius:6px;background:linear-gradient(135deg,#fff3c4,#ffb020 45%,#b86a00);color:#2a1700;font-family:var(--mono);font-size:9.5px;font-weight:800;letter-spacing:.1em;line-height:1;box-shadow:0 0 12px rgba(255,176,32,.7),inset 0 1px 0 rgba(255,255,255,.6);cursor:default}
 .card-cover.is-wav,.ranking-cover.is-wav,.np-art-cover-wrap.is-wav{box-shadow:0 0 0 1.5px #ffd37a,0 0 24px -2px rgba(255,176,32,.6)}
 .card-cover.is-wav::before,.ranking-cover.is-wav::before,.np-art-cover-wrap.is-wav::before{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:inherit;background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.38) 50%,transparent 65%);background-size:250% 100%;animation:wavShine 3.6s ease-in-out infinite}
 @keyframes wavShine{0%{background-position:150% 0}60%,100%{background-position:-50% 0}}
-.ranking-cover .wav-badge{top:2px;right:2px;padding:1px 4px;font-size:7.5px;border-radius:4px}
-.np-art-cover-wrap .wav-badge{top:10px;right:10px}
+.ranking-cover .wav-badge{bottom:2px;left:2px;padding:1px 4px;font-size:7.5px;border-radius:4px}
+.np-art-cover-wrap .wav-badge{bottom:10px;left:10px}
 </style>
 </head>
 <body>
@@ -6401,7 +6401,7 @@ function paintGrid(gridId, emptyId, countId, list, texts){
       <div class="card-cover${t.wavBadge ? ' is-wav' : ''}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge" tabindex="0" data-tooltip="Ce titre est certifié pour être adapté au mode concert.">🎤 CONCERT</span>` : ''}
-        ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
+        ${t.hdCertified && !t.wavBadge ? `<span class="hd-badge">HD</span>` : ''}
         ${t.wavBadge ? `<span class="wav-badge" title="Qualité WAV">WAV</span>` : ''}
         ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
@@ -6670,7 +6670,7 @@ function renderRanking(){
       <div class="ranking-cover${t.wavBadge ? ' is-wav' : ''}" data-play="${t.id}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge-mini" aria-hidden="true">🎤</span>` : ''}
-        ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
+        ${t.hdCertified && !t.wavBadge ? `<span class="hd-badge">HD</span>` : ''}
         ${t.wavBadge ? `<span class="wav-badge" title="Qualité WAV">WAV</span>` : ''}
         ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
@@ -6999,7 +6999,7 @@ function renderHistory(){
       <div class="ranking-cover${t.wavBadge ? ' is-wav' : ''}" data-play="${t.id}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge-mini" aria-hidden="true">🎤</span>` : ''}
-        ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
+        ${t.hdCertified && !t.wavBadge ? `<span class="hd-badge">HD</span>` : ''}
         ${t.wavBadge ? `<span class="wav-badge" title="Qualité WAV">WAV</span>` : ''}
         ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
@@ -7262,7 +7262,8 @@ function refreshEditHdToggleUI(){
   const label = document.getElementById('edit-hd-toggle-label');
   if(!btn || !label) return;
   btn.classList.toggle('is-active', editHdCertified);
-  label.textContent = editHdCertified ? 'Badge HD ✓' : 'Ajouter le badge HD';
+  label.textContent = editWavBadge ? 'Badge HD désactivé (remplacé par WAV)' : (editHdCertified ? 'Badge HD ✓' : 'Ajouter le badge HD');
+  btn.disabled = editWavBadge;
   refreshEditWavToggleUI();
 }
 function refreshEditWavToggleUI(){
@@ -7426,6 +7427,7 @@ document.getElementById('edit-event-toggle').addEventListener('click', async ()=
    la carte du titre dès la mise à jour Firestore (via onSnapshot). */
 document.getElementById('edit-hd-toggle').addEventListener('click', async ()=>{
   if(!isAdmin || !editingTrackId) return;
+  if(editWavBadge){ showToast('Le badge WAV remplace le badge HD : retire d\'abord le WAV.'); return; }
   const btn = document.getElementById('edit-hd-toggle');
   const newVal = !editHdCertified;
   btn.disabled = true;
@@ -7452,9 +7454,12 @@ document.getElementById('edit-wav-toggle').addEventListener('click', async ()=>{
   const newVal = !editWavBadge;
   btn.disabled = true;
   try{
-    await tracksRef.doc(editingTrackId).update({ wavBadge: newVal ? true : firebase.firestore.FieldValue.delete() });
+    const upd = { wavBadge: newVal ? true : firebase.firestore.FieldValue.delete() };
+    if(newVal) upd.hdCertified = firebase.firestore.FieldValue.delete(); // WAV remplace HD
+    await tracksRef.doc(editingTrackId).update(upd);
     editWavBadge = newVal;
-    refreshEditWavToggleUI();
+    if(newVal) editHdCertified = false;
+    refreshEditHdToggleUI();
     showToast(newVal ? 'Badge WAV ajouté.' : 'Badge WAV retiré.');
   }catch(err){
     console.error(err);
@@ -10487,7 +10492,7 @@ function updateNpCoverBadges(track){
   const hdBadge = document.getElementById('np-cover-hd-badge');
   const videoBadge = document.getElementById('np-cover-video-badge');
   if(concertBadge) concertBadge.style.display = (track && track.concertCertified) ? '' : 'none';
-  if(hdBadge) hdBadge.style.display = (track && track.hdCertified) ? '' : 'none';
+  if(hdBadge) hdBadge.style.display = (track && track.hdCertified && !track.wavBadge) ? '' : 'none';
   const wavBadge = document.getElementById('np-cover-wav-badge');
   if(wavBadge){ const on = !!(track && track.wavBadge); wavBadge.style.display = on ? '' : 'none'; if(wavBadge.parentElement) wavBadge.parentElement.classList.toggle('is-wav', on); }
   if(videoBadge) videoBadge.style.display = (track && track.videoBadge) ? '' : 'none';
