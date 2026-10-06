@@ -3500,6 +3500,36 @@ const usersRef = db.collection("artifacts").doc(ONYX_APP_ID).collection("public"
 // Nouvelle collection, dans la MÊME base Firestore, dédiée à la musique
 // ajoutée par les utilisateurs.
 const tracksRef = db.collection("musicTracks");
+/* Après une écriture faite par CET utilisateur (like, édition admin, import, suppression), on relit
+   uniquement le titre concerné et on rafraîchit l'affichage. Les compteurs d'écoutes (plays) ne
+   déclenchent aucun rafraîchissement. */
+(function(){
+  const base = (id)=> id === undefined ? db.collection("musicTracks").doc() : db.collection("musicTracks").doc(id);
+  async function patchTrack(id, deleted){
+    try{
+      if(deleted){ allTracks = allTracks.filter(t => t.id !== id); }
+      else{
+        const d = await db.collection("musicTracks").doc(id).get();
+        if(d.exists){ const o = { id: d.id, ...d.data() }; const i = allTracks.findIndex(t => t.id === id); if(i >= 0) allTracks[i] = o; else allTracks.unshift(o); }
+      }
+      onTracksChanged();
+    }catch(e){ console.warn('Mise à jour locale du titre impossible :', e); }
+  }
+  tracksRef.doc = function(id){
+    const r = base(id);
+    ['update','set'].forEach(m=>{
+      const f = r[m].bind(r);
+      r[m] = (...a)=> f(...a).then(v=>{
+        const pl = a[0];
+        if(!(m === 'update' && pl && Object.keys(pl).length === 1 && 'plays' in pl)) patchTrack(r.id, false);
+        return v;
+      });
+    });
+    const dl = r.delete.bind(r);
+    r.delete = (...a)=> dl(...a).then(v=>{ patchTrack(r.id, true); return v; });
+    return r;
+  };
+})();
 
 // Playlists créées par les utilisateurs. Chaque playlist n'est visible que
 // par son créateur (filtrée côté serveur via `ownerId`) et référence des
@@ -4565,18 +4595,30 @@ document.getElementById('search-clear-btn').addEventListener('click', ()=>{
 /* =========================================================
    CATALOGUE MUSICAL (Firestore, collection "musicTracks")
    ========================================================= */
-tracksRef.orderBy('createdAt', 'desc').onSnapshot((snap)=>{
-  allTracks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+/* Le catalogue n'est PLUS écouté en direct : il est chargé une seule fois à chaque lancement du
+   site (plus de re-dessin de la bibliothèque à chaque like/écoute d'un autre utilisateur).
+   Les actions de CET utilisateur (like, modifs admin, import, suppression) mettent à jour
+   uniquement le titre concerné (voir le wrapper de tracksRef.doc plus haut). */
+function onTracksChanged(){
   renderHero();
   renderTracks();
   renderExtractsSection();
   scheduleInitialRecommendations();
   applyRadioTrackIds(radioStateRawIds); // le catalogue a changé : on refiltre le programme radio dessus
   openSharedTrackFromURL();
-}, (err)=>{
-  console.error('Erreur de chargement de la musique :', err);
-  showToast("Impossible de charger la musique pour le moment.");
-});
+  refreshPlayerForCurrentTrack();
+}
+async function loadTracksOnce(){
+  try{
+    const snap = await tracksRef.orderBy('createdAt', 'desc').get();
+    allTracks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    onTracksChanged();
+  }catch(err){
+    console.error('Erreur de chargement de la musique :', err);
+    showToast("Impossible de charger la musique pour le moment.");
+  }
+}
+loadTracksOnce();
 
 // Photos des pages artiste (ajoutées par l'admin) : peu de documents, on
 // écoute toute la collection en direct pour que la photo apparaisse sans
@@ -7569,6 +7611,7 @@ document.getElementById('edit-event-toggle').addEventListener('click', async ()=
       batch.update(tracksRef.doc(editingTrackId), { eventFeatured: firebase.firestore.FieldValue.delete() });
     }
     await batch.commit();
+    await loadTracksOnce();
     editEventFeatured = newVal;
     refreshEditEventToggleUI();
     showToast(newVal ? "Titre mis en avant comme musique de l'événement." : "Mise en avant retirée.");
@@ -10771,7 +10814,7 @@ npEqBackdrop.addEventListener('click', closeEqPanel);
    "likes" mais aussi certification/volume verrouillé du mode concert, pour
    que le blocage du volume s'applique immédiatement à tout le monde même
    en pleine écoute, sans attendre le titre suivant. */
-tracksRef.onSnapshot(()=>{
+function refreshPlayerForCurrentTrack(){
   if(currentTrackId){
     const t = allTracks.find(tt => tt.id === currentTrackId);
     if(t){
@@ -10783,7 +10826,7 @@ tracksRef.onSnapshot(()=>{
       updateNpCoverBadges(t);
     }
   }
-});
+}
 
 // Si l'app est ouverte via un lien de partage (?playlist=ID), ouvre
 // directement cette playlist en lecture, connecté ou non.
