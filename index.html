@@ -1895,6 +1895,9 @@ input[type="range"]{ accent-color:var(--copper); }
   body::before{ animation:none !important; }
 }
 body:not(.is-admin) #upload-open-btn,body:not(.is-admin) #empty-upload-btn,body:not(.is-admin) #mine-upload-btn{display:none!important}
+/* Téléchargement WAV (admin) : item du menu "..." du grand lecteur */
+body:not(.is-admin) #np-menu-download-btn{display:none!important}
+#np-menu-download-btn:disabled{opacity:.55;cursor:progress}
 /* Badge "WAV" (admin) : pochette en affichage premium (liseré doré, lueur, reflet animé) */
 .wav-badge{position:absolute;bottom:8px;left:8px;z-index:3;padding:3px 8px;border-radius:6px;background:linear-gradient(135deg,#fff3c4,#ffb020 45%,#b86a00);color:#2a1700;font-family:var(--mono);font-size:9.5px;font-weight:800;letter-spacing:.1em;line-height:1;box-shadow:0 0 12px rgba(255,176,32,.7),inset 0 1px 0 rgba(255,255,255,.6);cursor:default}
 .card-cover.is-wav,.ranking-cover.is-wav,.np-art-cover-wrap.is-wav{box-shadow:0 0 0 1.5px #ffd37a,0 0 24px -2px rgba(255,176,32,.6)}
@@ -2581,6 +2584,15 @@ window.__djOpen=open;
             <button class="np-menu-item" id="np-menu-share-btn" type="button">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4"/></svg>
               Partager
+            </button>
+            <!-- Réservé à l'admin : exporte le titre en .wav avec l'égaliseur et
+                 toutes les améliorations actives — voir downloadCurrentTrackAsWav en JS. -->
+            <button class="np-menu-item" id="np-menu-download-btn" type="button" style="display:none">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>
+              <span class="np-menu-item-label">
+                <span id="np-menu-download-label">Télécharger en WAV</span>
+                <span class="np-menu-item-toggle-hint">Avec égaliseur et améliorations</span>
+              </span>
             </button>
             <div class="np-menu-sep"></div>
             <label class="np-menu-item np-menu-item-toggle" for="np-menu-ai-enhance-toggle" id="np-menu-ai-enhance-item">
@@ -10320,17 +10332,18 @@ document.getElementById('np-menu-concert-toggle').addEventListener('change', fun
    permanence dans la chaîne Web Audio (voir ensureAnalyser) mais neutres
    (bypass) tant que ce n'est pas activé — pas besoin de reconstruire le
    graphe à chaque bascule. */
+const AI_ENHANCE_ON = { threshold:-28, knee:24, ratio:3.5, attack:0.01, release:0.28, shelfGain:4.5, shelfFreq:6500 };
 function applyAiEnhanceParams(){
   if(!aiEnhanceComp || !aiEnhanceShelf || !audioCtx) return;
   const active = aiEnhanceOn && !aiEnhanceLockedOff;
   const t = audioCtx.currentTime;
   if(active){
-    aiEnhanceComp.threshold.setTargetAtTime(-28, t, 0.05);
-    aiEnhanceComp.knee.setTargetAtTime(24, t, 0.05);
-    aiEnhanceComp.ratio.setTargetAtTime(3.5, t, 0.05);
-    aiEnhanceComp.attack.setTargetAtTime(0.01, t, 0.05);
-    aiEnhanceComp.release.setTargetAtTime(0.28, t, 0.05);
-    aiEnhanceShelf.gain.setTargetAtTime(4.5, t, 0.05);
+    aiEnhanceComp.threshold.setTargetAtTime(AI_ENHANCE_ON.threshold, t, 0.05);
+    aiEnhanceComp.knee.setTargetAtTime(AI_ENHANCE_ON.knee, t, 0.05);
+    aiEnhanceComp.ratio.setTargetAtTime(AI_ENHANCE_ON.ratio, t, 0.05);
+    aiEnhanceComp.attack.setTargetAtTime(AI_ENHANCE_ON.attack, t, 0.05);
+    aiEnhanceComp.release.setTargetAtTime(AI_ENHANCE_ON.release, t, 0.05);
+    aiEnhanceShelf.gain.setTargetAtTime(AI_ENHANCE_ON.shelfGain, t, 0.05);
   }else{
     // Bypass : seuil au plafond -> le compresseur n'agit jamais, et aucun
     // rehaussement des aigus.
@@ -10433,12 +10446,13 @@ function setBassBoostNodes(n, active, immediate){
   set(n.peak.gain, p.peakGain);
   set(n.mud.gain, p.mudGain);
 }
+const OUTPUT_LIMITER_ON = { threshold:-3, knee:4, ratio:20, attack:0.002, release:0.18 };
 function applyBassBoostParams(immediate){
   if(!audioCtx || !bassBoostNodes || !bassLimiter) return;
   setBassBoostNodes(bassBoostNodes, bassBoostOn, !!immediate);
   const t = audioCtx.currentTime;
   const lim = (bassBoostOn || stereoEnhanceOn)
-    ? { threshold:-3, knee:4, ratio:20, attack:0.002, release:0.18 }
+    ? OUTPUT_LIMITER_ON
     : { threshold:0,  knee:0, ratio:1,  attack:0.003, release:0.25 }; // bypass : le limiteur n'agit jamais
   ['threshold','knee','ratio','attack','release'].forEach(k=>{
     if(immediate){ bassLimiter[k].cancelScheduledValues(t); bassLimiter[k].value = lim[k]; }
@@ -10564,6 +10578,136 @@ document.getElementById('np-menu-stereo-toggle').addEventListener('change', func
   setStereoEnhance(this.checked);
 });
 refreshStereoMenuUI(); // reflète l'état mémorisé sur l'appareil dès l'ouverture de la page
+
+/* =========================================================
+   TÉLÉCHARGEMENT WAV (admin) — menu "..." du grand lecteur
+   ---------------------------------------------------------
+   Rend le titre en cours HORS LIGNE (OfflineAudioContext) à travers la
+   même chaîne que celle de la lecture, avec les réglages actuels :
+     source -> EQ 3 bandes -> amélioration IA (compresseur + aigus)
+     -> basses profondes -> spatialisation stéréo -> limiteur de sortie
+   puis encode le résultat en WAV 16 bits stéréo. Le volume du curseur
+   n'est volontairement pas appliqué (fichier à niveau plein). Si le
+   rendu dépasse 0 dBFS (EQ/IA sans limiteur), il est ramené à -0,01 dBFS
+   pour éviter tout écrêtage.
+   ========================================================= */
+function encodeWav16(channels, sampleRate){
+  const numCh = channels.length, len = channels[0].length;
+  const dataSize = len * numCh * 2;
+  const buf = new ArrayBuffer(44 + dataSize);
+  const v = new DataView(buf);
+  const w = (o, str)=>{ for(let i=0;i<str.length;i++) v.setUint8(o+i, str.charCodeAt(i)); };
+  w(0,'RIFF'); v.setUint32(4, 36 + dataSize, true); w(8,'WAVE');
+  w(12,'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, numCh, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * numCh * 2, true);
+  v.setUint16(32, numCh * 2, true); v.setUint16(34, 16, true);
+  w(36,'data'); v.setUint32(40, dataSize, true);
+  let o = 44;
+  for(let i=0;i<len;i++){
+    for(let c=0;c<numCh;c++){
+      const x = Math.max(-1, Math.min(1, channels[c][i]));
+      v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7FFF, true);
+      o += 2;
+    }
+  }
+  return new Blob([buf], { type:'audio/wav' });
+}
+async function renderTrackWithEffects(decoded, track){
+  const sr = decoded.sampleRate;
+  const off = new OfflineAudioContext(2, decoded.length, sr);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+
+  const lo = off.createBiquadFilter(); lo.type = 'lowshelf'; lo.frequency.value = 200; lo.gain.value = savedEq.bass;
+  const mid = off.createBiquadFilter(); mid.type = 'peaking'; mid.frequency.value = 1000; mid.Q.value = 0.9; mid.gain.value = savedEq.mid;
+  const hi = off.createBiquadFilter(); hi.type = 'highshelf'; hi.frequency.value = 3500; hi.gain.value = savedEq.treble;
+
+  const aiActive = aiEnhanceOn && !(track && track.concertCertified);
+  const aiComp = off.createDynamicsCompressor();
+  const aiShelf = off.createBiquadFilter(); aiShelf.type = 'highshelf'; aiShelf.frequency.value = AI_ENHANCE_ON.shelfFreq;
+  if(aiActive){
+    aiComp.threshold.value = AI_ENHANCE_ON.threshold; aiComp.knee.value = AI_ENHANCE_ON.knee;
+    aiComp.ratio.value = AI_ENHANCE_ON.ratio; aiComp.attack.value = AI_ENHANCE_ON.attack;
+    aiComp.release.value = AI_ENHANCE_ON.release; aiShelf.gain.value = AI_ENHANCE_ON.shelfGain;
+  }else{
+    aiComp.threshold.value = 0; aiComp.knee.value = 0; aiComp.ratio.value = 1; aiShelf.gain.value = 0;
+  }
+
+  const bass = createBassBoostNodes(off);
+  setBassBoostNodes(bass, bassBoostOn, true);
+  let stereo = null;
+  try{ stereo = createStereoNodes(off); setStereoNodes(stereo, stereoEnhanceOn, true); }catch(e){ stereo = null; }
+
+  const limiter = off.createDynamicsCompressor();
+  const lim = (bassBoostOn || stereoEnhanceOn)
+    ? OUTPUT_LIMITER_ON
+    : { threshold:0, knee:0, ratio:1, attack:0.003, release:0.25 };
+  ['threshold','knee','ratio','attack','release'].forEach(k=>{ limiter[k].value = lim[k]; });
+
+  src.connect(lo); lo.connect(mid); mid.connect(hi); hi.connect(aiComp); aiComp.connect(aiShelf);
+  aiShelf.connect(bass.input);
+  if(stereo){ bass.output.connect(stereo.input); stereo.output.connect(limiter); }
+  else bass.output.connect(limiter);
+  limiter.connect(off.destination);
+
+  src.start(0);
+  return await off.startRendering();
+}
+let wavExportInFlight = false;
+async function downloadCurrentTrackAsWav(){
+  if(!isAdmin){ showToast("Seul l'admin peut télécharger un titre."); return; }
+  if(wavExportInFlight) return;
+  const track = allTracks.find(t => t.id === currentTrackId);
+  if(!track){ showToast("Lance d'abord un titre pour le télécharger."); return; }
+  const btn = document.getElementById('np-menu-download-btn');
+  const label = document.getElementById('np-menu-download-label');
+  wavExportInFlight = true;
+  if(btn) btn.disabled = true;
+  if(label) label.textContent = 'Génération du WAV…';
+  try{
+    showToast('Préparation du WAV… cela peut prendre quelques secondes.');
+    const blobUrl = await getTrackAudioBlobUrl(track);
+    const arrayBuffer = await (await fetch(blobUrl)).arrayBuffer();
+    const decodeCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const decoded = await decodeCtx.decodeAudioData(arrayBuffer.slice(0));
+    const rendered = await renderTrackWithEffects(decoded, track);
+    const chans = [rendered.getChannelData(0), rendered.getChannelData(1)];
+    // Garde-fou anti-écrêtage : si le rendu dépasse 0 dBFS, on le ramène juste en dessous.
+    let peak = 0;
+    for(let c=0;c<chans.length;c++){ const d = chans[c]; for(let i=0;i<d.length;i++){ const a = d[i] < 0 ? -d[i] : d[i]; if(a > peak) peak = a; } }
+    if(peak > 0.999){
+      const g = 0.999 / peak;
+      for(let c=0;c<chans.length;c++){ const d = chans[c]; for(let i=0;i<d.length;i++) d[i] *= g; }
+    }
+    const blob = encodeWav16(chans, rendered.sampleRate);
+    const rawName = ((track.artist ? track.artist + ' - ' : '') + (track.title || 'titre'));
+    const safeName = rawName.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim() || 'titre';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = safeName + '.wav';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 10000);
+    showToast('WAV téléchargé ✅');
+  }catch(e){
+    console.error(e);
+    showToast("Impossible de générer le WAV de ce titre.");
+  }finally{
+    wavExportInFlight = false;
+    if(btn) btn.disabled = false;
+    if(label) label.textContent = 'Télécharger en WAV';
+  }
+}
+(function(){
+  const btn = document.getElementById('np-menu-download-btn');
+  if(!btn) return;
+  btn.addEventListener('click', ()=>{ closeNpMenu(); downloadCurrentTrackAsWav(); });
+})();
+// Affiche l'item seulement pour l'admin (le CSS le masque déjà sinon : ceinture et bretelles).
+(function(){
+  const btn = document.getElementById('np-menu-download-btn');
+  if(!btn) return;
+  btn.style.display = '';
+})();
 
 /* =========================================================
    BADGES HD / CONCERT — grand lecteur + info-bulle flottante
