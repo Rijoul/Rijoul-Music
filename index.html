@@ -4599,6 +4599,18 @@ document.getElementById('search-clear-btn').addEventListener('click', ()=>{
    site (plus de re-dessin de la bibliothèque à chaque like/écoute d'un autre utilisateur).
    Les actions de CET utilisateur (like, modifs admin, import, suppression) mettent à jour
    uniquement le titre concerné (voir le wrapper de tracksRef.doc plus haut). */
+/* Ton écoute compte aussitôt à l'écran, sans redessiner la bibliothèque : on ajuste la valeur en mémoire
+   (les prochains affichages seront corrects) et, si le classement « Tout le temps » est ouvert,
+   le texte du compteur de la ligne concernée. */
+function bumpLocalPlays(id, n){
+  const t = allTracks.find(x => x.id === id); if(!t) return;
+  t.plays = (t.plays || 0) + n;
+  if(currentView !== 'classement' || rankingPeriodPlays) return;
+  document.querySelectorAll('.ranking-row[data-track-id="' + id + '"] .ranking-plays').forEach(sp=>{
+    const tn = [...sp.childNodes].reverse().find(x => x.nodeType === 3 && x.textContent.trim());
+    if(tn) tn.textContent = ' ' + t.plays + ' ' + (t.plays > 1 ? 'écoutes' : 'écoute') + ' ';
+  });
+}
 function onTracksChanged(){
   renderHero();
   renderTracks();
@@ -6329,6 +6341,7 @@ async function tryLogRadioPlay(sched){
     // Cet appareil est le premier à journaliser cette diffusion précise :
     // on crédite le titre du nombre d'auditeurs actuels.
     tracksRef.doc(sched.track.id).update({ plays: firebase.firestore.FieldValue.increment(listeners) })
+      .then(()=> bumpLocalPlays(sched.track.id, listeners))
       .catch(err=> console.error('Radio Direct : incrément "plays" impossible :', err));
     playLogsRef.add({ trackId: sched.track.id, playedAt: firebase.firestore.FieldValue.serverTimestamp(), count: listeners, source: 'radio' })
       .catch(err=> console.error('Radio Direct : écriture "musicPlayLogs" impossible :', err));
@@ -9557,6 +9570,7 @@ function startViewCounting(trackId, opts){
 function commitViewCount(trackId, skipGlobal){
   if(!skipGlobal){
     tracksRef.doc(trackId).update({ plays: firebase.firestore.FieldValue.increment(1) })
+      .then(()=> bumpLocalPlays(trackId, 1))
       .catch(err => console.error('Échec incrément "plays" (vérifier les règles Firestore) :', err));
     playLogsRef.add({ trackId, playedAt: firebase.firestore.FieldValue.serverTimestamp() })
       .catch(err => console.error('Échec écriture "musicPlayLogs" (vérifier les règles Firestore) :', err));
