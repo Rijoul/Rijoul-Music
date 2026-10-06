@@ -1947,6 +1947,13 @@ input[type="range"]{ accent-color:var(--copper); }
 .dj-armed{outline:2px solid var(--copper)!important;animation:djp .8s infinite alternate}
 @keyframes djp{to{outline-color:transparent}}
 body:not(.is-admin) #upload-open-btn,body:not(.is-admin) #empty-upload-btn,body:not(.is-admin) #mine-upload-btn{display:none!important}
+/* Badge "WAV" (admin) : pochette en affichage premium (liseré doré, lueur, reflet animé) */
+.wav-badge{position:absolute;top:8px;right:8px;z-index:3;padding:3px 8px;border-radius:6px;background:linear-gradient(135deg,#fff3c4,#ffb020 45%,#b86a00);color:#2a1700;font-family:var(--mono);font-size:9.5px;font-weight:800;letter-spacing:.1em;line-height:1;box-shadow:0 0 12px rgba(255,176,32,.7),inset 0 1px 0 rgba(255,255,255,.6);cursor:default}
+.card-cover.is-wav,.ranking-cover.is-wav,.np-art-cover-wrap.is-wav{box-shadow:0 0 0 1.5px #ffd37a,0 0 24px -2px rgba(255,176,32,.6)}
+.card-cover.is-wav::before,.ranking-cover.is-wav::before,.np-art-cover-wrap.is-wav::before{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:inherit;background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.38) 50%,transparent 65%);background-size:250% 100%;animation:wavShine 3.6s ease-in-out infinite}
+@keyframes wavShine{0%{background-position:150% 0}60%,100%{background-position:-50% 0}}
+.ranking-cover .wav-badge{top:2px;right:2px;padding:1px 4px;font-size:7.5px;border-radius:4px}
+.np-art-cover-wrap .wav-badge{top:10px;right:10px}
 </style>
 </head>
 <body>
@@ -2502,6 +2509,7 @@ body:not(.is-admin) #upload-open-btn,body:not(.is-admin) #empty-upload-btn,body:
             <video class="np-art" id="np-video" muted playsinline style="display:none"></video>
             <span class="concert-badge" tabindex="0" id="np-cover-concert-badge" data-tooltip="Ce titre est certifié pour être adapté au mode concert." style="display:none">🎤 CONCERT</span>
             <span class="hd-badge" id="np-cover-hd-badge" style="display:none">HD</span>
+            <span class="wav-badge" id="np-cover-wav-badge" style="display:none">WAV</span>
             <span class="video-badge" id="np-cover-video-badge" title="Contient une vidéo" style="display:none">🎥</span>
           </div>
           <img class="np-art-side" id="np-art-next" alt="" aria-hidden="true">
@@ -2789,6 +2797,11 @@ body:not(.is-admin) #upload-open-btn,body:not(.is-admin) #empty-upload-btn,body:
     <button type="button" class="btn btn-ghost btn-sm edit-concert-toggle" id="edit-hd-toggle" style="margin-top:10px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;">
       <span id="edit-hd-toggle-icon">🟡</span>
       <span id="edit-hd-toggle-label">Ajouter le badge HD</span>
+    </button>
+    <!-- Badge WAV (admin) : la pochette du titre passe en affichage premium. Se sauvegarde au clic. -->
+    <button type="button" class="btn btn-ghost btn-sm edit-concert-toggle" id="edit-wav-toggle" style="margin-top:10px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;">
+      <span id="edit-wav-toggle-icon">💎</span>
+      <span id="edit-wav-toggle-label">Ajouter le badge WAV</span>
     </button>
 
     <!-- Badge VIDÉO : signale que ce titre contient une vidéo. Se sauvegarde
@@ -6385,10 +6398,11 @@ function paintGrid(gridId, emptyId, countId, list, texts){
     const isPlaying = t.id === currentTrackId;
     return `
     <div class="card ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
-      <div class="card-cover">
+      <div class="card-cover${t.wavBadge ? ' is-wav' : ''}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge" tabindex="0" data-tooltip="Ce titre est certifié pour être adapté au mode concert.">🎤 CONCERT</span>` : ''}
         ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
+        ${t.wavBadge ? `<span class="wav-badge" title="Qualité WAV">WAV</span>` : ''}
         ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
@@ -6653,10 +6667,11 @@ function renderRanking(){
     return `
     <div class="ranking-row ${isPlaying ? 'is-playing' : ''} ${rankClass}" data-track-id="${t.id}">
       <span class="ranking-rank">${medal ? `<span class="ranking-medal">${medal}</span>` : ''}${i + 1}${changeHtml}</span>
-      <div class="ranking-cover" data-play="${t.id}">
+      <div class="ranking-cover${t.wavBadge ? ' is-wav' : ''}" data-play="${t.id}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge-mini" aria-hidden="true">🎤</span>` : ''}
         ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
+        ${t.wavBadge ? `<span class="wav-badge" title="Qualité WAV">WAV</span>` : ''}
         ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
@@ -6981,10 +6996,11 @@ function renderHistory(){
     const isPlaying = t.id === currentTrackId;
     return `
     <div class="ranking-row ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
-      <div class="ranking-cover" data-play="${t.id}">
+      <div class="ranking-cover${t.wavBadge ? ' is-wav' : ''}" data-play="${t.id}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge-mini" aria-hidden="true">🎤</span>` : ''}
         ${t.hdCertified ? `<span class="hd-badge">HD</span>` : ''}
+        ${t.wavBadge ? `<span class="wav-badge" title="Qualité WAV">WAV</span>` : ''}
         ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
         <button class="card-play" data-play="${t.id}" aria-label="Lire">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">${isPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>'}</svg>
@@ -7229,6 +7245,7 @@ let editingTrackId = null;
 let editCoverDataUrl = null;
 let editConcertCertified = false;
 let editEventFeatured = false;
+let editWavBadge = false;
 let editHdCertified = false;
 let editVideoBadge = false;
 let editConcertVolume = 80; // valeur affichée sur le curseur (simple aperçu tant que non verrouillé)
@@ -7246,6 +7263,14 @@ function refreshEditHdToggleUI(){
   if(!btn || !label) return;
   btn.classList.toggle('is-active', editHdCertified);
   label.textContent = editHdCertified ? 'Badge HD ✓' : 'Ajouter le badge HD';
+  refreshEditWavToggleUI();
+}
+function refreshEditWavToggleUI(){
+  const btn = document.getElementById('edit-wav-toggle');
+  const label = document.getElementById('edit-wav-toggle-label');
+  if(!btn || !label) return;
+  btn.classList.toggle('is-active', editWavBadge);
+  label.textContent = editWavBadge ? 'Badge WAV ✓ (affichage premium)' : 'Ajouter le badge WAV';
 }
 function refreshEditVideoBadgeToggleUI(){
   const btn = document.getElementById('edit-video-badge-toggle');
@@ -7293,6 +7318,7 @@ function openEditModal(trackId){
   editConcertCertified = !!track.concertCertified;
   editEventFeatured = !!track.eventFeatured;
   editHdCertified = !!track.hdCertified;
+  editWavBadge = !!track.wavBadge;
   refreshEditEventToggleUI();
   refreshEditHdToggleUI();
   editVideoBadge = !!track.videoBadge;
@@ -7415,6 +7441,24 @@ document.getElementById('edit-hd-toggle').addEventListener('click', async ()=>{
   }catch(err){
     console.error(err);
     showToast('Impossible de mettre à jour le badge HD.');
+  }finally{
+    btn.disabled = false;
+  }
+});
+/* Badge WAV : même principe que HD ; la pochette passe en affichage premium. */
+document.getElementById('edit-wav-toggle').addEventListener('click', async ()=>{
+  if(!isAdmin || !editingTrackId) return;
+  const btn = document.getElementById('edit-wav-toggle');
+  const newVal = !editWavBadge;
+  btn.disabled = true;
+  try{
+    await tracksRef.doc(editingTrackId).update({ wavBadge: newVal ? true : firebase.firestore.FieldValue.delete() });
+    editWavBadge = newVal;
+    refreshEditWavToggleUI();
+    showToast(newVal ? 'Badge WAV ajouté.' : 'Badge WAV retiré.');
+  }catch(err){
+    console.error(err);
+    showToast('Impossible de mettre à jour le badge WAV.');
   }finally{
     btn.disabled = false;
   }
@@ -10444,6 +10488,8 @@ function updateNpCoverBadges(track){
   const videoBadge = document.getElementById('np-cover-video-badge');
   if(concertBadge) concertBadge.style.display = (track && track.concertCertified) ? '' : 'none';
   if(hdBadge) hdBadge.style.display = (track && track.hdCertified) ? '' : 'none';
+  const wavBadge = document.getElementById('np-cover-wav-badge');
+  if(wavBadge){ const on = !!(track && track.wavBadge); wavBadge.style.display = on ? '' : 'none'; if(wavBadge.parentElement) wavBadge.parentElement.classList.toggle('is-wav', on); }
   if(videoBadge) videoBadge.style.display = (track && track.videoBadge) ? '' : 'none';
 }
 
