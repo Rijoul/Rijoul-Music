@@ -694,6 +694,20 @@ input,textarea{ font-family:inherit; }
 .ranking-artist{ font-size:12px; color:var(--text-dim); margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ranking-plays{ font-family:var(--mono); font-size:12px; color:var(--text-faint); white-space:nowrap; display:flex; align-items:center; gap:5px; }
 .ranking-more-wrap{ display:flex; justify-content:center; margin-bottom:40px; }
+.card-album-result{
+  background:linear-gradient(165deg, rgba(255,176,32,0.12), rgba(255,255,255,0.03) 55%);
+  border-color:rgba(255,176,32,0.22);
+}
+.card-album-result:hover{ border-color:rgba(255,176,32,0.5); }
+.card-album-result .card-cover-badge{
+  position:absolute; left:8px; top:8px; z-index:2;
+  font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+  padding:4px 9px; border-radius:20px;
+  background:rgba(30,20,6,0.7); color:var(--copper);
+  border:1px solid rgba(255,176,32,0.4);
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+}
+.card-album-result .card-cover{ cursor:pointer; }
 .album-section-title{ font-size:15px; font-weight:700; margin:22px 0 12px; }
 .album-select{ width:100%; padding:11px 12px; border-radius:12px; border:1px solid var(--border, rgba(255,255,255,.14)); background:rgba(255,255,255,.05); color:var(--text); font:inherit; }
 .album-select option{ color:#111; }
@@ -2225,6 +2239,7 @@ body:not(.is-admin) #np-menu-download-btn{display:none!important}
         <span class="section-count" id="album-detail-count">0 titre</span>
         <div class="pl-detail-actions">
           <button class="btn btn-gold" id="album-detail-play">▶ Lire</button>
+          <button class="btn btn-ghost btn-sm" id="album-detail-share">🔗 Partager</button>
           <button class="btn btn-ghost btn-sm" id="album-detail-delete" style="display:none;">Supprimer l'album</button>
         </div>
       </div>
@@ -3826,6 +3841,7 @@ let editingArtistKey = null;   // clé de l'artiste en cours d'édition dans le 
 let artistEditPhotoDataUrl = null;
 let allAlbums = [];              // albums (musicAlbums), chargés en direct
 let currentAlbumId = null;
+let sharedAlbumIdFromURL = new URLSearchParams(location.search).get('album'); // lien de partage ?album=ID
 let albumBackArtistKey = null;   // artiste d'où l'on a ouvert l'album (pour le bouton Retour)
 let albumCreateCoverDataUrl = null;
 let albumCreateFromUpload = false;
@@ -4475,6 +4491,38 @@ document.getElementById('album-detail-play').addEventListener('click', ()=>{
   if(!currentQueue.length) return;
   playTrackById(currentQueue[0].id, 1);
 });
+/* Partage d'un album : lien direct (?album=ID), partage natif sur mobile,
+   sinon copie du lien. Les albums sont publics : le lien marche pour tout
+   le monde, connecté ou non. */
+async function shareCurrentAlbum(){
+  const a = allAlbums.find(x => x.id === currentAlbumId);
+  if(!a) return;
+  const shareData = {
+    title: a.name || 'Album sur RIJOUL MUSIC',
+    text: `Écoute l'album "${a.name || 'cet album'}" de ${a.artist || 'un artiste'} sur RIJOUL MUSIC 💿`,
+    url: `${location.origin}${location.pathname}?album=${encodeURIComponent(a.id)}`
+  };
+  if(navigator.share){
+    try{ await navigator.share(shareData); }
+    catch(e){ /* partage annulé par l'utilisateur */ }
+    return;
+  }
+  try{
+    await navigator.clipboard.writeText(shareData.url);
+    showToast("Lien de l'album copié ! 🔗");
+  }catch(e){
+    showToast("Impossible de copier le lien automatiquement : " + shareData.url);
+  }
+}
+document.getElementById('album-detail-share').addEventListener('click', shareCurrentAlbum);
+// Ouvre l'album d'un lien partagé (?album=ID) dès que les albums sont chargés.
+function openSharedAlbumFromURL(){
+  if(!sharedAlbumIdFromURL) return;
+  const id = sharedAlbumIdFromURL;
+  sharedAlbumIdFromURL = null; // une seule tentative
+  if(!allAlbums.some(a => a.id === id)){ showToast("Cet album n'existe pas ou plus."); return; }
+  openAlbumPage(id, null);
+}
 document.getElementById('album-detail-delete').addEventListener('click', async ()=>{
   if(!isAdmin || !currentAlbumId) return;
   if(!confirm("Supprimer cet album ? Les titres ne sont pas supprimés.")) return;
@@ -4491,8 +4539,10 @@ musicAlbumsRef.onSnapshot((snap)=>{
   allAlbums = [];
   snap.forEach(doc => allAlbums.push(Object.assign({ id: doc.id }, doc.data())));
   refreshAlbumSelects();
+  openSharedAlbumFromURL();
   if(currentView === 'artist-detail') renderArtistDetail();
   if(currentView === 'album-detail') renderAlbumDetail();
+  if(currentView === 'library') renderArtistSearchResults(); // les albums apparaissent aussi dans la recherche
 }, (err)=>{
   console.error('Erreur de chargement des albums :', err);
 });
@@ -4769,7 +4819,7 @@ function renderArtistSearchResults(){
   // insérées par un appel précédent (ex. mise à jour d'une photo d'artiste
   // pendant que la recherche est toujours affichée), pour ne jamais les
   // dupliquer.
-  grid.querySelectorAll('.card-artist-result').forEach(el => el.remove());
+  grid.querySelectorAll('.card-artist-result, .card-album-result').forEach(el => el.remove());
   if(!searchTerm) return;
   const seen = new Set();
   const matches = [];
@@ -4785,7 +4835,10 @@ function renderArtistSearchResults(){
       matches.push({ key, name });
     });
   });
-  if(!matches.length) return;
+  // Albums dont le nom ou l'artiste correspond à la recherche.
+  const albumMatches = allAlbums.filter(a =>
+    artistNameMatchesSearch(a.name || '') || splitArtistNames(a.artist).some(n => artistNameMatchesSearch(n)));
+  if(!matches.length && !albumMatches.length) return;
   // Des artistes correspondent : même si aucun titre ne correspond (grille
   // vidée par paintGrid avec le message "Aucun résultat"), on a bien
   // quelque chose à montrer — on annule ce message vide.
@@ -4805,9 +4858,24 @@ function renderArtistSearchResults(){
       <p class="card-artist">${count} ${count > 1 ? 'titres' : 'titre'}</p>
     </div>`;
   }).join('');
-  grid.insertAdjacentHTML('afterbegin', artistCardsHtml);
+  const albumCardsHtml = albumMatches.map(a=>{
+    const n = albumTracks(a).length;
+    return `
+    <div class="card card-album-result" data-open-album="${a.id}">
+      <div class="card-cover">
+        <span class="card-cover-badge">Album</span>
+        <img src="${escapeHtml(a.coverURL || fallbackCoverSvg())}" alt="">
+      </div>
+      <p class="card-title">${escapeHtml(a.name || 'Album')}</p>
+      <p class="card-artist">${escapeHtml(a.artist || '')} · ${n} ${n > 1 ? 'titres' : 'titre'}</p>
+    </div>`;
+  }).join('');
+  grid.insertAdjacentHTML('afterbegin', artistCardsHtml + albumCardsHtml);
   grid.querySelectorAll('[data-open-artist]').forEach(card=>{
     card.addEventListener('click', ()=> openArtistPage(card.dataset.openArtist));
+  });
+  grid.querySelectorAll('[data-open-album]').forEach(card=>{
+    card.addEventListener('click', ()=> openAlbumPage(card.dataset.openAlbum, null));
   });
 }
 
