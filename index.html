@@ -694,6 +694,11 @@ input,textarea{ font-family:inherit; }
 .ranking-artist{ font-size:12px; color:var(--text-dim); margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ranking-plays{ font-family:var(--mono); font-size:12px; color:var(--text-faint); white-space:nowrap; display:flex; align-items:center; gap:5px; }
 .ranking-more-wrap{ display:flex; justify-content:center; margin-bottom:40px; }
+.album-section-title{ font-size:15px; font-weight:700; margin:22px 0 12px; }
+.album-select{ width:100%; padding:11px 12px; border-radius:12px; border:1px solid var(--border, rgba(255,255,255,.14)); background:rgba(255,255,255,.05); color:var(--text); font:inherit; }
+.album-select option{ color:#111; }
+.album-create-btn{ width:100%; margin-top:14px; display:flex; align-items:center; justify-content:center; gap:8px; }
+.album-detail-cover{ border-radius:14px; }
 .library-more-wrap{ display:flex; justify-content:center; margin:28px 0 40px; }
 
 /* --- Réorganisation manuelle des titres d'un artiste (admin) --- */
@@ -2195,11 +2200,39 @@ body:not(.is-admin) #np-menu-download-btn{display:none!important}
         </div>
       </div>
     </div>
+    <div id="artist-albums-wrap" style="display:none;">
+      <h3 class="album-section-title">Albums</h3>
+      <div class="grid" id="artist-albums-grid"></div>
+      <h3 class="album-section-title">Titres</h3>
+    </div>
     <p class="artist-reorder-hint" id="artist-reorder-hint" style="display:none;">Utilise les flèches ▲ ▼ pour placer les titres dans l'ordre voulu, puis clique sur « Enregistrer l'ordre ».</p>
     <div class="pl-track-list" id="artist-track-list"></div>
     <div class="empty-state" id="artist-detail-empty" style="display:none;">
       <h3>Aucun titre</h3>
       <p>Cet artiste n'a pas encore de titre sur RIJOUL MUSIC.</p>
+    </div>
+  </section>
+
+  <!-- PAGE ALBUM — ouverte depuis la page d'un artiste. -->
+  <section id="view-album-detail" style="display:none;">
+    <button class="btn btn-ghost btn-sm pl-detail-back" id="album-detail-back">← Retour</button>
+    <div class="pl-detail-head">
+      <div class="pl-detail-cover album-detail-cover" id="album-detail-cover">💿</div>
+      <div class="pl-detail-info">
+        <p class="hero-eyebrow">Album</p>
+        <h2 class="pl-detail-title" id="album-detail-name">—</h2>
+        <p class="hero-artist" id="album-detail-artist" style="margin:0 0 6px;">—</p>
+        <span class="section-count" id="album-detail-count">0 titre</span>
+        <div class="pl-detail-actions">
+          <button class="btn btn-gold" id="album-detail-play">▶ Lire</button>
+          <button class="btn btn-ghost btn-sm" id="album-detail-delete" style="display:none;">Supprimer l'album</button>
+        </div>
+      </div>
+    </div>
+    <div class="pl-track-list" id="album-track-list"></div>
+    <div class="empty-state" id="album-detail-empty" style="display:none;">
+      <h3>Album vide</h3>
+      <p>Aucun titre dans cet album pour l'instant. L'admin peut en ajouter via « Ajouter un titre » ou « Modifier le titre ».</p>
     </div>
   </section>
 
@@ -2880,6 +2913,8 @@ window.__djOpen=open;
       <button class="modal-close" data-close="upload-overlay">✕</button>
     </div>
     <div class="auth-error" id="upload-error"></div>
+    <!-- Admin : crée un album (photo, nom, artiste) -->
+    <button type="button" class="btn btn-ghost btn-sm album-create-btn" id="album-create-open">💿 Créer un album</button>
 
     <div class="upload-drop" id="upload-audio-drop">
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
@@ -2904,6 +2939,10 @@ window.__djOpen=open;
         <input type="date" id="upload-release-date" max="9999-12-31">
         <button type="button" class="btn btn-ghost btn-sm" id="upload-release-date-clear">Effacer</button>
       </div>
+    </div>
+
+    <div class="field"><label>Album <span style="font-weight:400;opacity:.7;">(optionnel)</span></label>
+      <select id="upload-album" class="album-select"><option value="">Aucun album</option></select>
     </div>
 
     <div class="upload-progress" id="upload-progress">
@@ -2940,6 +2979,10 @@ window.__djOpen=open;
         <input type="date" id="edit-release-date" max="9999-12-31">
         <button type="button" class="btn btn-ghost btn-sm" id="edit-release-date-clear">Effacer</button>
       </div>
+    </div>
+
+    <div class="field"><label>Album <span style="font-weight:400;opacity:.7;">(optionnel)</span></label>
+      <select id="edit-album" class="album-select"><option value="">Aucun album</option></select>
     </div>
 
     <!-- Réservé à l'admin : remplace le fichier audio du titre, quel que
@@ -3087,6 +3130,27 @@ window.__djOpen=open;
      artiste (nom de l'artiste tel que déjà utilisé sur ses titres — pas
      un champ modifiable ici, pour ne jamais désynchroniser d'un titre à
      l'autre). S'ouvre depuis le bouton "Modifier la page de l'artiste". -->
+<div class="overlay" id="album-create-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 class="modal-title">Créer un album</h3>
+      <button class="modal-close" data-close="album-create-overlay">✕</button>
+    </div>
+    <div class="auth-error" id="album-create-error"></div>
+    <div class="photo-row" style="margin-top:16px;">
+      <div class="photo-preview" id="album-create-preview">💿</div>
+      <div class="photo-actions">
+        <button class="btn btn-ghost btn-sm" id="album-create-photo-choose" type="button">Photo de l'album</button>
+        <button class="btn btn-ghost btn-sm" id="album-create-photo-remove" type="button">Retirer</button>
+      </div>
+      <input type="file" id="album-create-photo-input" accept="image/*" class="visually-hidden">
+    </div>
+    <div class="field" style="margin-top:14px;"><label>Nom de l'album</label><input type="text" id="album-create-name" placeholder="Nom de l'album" maxlength="120"></div>
+    <div class="field"><label>Artiste</label><input type="text" id="album-create-artist" placeholder="Nom de l'artiste" maxlength="120"></div>
+    <button class="btn btn-gold btn-block" id="album-create-save" type="button" style="margin-top:16px;">Créer l'album</button>
+  </div>
+</div>
+
 <div class="overlay" id="artist-edit-overlay">
   <div class="modal">
     <div class="modal-head">
@@ -3609,6 +3673,9 @@ const rankingSnapshotsRef = db.collection("musicRankingSnapshots");
 // donc rien d'autre à synchroniser ici.
 const musicArtistsRef = db.collection("musicArtists");
 
+// Albums créés par l'admin : { name, artist, coverURL, trackIds: [ordre des titres], createdAt, createdBy }.
+const musicAlbumsRef = db.collection("musicAlbums");
+
 // =========================================================
 // RADIO DIRECT — playlist virtuelle diffusée EN MÊME TEMPS pour tout le
 // monde (comme une vraie radio), construite à partir du classement de la
@@ -3757,6 +3824,11 @@ let currentArtistKey = null;   // clé normalisée (voir artistKeyOf) de l'artis
 let allArtistPhotos = {};      // artistDocId -> { photoURL, ... } (musicArtistsRef)
 let editingArtistKey = null;   // clé de l'artiste en cours d'édition dans le modal admin
 let artistEditPhotoDataUrl = null;
+let allAlbums = [];              // albums (musicAlbums), chargés en direct
+let currentAlbumId = null;
+let albumBackArtistKey = null;   // artiste d'où l'on a ouvert l'album (pour le bouton Retour)
+let albumCreateCoverDataUrl = null;
+let albumCreateFromUpload = false;
 let artistReorderMode = false;   // l'admin est en train de réorganiser les titres de l'artiste affiché
 let artistReorderIds = [];        // ordre de travail (ids de titres) pendant la réorganisation
 const FOR_YOU_PLAYLIST_ID = 'for-you'; // playlist virtuelle générée pour l'utilisateur, affichée sur l'accueil
@@ -4164,6 +4236,7 @@ function switchView(view){
   document.getElementById('view-historique').style.display = view === 'historique' ? '' : 'none';
   document.getElementById('view-playlist-detail').style.display = 'none';
   document.getElementById('view-artist-detail').style.display = 'none';
+  document.getElementById('view-album-detail').style.display = 'none';
   // On quitte le Classement : coupe l'écoute temps réel de l'instantané
   // partagé des flèches (voir listenRankingSnapshot), inutile ailleurs.
   if(view !== 'classement' && rankingSnapshotUnsub){
@@ -4200,6 +4273,7 @@ function openPlaylistDetail(id){
   document.getElementById('view-mine').style.display = 'none';
   document.getElementById('view-playlists').style.display = 'none';
   document.getElementById('view-artist-detail').style.display = 'none';
+  document.getElementById('view-album-detail').style.display = 'none';
   document.getElementById('view-playlist-detail').style.display = '';
   renderTracks();
 }
@@ -4242,6 +4316,7 @@ function openArtistPage(name){
   document.getElementById('view-classement').style.display = 'none';
   document.getElementById('view-historique').style.display = 'none';
   document.getElementById('view-playlist-detail').style.display = 'none';
+  document.getElementById('view-album-detail').style.display = 'none';
   document.getElementById('view-artist-detail').style.display = '';
   renderArtistDetail();
 }
@@ -4271,10 +4346,11 @@ function renderArtistDetail(){
   document.getElementById('artist-reorder-hint').style.display = artistReorderMode ? '' : 'none';
   document.getElementById('artist-detail-play').style.display = (tracks.length && !artistReorderMode) ? '' : 'none';
   paintArtistRows(tracks);
+  renderArtistAlbums(key);
 }
-function paintArtistRows(tracks){
-  const wrap = document.getElementById('artist-track-list');
-  const empty = document.getElementById('artist-detail-empty');
+function paintArtistRows(tracks, wrapId, emptyId){
+  const wrap = document.getElementById(wrapId || 'artist-track-list');
+  const empty = document.getElementById(emptyId || 'artist-detail-empty');
   if(!tracks.length){
     wrap.innerHTML = '';
     empty.style.display = '';
@@ -4331,6 +4407,191 @@ function paintArtistRows(tracks){
   bindHoverPrefetch(wrap);
 }
 document.getElementById('artist-detail-back').addEventListener('click', ()=>{ artistReorderMode = false; switchView('library'); });
+
+/* =========================================================
+   ALBUMS (créés par l'admin) — photo, nom, artiste + liste ordonnée de titres.
+   ========================================================= */
+function albumTracks(album){
+  const byId = new Map(allTracks.map(t => [t.id, t]));
+  return (album.trackIds || []).map(id => byId.get(id)).filter(Boolean);
+}
+function albumsOfArtistKey(key){
+  return allAlbums.filter(a => splitArtistNames(a.artist).some(n => artistKeyOf(n) === key));
+}
+function albumOfTrack(trackId){
+  return allAlbums.find(a => Array.isArray(a.trackIds) && a.trackIds.includes(trackId)) || null;
+}
+function renderArtistAlbums(key){
+  const wrap = document.getElementById('artist-albums-wrap');
+  const grid = document.getElementById('artist-albums-grid');
+  const albums = albumsOfArtistKey(key);
+  if(!albums.length){ wrap.style.display = 'none'; grid.innerHTML = ''; return; }
+  wrap.style.display = '';
+  grid.innerHTML = albums.map(a=>{
+    const n = albumTracks(a).length;
+    return `<div class="card" data-album-id="${a.id}">
+      <div class="card-cover"><img src="${escapeHtml(a.coverURL || fallbackCoverSvg())}" alt=""></div>
+      <p class="card-title">${escapeHtml(a.name || 'Album')}</p>
+      <p class="card-artist">${n} ${n > 1 ? 'titres' : 'titre'}</p>
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('.card[data-album-id]').forEach(card=>{
+    card.addEventListener('click', ()=> openAlbumPage(card.dataset.albumId, key));
+  });
+}
+function openAlbumPage(id, fromArtistKey){
+  currentAlbumId = id;
+  albumBackArtistKey = fromArtistKey || null;
+  artistReorderMode = false;
+  currentView = 'album-detail';
+  document.querySelectorAll('.tab-btn').forEach(b=> b.classList.remove('active'));
+  ['view-library','view-mine','view-playlists','view-extraits','view-classement','view-historique','view-playlist-detail','view-artist-detail'].forEach(v=>{
+    document.getElementById(v).style.display = 'none';
+  });
+  document.getElementById('view-album-detail').style.display = '';
+  renderAlbumDetail();
+}
+function renderAlbumDetail(){
+  if(currentView !== 'album-detail') return;
+  const album = allAlbums.find(a => a.id === currentAlbumId);
+  if(!album){ switchView('library'); return; }
+  const tracks = albumTracks(album);
+  currentQueue = tracks;
+  document.getElementById('album-detail-name').textContent = album.name || 'Album';
+  document.getElementById('album-detail-artist').innerHTML = artistLinksMarkup(album.artist);
+  document.getElementById('album-detail-count').textContent = tracks.length + (tracks.length > 1 ? ' titres' : ' titre');
+  const cover = document.getElementById('album-detail-cover');
+  if(album.coverURL){ cover.style.background = 'transparent'; cover.innerHTML = `<img src="${escapeHtml(album.coverURL)}" alt="">`; }
+  else{ cover.style.background = ''; cover.innerHTML = '💿'; }
+  document.getElementById('album-detail-play').style.display = tracks.length ? '' : 'none';
+  document.getElementById('album-detail-delete').style.display = isAdmin ? '' : 'none';
+  paintArtistRows(tracks, 'album-track-list', 'album-detail-empty');
+}
+document.getElementById('album-detail-back').addEventListener('click', ()=>{
+  if(albumBackArtistKey){ openArtistPage(artistDisplayName(albumBackArtistKey)); }
+  else switchView('library');
+});
+document.getElementById('album-detail-play').addEventListener('click', ()=>{
+  if(!currentQueue.length) return;
+  playTrackById(currentQueue[0].id, 1);
+});
+document.getElementById('album-detail-delete').addEventListener('click', async ()=>{
+  if(!isAdmin || !currentAlbumId) return;
+  if(!confirm("Supprimer cet album ? Les titres ne sont pas supprimés.")) return;
+  try{
+    await musicAlbumsRef.doc(currentAlbumId).delete();
+    showToast('Album supprimé.');
+    document.getElementById('album-detail-back').click();
+  }catch(err){
+    console.error(err);
+    showToast("Impossible de supprimer l'album.");
+  }
+});
+musicAlbumsRef.onSnapshot((snap)=>{
+  allAlbums = [];
+  snap.forEach(doc => allAlbums.push(Object.assign({ id: doc.id }, doc.data())));
+  refreshAlbumSelects();
+  if(currentView === 'artist-detail') renderArtistDetail();
+  if(currentView === 'album-detail') renderAlbumDetail();
+}, (err)=>{
+  console.error('Erreur de chargement des albums :', err);
+});
+
+// Listes déroulantes "Album" des modales d'ajout et de modification (admin).
+function refreshAlbumSelects(){
+  ['upload-album','edit-album'].forEach(id=>{
+    const sel = document.getElementById(id);
+    if(!sel) return;
+    const keep = sel.value;
+    sel.innerHTML = '<option value="">Aucun album</option>' + allAlbums
+      .slice().sort((a,b)=> (a.name||'').localeCompare(b.name||''))
+      .map(a => `<option value="${a.id}">${escapeHtml(a.name || 'Album')}${a.artist ? ' — ' + escapeHtml(a.artist) : ''}</option>`).join('');
+    if(keep && allAlbums.some(a => a.id === keep)) sel.value = keep;
+  });
+}
+
+// Création d'un album (admin) : depuis le menu "Ajouter un titre".
+document.getElementById('album-create-open').addEventListener('click', ()=>{
+  if(!isAdmin){ showToast("Seul l'admin peut créer un album."); return; }
+  albumCreateCoverDataUrl = null;
+  document.getElementById('album-create-name').value = '';
+  document.getElementById('album-create-artist').value = document.getElementById('upload-artist').value.trim();
+  const prev = document.getElementById('album-create-preview');
+  prev.innerHTML = ''; prev.textContent = '💿'; prev.style.background = '';
+  document.getElementById('album-create-error').style.display = 'none';
+  openOverlay('album-create-overlay');
+});
+document.getElementById('album-create-photo-choose').addEventListener('click', ()=> document.getElementById('album-create-photo-input').click());
+document.getElementById('album-create-photo-input').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  try{
+    albumCreateCoverDataUrl = await compressImageToDataURL(file, 500, 0.85);
+    const prev = document.getElementById('album-create-preview');
+    prev.style.background = 'transparent';
+    prev.innerHTML = `<img src="${albumCreateCoverDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+  }catch(err){
+    const el = document.getElementById('album-create-error'); el.textContent = "Impossible de lire cette image."; el.style.display = 'block';
+  }
+});
+document.getElementById('album-create-photo-remove').addEventListener('click', ()=>{
+  albumCreateCoverDataUrl = null;
+  const prev = document.getElementById('album-create-preview');
+  prev.innerHTML = ''; prev.textContent = '💿'; prev.style.background = '';
+});
+document.getElementById('album-create-save').addEventListener('click', async ()=>{
+  if(!isAdmin){ showToast("Seul l'admin peut créer un album."); return; }
+  const errEl = document.getElementById('album-create-error');
+  const name = document.getElementById('album-create-name').value.trim();
+  const artist = document.getElementById('album-create-artist').value.trim();
+  if(!name){ errEl.textContent = "Merci d'indiquer le nom de l'album."; errEl.style.display = 'block'; return; }
+  if(!artist){ errEl.textContent = "Merci d'indiquer l'artiste."; errEl.style.display = 'block'; return; }
+  const btn = document.getElementById('album-create-save');
+  btn.disabled = true; btn.textContent = 'Création…';
+  try{
+    const ref = musicAlbumsRef.doc();
+    await ref.set({
+      name, artist,
+      coverURL: albumCreateCoverDataUrl || null,
+      trackIds: [],
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: auth.currentUser ? auth.currentUser.uid : null
+    });
+    // Mise à jour locale immédiate pour pouvoir sélectionner l'album tout de suite.
+    allAlbums.push({ id: ref.id, name, artist, coverURL: albumCreateCoverDataUrl || null, trackIds: [] });
+    refreshAlbumSelects();
+    document.getElementById('upload-album').value = ref.id;
+    closeOverlay('album-create-overlay');
+    showToast('Album créé 💿');
+  }catch(err){
+    console.error(err);
+    errEl.textContent = "Impossible de créer l'album (vérifier les règles Firestore sur 'musicAlbums').";
+    errEl.style.display = 'block';
+  }finally{
+    btn.disabled = false; btn.textContent = "Créer l'album";
+  }
+});
+// Place un titre dans un album (et le retire de tous les autres) : un titre = un seul album.
+async function setTrackAlbum(trackId, albumId){
+  const batch = db.batch();
+  let changed = false;
+  allAlbums.forEach(a=>{
+    const has = Array.isArray(a.trackIds) && a.trackIds.includes(trackId);
+    if(has && a.id !== albumId){
+      batch.update(musicAlbumsRef.doc(a.id), { trackIds: firebase.firestore.FieldValue.arrayRemove(trackId) });
+      changed = true;
+    }
+  });
+  if(albumId){
+    const target = allAlbums.find(a => a.id === albumId);
+    if(target && !(target.trackIds || []).includes(trackId)){
+      batch.update(musicAlbumsRef.doc(albumId), { trackIds: firebase.firestore.FieldValue.arrayUnion(trackId) });
+      changed = true;
+    }
+  }
+  if(changed) await batch.commit();
+}
 
 /* Réorganisation manuelle des titres d'un artiste — réservée à l'admin.
    L'ordre est enregistré dans musicArtists/<artiste>.trackOrder et vu par
@@ -6717,6 +6978,8 @@ function renderTracks(){
     });
   }else if(currentView === 'playlist-detail'){
     renderPlaylistDetailTracks(); // gère elle-même currentQueue, dans l'ordre de la playlist
+  }else if(currentView === 'album-detail'){
+    renderAlbumDetail();
   }else if(currentView === 'artist-detail'){
     renderArtistDetail(); // gère elle-même currentQueue, triée par popularité
   }else if(currentView === 'classement'){
@@ -7694,6 +7957,8 @@ function openEditModal(trackId){
   document.getElementById('edit-title').value = track.title || '';
   document.getElementById('edit-artist').value = track.artist || '';
   document.getElementById('edit-release-date').value = /^\d{4}-\d{2}-\d{2}$/.test(track.releaseDate || '') ? track.releaseDate : '';
+  refreshAlbumSelects();
+  { const al = albumOfTrack(trackId); document.getElementById('edit-album').value = al ? al.id : ''; }
   const preview = document.getElementById('edit-cover-preview');
   if(editCoverDataUrl){
     preview.style.background = 'transparent';
@@ -8024,6 +8289,12 @@ document.getElementById('edit-submit').addEventListener('click', async ()=>{
       coverURL: editCoverDataUrl || null,
       releaseDate: releaseDate ? releaseDate : firebase.firestore.FieldValue.delete()
     });
+    const newAlbumId = document.getElementById('edit-album').value;
+    const curAlbum = albumOfTrack(editingTrackId);
+    if((curAlbum ? curAlbum.id : '') !== newAlbumId){
+      try{ await setTrackAlbum(editingTrackId, newAlbumId || null); }
+      catch(albErr){ console.error(albErr); showToast("Infos enregistrées, mais l'album n'a pas pu être modifié."); }
+    }
     showToast('Titre mis à jour.');
     closeOverlay('edit-overlay');
     editingTrackId = null;
@@ -8317,6 +8588,8 @@ function resetUploadForm(){
   document.getElementById('upload-title').value = '';
   document.getElementById('upload-artist').value = '';
   document.getElementById('upload-release-date').value = '';
+  refreshAlbumSelects();
+  document.getElementById('upload-album').value = '';
   document.getElementById('upload-audio-drop').classList.remove('has-file');
   document.getElementById('upload-audio-label').textContent = isAdmin
     ? 'Choisir un fichier audio (MP3, WAV…) ou une vidéo MP4'
@@ -8543,6 +8816,11 @@ document.getElementById('upload-submit').addEventListener('click', async ()=>{
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
+    const chosenAlbumId = document.getElementById('upload-album').value;
+    if(chosenAlbumId){
+      try{ await setTrackAlbum(trackRef.id, chosenAlbumId); }
+      catch(albErr){ console.error(albErr); showToast("Titre publié, mais impossible de l'ajouter à l'album."); }
+    }
     progressLabel.textContent = 'Terminé !';
     showToast('Titre publié 🎶');
     closeOverlay('upload-overlay');
