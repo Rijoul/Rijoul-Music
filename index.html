@@ -694,6 +694,14 @@ input,textarea{ font-family:inherit; }
 .ranking-artist{ font-size:12px; color:var(--text-dim); margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ranking-plays{ font-family:var(--mono); font-size:12px; color:var(--text-faint); white-space:nowrap; display:flex; align-items:center; gap:5px; }
 .ranking-more-wrap{ display:flex; justify-content:center; margin-bottom:40px; }
+.library-more-wrap{ display:flex; justify-content:center; margin:28px 0 40px; }
+
+/* --- Réorganisation manuelle des titres d'un artiste (admin) --- */
+.artist-reorder-hint{ font-size:12.5px; color:var(--text-dim); margin:0 0 12px; }
+.pl-row.is-reordering{ cursor:default; }
+.reorder-btn{ width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid var(--border, rgba(255,255,255,.14)); background:transparent; color:var(--text); cursor:pointer; font-size:13px; }
+.reorder-btn:hover:not(:disabled){ background:rgba(255,255,255,.08); }
+.reorder-btn:disabled{ opacity:.3; cursor:default; }
 
 /* --- Bouton "Historique du classement" (uniquement sur l'onglet "Depuis
    toujours") : ouvre un mini-menu indiquant depuis/pendant combien de temps
@@ -2033,6 +2041,10 @@ body:not(.is-admin) #np-menu-download-btn{display:none!important}
       <span class="section-count" id="library-count">0 titre</span>
     </div>
     <div class="grid" id="library-grid"></div>
+    <!-- Pagination de l'accueil : 50 titres affichés, puis 50 de plus à chaque clic. -->
+    <div class="library-more-wrap" id="library-more-wrap" style="display:none;">
+      <button class="btn btn-ghost" id="library-more-btn">Afficher 50 titres de plus</button>
+    </div>
     <div class="empty-state" id="library-empty" style="display:none;">
       <h3>Aucun titre pour l'instant</h3>
       <p>Sois le premier à ajouter un morceau à RIJOUL MUSIC.</p>
@@ -2176,9 +2188,14 @@ body:not(.is-admin) #np-menu-download-btn{display:none!important}
           <button class="btn btn-gold" id="artist-detail-play">▶ Lire</button>
           <!-- Réservé à l'admin : masqué pour tout le monde par défaut. -->
           <button class="btn btn-ghost btn-sm" id="artist-detail-edit" style="display:none;">Modifier la page de l'artiste</button>
+          <button class="btn btn-ghost btn-sm" id="artist-detail-reorder" style="display:none;">↕ Modifier l'ordre des titres</button>
+          <button class="btn btn-gold btn-sm" id="artist-reorder-save" style="display:none;">Enregistrer l'ordre</button>
+          <button class="btn btn-ghost btn-sm" id="artist-reorder-cancel" style="display:none;">Annuler</button>
+          <button class="btn btn-ghost btn-sm" id="artist-reorder-reset" style="display:none;">Ordre par popularité</button>
         </div>
       </div>
     </div>
+    <p class="artist-reorder-hint" id="artist-reorder-hint" style="display:none;">Utilise les flèches ▲ ▼ pour placer les titres dans l'ordre voulu, puis clique sur « Enregistrer l'ordre ».</p>
     <div class="pl-track-list" id="artist-track-list"></div>
     <div class="empty-state" id="artist-detail-empty" style="display:none;">
       <h3>Aucun titre</h3>
@@ -3706,6 +3723,8 @@ let allTracks = [];      // tout le catalogue, tel que reçu de Firestore (onSna
 let currentQueue = [];    // liste actuellement affichée (filtrée / vue active)
 let currentView = 'library'; // 'library' | 'mine' | 'playlists' | 'playlist-detail' | 'classement'
 let searchTerm = '';
+const LIBRARY_PAGE_SIZE = 50;
+let libraryVisibleCount = LIBRARY_PAGE_SIZE; // nombre de titres affichés sur l'accueil (par tranches de 50)
 let searchNorm = '';        // requête normalisée (sans accents/ponctuation)
 let searchTokens = [];      // mots de la requête normalisée
 const searchIndexCache = new WeakMap(); // index de recherche par titre (recalculé si le titre/artiste/paroles changent)
@@ -3738,6 +3757,8 @@ let currentArtistKey = null;   // clé normalisée (voir artistKeyOf) de l'artis
 let allArtistPhotos = {};      // artistDocId -> { photoURL, ... } (musicArtistsRef)
 let editingArtistKey = null;   // clé de l'artiste en cours d'édition dans le modal admin
 let artistEditPhotoDataUrl = null;
+let artistReorderMode = false;   // l'admin est en train de réorganiser les titres de l'artiste affiché
+let artistReorderIds = [];        // ordre de travail (ids de titres) pendant la réorganisation
 const FOR_YOU_PLAYLIST_ID = 'for-you'; // playlist virtuelle générée pour l'utilisateur, affichée sur l'accueil
 const FOR_YOU_TRACK_LIMIT = 30; // nombre de titres retenus dans la playlist "Pour vous"
 
@@ -4211,6 +4232,7 @@ function openArtistPage(name){
   const key = artistKeyOf(name);
   if(!key){ showToast("Artiste inconnu."); return; }
   currentArtistKey = key;
+  artistReorderMode = false;
   currentView = 'artist-detail';
   document.querySelectorAll('.tab-btn').forEach(b=> b.classList.remove('active'));
   document.getElementById('view-library').style.display = 'none';
@@ -4226,7 +4248,8 @@ function openArtistPage(name){
 function renderArtistDetail(){
   if(currentView !== 'artist-detail' || !currentArtistKey) return;
   const key = currentArtistKey;
-  const tracks = tracksByArtistKey(key);
+  if(artistReorderMode && !isAdmin) artistReorderMode = false;
+  const tracks = tracksByArtistKey(key, artistReorderMode ? artistReorderIds : null);
   currentQueue = tracks;
   document.getElementById('artist-detail-name').textContent = artistDisplayName(key);
   document.getElementById('artist-detail-count').textContent = tracks.length + (tracks.length > 1 ? ' titres' : ' titre');
@@ -4239,8 +4262,14 @@ function renderArtistDetail(){
     photoWrap.style.background = '';
     photoWrap.innerHTML = '🎤';
   }
-  document.getElementById('artist-detail-edit').style.display = isAdmin ? '' : 'none';
-  document.getElementById('artist-detail-play').style.display = tracks.length ? '' : 'none';
+  document.getElementById('artist-detail-edit').style.display = (isAdmin && !artistReorderMode) ? '' : 'none';
+  document.getElementById('artist-detail-reorder').style.display = (isAdmin && !artistReorderMode && tracks.length > 1) ? '' : 'none';
+  document.getElementById('artist-reorder-save').style.display = artistReorderMode ? '' : 'none';
+  document.getElementById('artist-reorder-cancel').style.display = artistReorderMode ? '' : 'none';
+  const hasManualOrder = (()=>{ const d = allArtistPhotos[artistDocId(key)]; return !!(d && Array.isArray(d.trackOrder) && d.trackOrder.length); })();
+  document.getElementById('artist-reorder-reset').style.display = (isAdmin && hasManualOrder) ? '' : 'none';
+  document.getElementById('artist-reorder-hint').style.display = artistReorderMode ? '' : 'none';
+  document.getElementById('artist-detail-play').style.display = (tracks.length && !artistReorderMode) ? '' : 'none';
   paintArtistRows(tracks);
 }
 function paintArtistRows(tracks){
@@ -4258,7 +4287,7 @@ function paintArtistRows(tracks){
     const liked = uid && Array.isArray(t.likes) && t.likes.includes(uid);
     const plays = t.plays || 0;
     return `
-    <div class="pl-row ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
+    <div class="pl-row ${isPlaying ? 'is-playing' : ''} ${artistReorderMode ? 'is-reordering' : ''}" data-track-id="${t.id}">
       <span class="pl-row-num">${isPlaying ? '♪' : (i+1)}</span>
       <div class="pl-row-cover"><img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt=""></div>
       <div class="pl-row-meta">
@@ -4267,20 +4296,31 @@ function paintArtistRows(tracks){
       </div>
       <span class="pl-row-duration">${formatTime(t.duration || 0)}</span>
       <div class="pl-row-actions">
+        ${artistReorderMode ? `
+        <button class="reorder-btn" data-reorder-up="${t.id}" aria-label="Monter" ${i === 0 ? 'disabled' : ''}>▲</button>
+        <button class="reorder-btn" data-reorder-down="${t.id}" aria-label="Descendre" ${i === tracks.length - 1 ? 'disabled' : ''}>▼</button>
+        ` : `
         <button class="like-btn ${liked ? 'liked' : ''}" data-artist-like="${t.id}" aria-label="Aimer">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.6-10-9.1C.5 8.6 2 5 5.6 5c2 0 3.4 1 4.9 3 1.5-2 2.9-3 4.9-3 3.6 0 5.1 3.6 3.6 6.9C19.5 16.4 12 21 12 21z"/></svg>
         </button>
         <button class="icon-btn" data-artist-add="${t.id}" aria-label="Ajouter à une playlist">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
+        </button>`}
       </div>
     </div>`;
   }).join('');
   wrap.querySelectorAll('.pl-row').forEach(row=>{
     row.addEventListener('click', (e)=>{
       if(e.target.closest('button')) return;
+      if(artistReorderMode) return;
       playTrackById(row.dataset.trackId);
     });
+  });
+  wrap.querySelectorAll('[data-reorder-up]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); moveArtistTrack(btn.dataset.reorderUp, -1); });
+  });
+  wrap.querySelectorAll('[data-reorder-down]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); moveArtistTrack(btn.dataset.reorderDown, 1); });
   });
   wrap.querySelectorAll('[data-artist-like]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{ e.stopPropagation(); toggleLike(btn.dataset.artistLike); });
@@ -4290,7 +4330,71 @@ function paintArtistRows(tracks){
   });
   bindHoverPrefetch(wrap);
 }
-document.getElementById('artist-detail-back').addEventListener('click', ()=> switchView('library'));
+document.getElementById('artist-detail-back').addEventListener('click', ()=>{ artistReorderMode = false; switchView('library'); });
+
+/* Réorganisation manuelle des titres d'un artiste — réservée à l'admin.
+   L'ordre est enregistré dans musicArtists/<artiste>.trackOrder et vu par
+   tout le monde (page artiste + bouton "Lire"). */
+function moveArtistTrack(id, delta){
+  const i = artistReorderIds.indexOf(id);
+  const j = i + delta;
+  if(i < 0 || j < 0 || j >= artistReorderIds.length) return;
+  const tmp = artistReorderIds[i]; artistReorderIds[i] = artistReorderIds[j]; artistReorderIds[j] = tmp;
+  renderArtistDetail();
+}
+document.getElementById('artist-detail-reorder').addEventListener('click', ()=>{
+  if(!isAdmin){ showToast("Seul l'admin peut modifier l'ordre des titres."); return; }
+  artistReorderIds = tracksByArtistKey(currentArtistKey).map(t => t.id);
+  artistReorderMode = true;
+  renderArtistDetail();
+});
+document.getElementById('artist-reorder-cancel').addEventListener('click', ()=>{
+  artistReorderMode = false;
+  renderArtistDetail();
+});
+document.getElementById('artist-reorder-save').addEventListener('click', async ()=>{
+  if(!isAdmin){ showToast("Seul l'admin peut modifier l'ordre des titres."); return; }
+  const docId = artistDocId(currentArtistKey);
+  if(!docId) return;
+  const btn = document.getElementById('artist-reorder-save');
+  btn.disabled = true; btn.textContent = 'Enregistrement…';
+  try{
+    await musicArtistsRef.doc(docId).set({
+      trackOrder: artistReorderIds.slice(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: auth.currentUser ? auth.currentUser.uid : null
+    }, { merge: true });
+    // Mise à jour locale immédiate (le onSnapshot confirmera juste après).
+    allArtistPhotos[docId] = Object.assign({}, allArtistPhotos[docId] || {}, { trackOrder: artistReorderIds.slice() });
+    artistReorderMode = false;
+    showToast("Ordre des titres enregistré.");
+    renderArtistDetail();
+  }catch(err){
+    console.error(err);
+    showToast("Impossible d'enregistrer l'ordre (vérifier les règles Firestore sur 'musicArtists').");
+  }finally{
+    btn.disabled = false; btn.textContent = "Enregistrer l'ordre";
+  }
+});
+document.getElementById('artist-reorder-reset').addEventListener('click', async ()=>{
+  if(!isAdmin) return;
+  const docId = artistDocId(currentArtistKey);
+  if(!docId) return;
+  try{
+    await musicArtistsRef.doc(docId).set({
+      trackOrder: firebase.firestore.FieldValue.delete(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: auth.currentUser ? auth.currentUser.uid : null
+    }, { merge: true });
+    if(allArtistPhotos[docId]) delete allArtistPhotos[docId].trackOrder;
+    artistReorderMode = false;
+    showToast("Ordre remis par popularité.");
+    renderArtistDetail();
+  }catch(err){
+    console.error(err);
+    showToast("Impossible de réinitialiser l'ordre.");
+  }
+});
 document.getElementById('artist-detail-play').addEventListener('click', ()=>{
   if(!currentQueue.length) return;
   playTrackById(currentQueue[0].id, 1);
@@ -4591,6 +4695,7 @@ document.getElementById('search-input').addEventListener('input', (e)=>{
   searchTerm = e.target.value.trim().toLowerCase();
   searchNorm = normalizeSearchText(searchTerm);
   searchTokens = searchNorm ? searchNorm.split(' ') : [];
+  libraryVisibleCount = LIBRARY_PAGE_SIZE; // nouvelle recherche : on repart des 50 premiers
   document.getElementById('search-wrap').classList.toggle('has-value', e.target.value.length > 0);
   renderTracks();
 });
@@ -5821,11 +5926,26 @@ function artistDocId(key){
 // moins populaire (nombre total d'écoutes, même compteur que le Classement
 // "Depuis toujours"). Un titre en featuring ("A - B") appartient à la fois
 // à la page de A et à celle de B, au lieu de créer un artiste combiné "A - B".
-function tracksByArtistKey(key){
-  return allTracks
+// Si l'admin a défini un ordre manuel (champ "trackOrder" du document
+// musicArtists de l'artiste), il prime : les titres listés suivent cet ordre,
+// et les titres absents de la liste (ajoutés depuis) viennent ensuite, triés
+// par popularité. Sans ordre manuel : popularité, comme avant.
+function tracksByArtistKey(key, overrideOrder){
+  const list = allTracks
     .filter(t => splitArtistNames(t.artist).some(n => artistKeyOf(n) === key))
     .slice()
     .sort((a, b) => (b.plays || 0) - (a.plays || 0));
+  let order = overrideOrder || null;
+  if(!order){
+    const docId = artistDocId(key);
+    const data = docId ? allArtistPhotos[docId] : null;
+    order = (data && Array.isArray(data.trackOrder)) ? data.trackOrder : null;
+  }
+  if(!order || !order.length) return list;
+  const pos = new Map(order.map((id, i) => [id, i]));
+  const ordered = list.filter(t => pos.has(t.id)).sort((a, b) => pos.get(a.id) - pos.get(b.id));
+  const rest = list.filter(t => !pos.has(t.id));
+  return ordered.concat(rest);
 }
 // Nom d'affichage d'un artiste : reprend la casse telle que saisie sur son
 // premier titre trouvé (la clé normalisée elle-même est toujours en
@@ -6560,16 +6680,31 @@ function renderHomePlaylistsSection(){
   });
 }
 document.getElementById('home-pl-see-all').addEventListener('click', ()=> switchView('playlists'));
+document.getElementById('library-more-btn').addEventListener('click', ()=>{
+  libraryVisibleCount += LIBRARY_PAGE_SIZE;
+  renderTracks();
+});
 
 function renderTracks(){
   const uid = auth.currentUser ? auth.currentUser.uid : null;
   if(currentView === 'library'){
     const list = sortBySearchRelevance(getOrderedLibraryTracks().filter(matchesSearch));
-    currentQueue = list;
-    paintGrid('library-grid', 'library-empty', 'library-count', list, {
+    currentQueue = list; // la file de lecture reste complète : "suivant" continue au-delà des 50 affichés
+    const shownList = list.slice(0, libraryVisibleCount);
+    paintGrid('library-grid', 'library-empty', 'library-count', shownList, {
       emptyTitle: searchTerm ? 'Aucun résultat' : "Aucun titre pour l'instant",
-      emptyText: searchTerm ? "Essaie un autre mot-clé." : "Sois le premier à ajouter un morceau à RIJOUL MUSIC."
+      emptyText: searchTerm ? "Essaie un autre mot-clé." : "Sois le premier à ajouter un morceau à RIJOUL MUSIC.",
+      totalCount: list.length
     });
+    const libMoreWrap = document.getElementById('library-more-wrap');
+    const libMoreBtn = document.getElementById('library-more-btn');
+    if(list.length > libraryVisibleCount){
+      const rest = list.length - libraryVisibleCount;
+      libMoreBtn.textContent = 'Afficher ' + Math.min(LIBRARY_PAGE_SIZE, rest) + ' titre' + (Math.min(LIBRARY_PAGE_SIZE, rest) > 1 ? 's' : '') + ' de plus (' + rest + ' restant' + (rest > 1 ? 's' : '') + ')';
+      libMoreWrap.style.display = '';
+    }else{
+      libMoreWrap.style.display = 'none';
+    }
     // Doit s'exécuter APRÈS paintGrid : les cartes "artiste" sont ajoutées
     // au début de #library-grid, qui vient d'être (re)rempli ci-dessus.
     renderArtistSearchResults();
@@ -6603,7 +6738,8 @@ function paintGrid(gridId, emptyId, countId, list, texts){
   const grid = document.getElementById(gridId);
   const empty = document.getElementById(emptyId);
   const count = document.getElementById(countId);
-  count.textContent = list.length + (list.length > 1 ? ' titres' : ' titre');
+  const totalForCount = (texts && typeof texts.totalCount === 'number') ? texts.totalCount : list.length;
+  count.textContent = totalForCount + (totalForCount > 1 ? ' titres' : ' titre');
   if(!list.length){
     grid.innerHTML = '';
     empty.style.display = '';
