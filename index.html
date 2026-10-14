@@ -3424,6 +3424,73 @@ const MAX_AUDIO_BYTES = 100 * 1024 * 1024; // 100 Mo max par fichier importé (a
 const audioBlobCache = new Map(); // trackId -> URL de blob déjà reconstruite (évite de retélécharger)
 const audioBlobFetchInFlight = new Map(); // trackId -> Promise en cours (évite les doubles téléchargements simultanés)
 
+/* --- Fiabilité du chargement audio + libération mémoire ---------------
+   - fetchAudioChunk : relit un morceau avec nouvel essai (backoff) et
+     REFUSE un morceau manquant/vide (avant : remplacé par '' en silence,
+     d'où des fichiers tronqués ou corrompus sans aucune erreur).
+   - b64ToBytes : décode chaque morceau dès son arrivée (plus de chaîne
+     base64 géante de plusieurs dizaines de Mo en mémoire).
+   - mapLimit : lecture en parallèle limitée (stabilité réseau mobile).
+   - evictAudioCache : révoque les anciennes blob URLs (le cache grossissait
+     sans limite à chaque titre écouté). */
+const AUDIO_CACHE_MAX = 6;        // nb max de blob URLs gardées en mémoire
+const AUDIO_CHUNK_RETRIES = 3;    // essais par morceau
+const AUDIO_CHUNK_CONCURRENCY = 4; // morceaux lus en parallèle
+function b64ToBytes(b64){
+  const bin = atob(b64);
+  const u = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u;
+}
+async function fetchAudioChunk(col, i){
+  let lastErr;
+  for(let n = 0; n < AUDIO_CHUNK_RETRIES; n++){
+    try{
+      const d = await col.doc(String(i)).get();
+      const data = d.exists ? d.data().data : null;
+      if(data) return data;
+      throw new Error('Morceau audio ' + i + ' manquant');
+    }catch(e){
+      lastErr = e;
+      if(n < AUDIO_CHUNK_RETRIES - 1) await new Promise(r => setTimeout(r, 400 * Math.pow(2, n)));
+    }
+  }
+  throw lastErr;
+}
+async function mapLimit(count, limit, fn){
+  const out = new Array(count);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, count) }, async ()=>{
+    while(next < count){ const i = next++; out[i] = await fn(i); }
+  }));
+  return out;
+}
+function evictAudioCache(keepIds){
+  for(const [id, url] of audioBlobCache){
+    if(audioBlobCache.size <= AUDIO_CACHE_MAX) break;
+    if(keepIds.has(id)) continue;
+    // Ne jamais révoquer une URL actuellement utilisée par le lecteur.
+    try{
+      if(typeof audioEl !== 'undefined' && audioEl && audioEl.src === url) continue;
+      if(typeof npVideoEl !== 'undefined' && npVideoEl && npVideoEl.src === url) continue;
+    }catch(e){}
+    try{ URL.revokeObjectURL(url); }catch(e){}
+    audioBlobCache.delete(id);
+  }
+}
+function audioCacheKeepIds(extraId){
+  const keep = new Set();
+  if(extraId) keep.add(extraId);
+  try{ if(currentTrackId) keep.add(currentTrackId); }catch(e){}
+  try{
+    if(Array.isArray(currentQueue) && currentQueue.length > 1 && currentTrackIndex >= 0){
+      const nx = currentQueue[(currentTrackIndex + 1) % currentQueue.length];
+      if(nx) keep.add(nx.id);
+    }
+  }catch(e){}
+  return keep;
+}
+
 /* =========================================================
    ÉCOUTE HORS-LIGNE — stockage local (IndexedDB) des morceaux
    téléchargés depuis une playlist, pour pouvoir les rejouer sans
@@ -3511,12 +3578,14 @@ async function downloadTrackOffline(track){
   if(offlineTrackIds.has(track.id)) return;
   const snap = await tracksRef.doc(track.id).collection('audioChunks').orderBy('index').get();
   if(snap.empty) throw new Error(`Fichier audio introuvable pour "${track.title || 'ce titre'}".`);
+  if(track.audioChunkCount && snap.size !== track.audioChunkCount) throw new Error(`Fichier audio incomplet pour "${track.title || 'ce titre'}".`);
   let base64 = '';
   snap.forEach(doc => { base64 += doc.data().data || ''; });
   const byteChars = atob(base64);
   const bytes = new Uint8Array(byteChars.length);
   for(let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
   const blob = new Blob([bytes], { type: track.audioMimeType || 'audio/mpeg' });
+  if(track.audioBytes && blob.size !== track.audioBytes) throw new Error(`Fichier audio incomplet pour "${track.title || 'ce titre'}".`);
   await offlineDbPut({
     id: track.id,
     title: track.title || 'Sans titre',
@@ -8419,7 +8488,7 @@ document.getElementById('edit-audio-input').addEventListener('change', async (e)
       progressFill.style.width = pct + '%';
       progressLabel.textContent = `Envoi… ${pct}%`;
     });
-    await trackRef.update({ audioChunkCount: chunkCount, audioMimeType: mimeType, duration: duration || 0 });
+    await trackRef.update({ audioChunkCount: chunkCount, audioMimeType: mimeType, audioBytes: file.size, duration: duration || 0 });
 
     // Le cache local (lecture en cours + copie hors-ligne éventuelle) doit
     // être invalidé, sinon l'ancien fichier continuerait à être lu à la
@@ -8759,6 +8828,7 @@ async function getTrackAudioBlobUrl(track){
     if(offlineRecord && offlineRecord.blob){
       const url = URL.createObjectURL(offlineRecord.blob);
       audioBlobCache.set(track.id, url);
+      evictAudioCache(audioCacheKeepIds(track.id));
       return url;
     }
   }catch(err){
@@ -8772,32 +8842,31 @@ async function getTrackAudioBlobUrl(track){
   // même promesse au lieu de relire les mêmes documents Firestore deux fois.
   if(audioBlobFetchInFlight.has(track.id)) return audioBlobFetchInFlight.get(track.id);
   const fetchPromise = (async ()=>{
-    // Récupère tous les morceaux en parallèle (par index connu) plutôt
-    // qu'avec une requête orderBy séquentielle : légèrement plus rapide,
-    // surtout sur les connexions à latence élevée (mobile).
+    // Lecture des morceaux en parallèle limité, avec nouvel essai et refus des
+    // morceaux manquants ; chaque morceau est décodé dès son arrivée.
+    const mime = track.audioMimeType || 'audio/mpeg';
+    const chunksCol = tracksRef.doc(track.id).collection('audioChunks');
+    let parts;
     const chunkCount = track.audioChunkCount || 0;
-    let base64 = '';
     if(chunkCount > 0){
-      const chunksCol = tracksRef.doc(track.id).collection('audioChunks');
-      const docs = await Promise.all(
-        Array.from({length: chunkCount}, (_, i) => chunksCol.doc(String(i)).get())
-      );
-      base64 = docs.map(d => (d.exists ? (d.data().data || '') : '')).join('');
+      parts = await mapLimit(chunkCount, AUDIO_CHUNK_CONCURRENCY, async (i)=> b64ToBytes(await fetchAudioChunk(chunksCol, i)));
     }else{
       // Ancien titre sans audioChunkCount enregistré : repli sur la requête.
-      const snap = await tracksRef.doc(track.id).collection('audioChunks').orderBy('index').get();
+      const snap = await chunksCol.orderBy('index').get();
       if(snap.empty) throw new Error("Fichier audio introuvable.");
-      snap.forEach(doc => { base64 += doc.data().data || ''; });
+      parts = [];
+      snap.forEach(doc => { const d = doc.data().data; if(d) parts.push(b64ToBytes(d)); });
     }
-    if(!base64) throw new Error("Fichier audio introuvable.");
-    // Décodage base64 -> binaire via fetch() sur une data: URL plutôt qu'une
-    // boucle atob()/charCodeAt() en JS : le navigateur décode nativement
-    // (bien plus rapide et sans bloquer le thread principal pour les gros
-    // fichiers), ce qui réduit nettement le temps avant que le titre démarre.
-    const mime = track.audioMimeType || 'audio/mpeg';
-    const blob = await (await fetch(`data:${mime};base64,${base64}`)).blob();
+    if(!parts.length) throw new Error("Fichier audio introuvable.");
+    const blob = new Blob(parts, { type: mime });
+    parts = null;
+    // Contrôle d'intégrité (si la taille d'origine a été enregistrée à l'import).
+    if(track.audioBytes && blob.size !== track.audioBytes){
+      throw new Error("Fichier audio incomplet, réessaie.");
+    }
     const url = URL.createObjectURL(blob);
     audioBlobCache.set(track.id, url);
+    evictAudioCache(audioCacheKeepIds(track.id));
     return url;
   })();
   audioBlobFetchInFlight.set(track.id, fetchPromise);
@@ -8875,6 +8944,7 @@ document.getElementById('upload-submit').addEventListener('click', async ()=>{
       coverURL: uploadCoverDataUrl || null,
       audioChunkCount: chunkCount,
       audioMimeType: mimeType,
+      audioBytes: uploadAudioFile.size,
       duration: duration || 0,
       uploaderId: user.uid,
       uploaderName: (currentProfile && currentProfile.displayName) || user.displayName || (user.email ? user.email.split('@')[0] : 'Membre'),
