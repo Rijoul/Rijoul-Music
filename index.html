@@ -8819,7 +8819,29 @@ async function uploadAudioToFirestore(trackRef, file, uploaderId, onProgress){
 // Récupère tous les morceaux d'un titre, les réassemble en un Blob,
 // et renvoie une URL locale utilisable comme src audio. Mise en cache
 // pour ne reconstruire chaque morceau qu'une seule fois par session.
-async function getTrackAudioBlobUrl(track){
+/* --- Priorité des chargements audio (point 3) ---------------------------
+   Chaque chargement est un « job » : arrière-plan (préchargement) ou premier
+   plan (demandé par l'utilisateur). Un job d'arrière-plan lit au plus 2
+   morceaux à la fois et se met en pause tant qu'un chargement de premier plan
+   est en cours ; si l'utilisateur demande un titre déjà en préchargement, le
+   job est « promu » et reprend à pleine vitesse. */
+const audioLoadJobs = new Map();   // trackId -> { background: bool }
+let bgChunksInFlight = 0;
+const BG_CHUNK_CONCURRENCY = 2;
+const audioSleep = ms => new Promise(r => setTimeout(r, ms));
+function foregroundAudioActive(){
+  for(const j of audioLoadJobs.values()) if(!j.background) return true;
+  return false;
+}
+async function gatedAudioChunk(job, col, i){
+  while(job.background && (foregroundAudioActive() || bgChunksInFlight >= BG_CHUNK_CONCURRENCY)) await audioSleep(200);
+  const isBg = job.background;
+  if(isBg) bgChunksInFlight++;
+  try{ return b64ToBytes(await fetchAudioChunk(col, i)); }
+  finally{ if(isBg) bgChunksInFlight--; }
+}
+async function getTrackAudioBlobUrl(track, opts){
+  const background = !!(opts && opts.background === true);
   if(audioBlobCache.has(track.id)) return audioBlobCache.get(track.id);
   // Priorité à la copie hors-ligne locale si elle existe : lecture instantanée
   // et fonctionne même sans connexion (voir downloadTrackOffline / IndexedDB).
@@ -8840,7 +8862,13 @@ async function getTrackAudioBlobUrl(track){
   // Si une récupération est déjà en cours pour ce titre (ex: préchargement
   // lancé pendant que l'utilisateur clique déjà dessus), on réutilise la
   // même promesse au lieu de relire les mêmes documents Firestore deux fois.
-  if(audioBlobFetchInFlight.has(track.id)) return audioBlobFetchInFlight.get(track.id);
+  if(audioBlobFetchInFlight.has(track.id)){
+    // Demande de l'utilisateur sur un titre déjà en préchargement : on le promeut.
+    if(!background){ const j = audioLoadJobs.get(track.id); if(j) j.background = false; }
+    return audioBlobFetchInFlight.get(track.id);
+  }
+  const job = { background };
+  audioLoadJobs.set(track.id, job);
   const fetchPromise = (async ()=>{
     // Lecture des morceaux en parallèle limité, avec nouvel essai et refus des
     // morceaux manquants ; chaque morceau est décodé dès son arrivée.
@@ -8849,7 +8877,7 @@ async function getTrackAudioBlobUrl(track){
     let parts;
     const chunkCount = track.audioChunkCount || 0;
     if(chunkCount > 0){
-      parts = await mapLimit(chunkCount, AUDIO_CHUNK_CONCURRENCY, async (i)=> b64ToBytes(await fetchAudioChunk(chunksCol, i)));
+      parts = await mapLimit(chunkCount, AUDIO_CHUNK_CONCURRENCY, (i)=> gatedAudioChunk(job, chunksCol, i));
     }else{
       // Ancien titre sans audioChunkCount enregistré : repli sur la requête.
       const snap = await chunksCol.orderBy('index').get();
@@ -8874,6 +8902,7 @@ async function getTrackAudioBlobUrl(track){
     return await fetchPromise;
   }finally{
     audioBlobFetchInFlight.delete(track.id);
+    audioLoadJobs.delete(track.id);
   }
 }
 // Récupère en arrière-plan les morceaux audio du titre suivant dans la file
@@ -8881,11 +8910,34 @@ async function getTrackAudioBlobUrl(track){
 // une fois son tour venu. N'échoue jamais bruyamment : un titre suivant qui
 // ne se précharge pas correctement sera simplement chargé normalement le
 // moment venu, comme avant.
-function prefetchTrackById(trackId){
+// Décide si un préchargement est acceptable vu la connexion de l'appareil.
+// kind : 'next' (titre suivant) ou 'hover' (survol, plus spéculatif).
+// Sans navigator.connection (Safari/iOS), on laisse passer : les autres
+// garde-fous (un seul survol à la fois, priorité au premier plan) s'appliquent.
+function prefetchPolicy(kind){
+  if(!navigator.onLine) return false;
+  const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if(c){
+    if(c.saveData) return false;
+    const t = c.effectiveType || '';
+    if(t === 'slow-2g' || t === '2g') return false;
+    if(kind === 'hover' && (t === '3g' || c.type === 'cellular')) return false;
+  }
+  return true;
+}
+let hoverPrefetchId = null;
+function prefetchTrackById(trackId, kind){
+  kind = kind || 'next';
   if(!trackId || audioBlobCache.has(trackId) || audioBlobFetchInFlight.has(trackId)) return;
+  if(!prefetchPolicy(kind)) return;
+  if(kind === 'hover'){
+    // Un seul préchargement au survol à la fois.
+    if(hoverPrefetchId && audioBlobFetchInFlight.has(hoverPrefetchId)) return;
+    hoverPrefetchId = trackId;
+  }
   const t = allTracks.find(tr => tr.id === trackId);
   if(!t) return;
-  getTrackAudioBlobUrl(t).catch(err=> console.error('Préchargement impossible :', err));
+  getTrackAudioBlobUrl(t, { background: true }).catch(err=> console.error('Préchargement impossible :', err));
 }
 function prefetchNextTrack(){
   if(currentQueue.length < 2 || currentTrackIndex < 0) return;
@@ -8899,14 +8951,18 @@ function prefetchNextTrack(){
 // (mouseenter) laisse en général assez de temps pour que le fichier soit
 // déjà en cache au moment du clic. Un léger délai évite de déclencher un
 // téléchargement inutile si la souris ne fait que passer devant la carte.
+// Survol : réservé aux appareils avec vraie souris (pas de préchargement sur
+// tactile), avec un délai de 350 ms pour ignorer les simples passages.
+const CAN_HOVER_PREFETCH = window.matchMedia && matchMedia('(hover:hover) and (pointer:fine)').matches;
 function bindHoverPrefetch(container){
-  if(!container) return;
+  if(!container || !CAN_HOVER_PREFETCH) return;
   let hoverTimer = null;
   container.addEventListener('pointerenter', (e)=>{
+    if(e.pointerType && e.pointerType !== 'mouse') return;
     const card = e.target.closest ? e.target.closest('[data-track-id]') : null;
     if(!card) return;
     clearTimeout(hoverTimer);
-    hoverTimer = setTimeout(()=> prefetchTrackById(card.dataset.trackId), 180);
+    hoverTimer = setTimeout(()=> prefetchTrackById(card.dataset.trackId, 'hover'), 350);
   }, true);
   container.addEventListener('pointerleave', ()=>{ clearTimeout(hoverTimer); }, true);
 }
