@@ -9711,7 +9711,7 @@ setupMediaSessionHandlers();
    Le mode DJ n'est plus dans ce fichier : il vit sur sa propre page (dj.html).
    Colle ci-dessous l'adresse de cette page ; le bouton « Mode DJ » (admin)
    y envoie directement. */
-const DJ_URL = ''; // ← colle ici l'URL du mode DJ, ex. 'https://mon-site.com/dj.html'
+const DJ_URL = 'https://rijoul-dj.vercel.app/'; // page du mode DJ
 document.getElementById('dd-dj').addEventListener('click', ()=>{
   if(!isAdmin){ showToast("Mode DJ réservé à l'admin."); return; }
   if(radioModeActive){ showToast('Quitte la Radio Direct avant d\'ouvrir le mode DJ. 🔴'); return; }
