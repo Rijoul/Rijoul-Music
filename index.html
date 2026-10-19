@@ -4036,7 +4036,7 @@ auth.onAuthStateChanged(async (user)=>{
   const realUser = user && !user.isAnonymous ? user : null;
   isAdmin = !!(realUser && realUser.uid === ADMIN_UID);
   document.body.classList.toggle('is-admin', isAdmin);
-  const ddDj=document.getElementById('dd-dj'); if(ddDj) ddDj.style.display = isAdmin ? '' : 'none';
+  const ddDj=document.getElementById('dd-dj'); if(ddDj) ddDj.style.display = realUser ? '' : 'none';
   if(realUser){
     accountBtn.style.display = 'none';
     userChip.classList.add('visible');
@@ -9713,7 +9713,8 @@ setupMediaSessionHandlers();
    y envoie directement. */
 const DJ_URL = 'https://rijoul-dj.vercel.app/'; // page du mode DJ
 document.getElementById('dd-dj').addEventListener('click', ()=>{
-  if(!isAdmin){ showToast("Mode DJ réservé à l'admin."); return; }
+  const djUser = auth.currentUser;
+  if(!djUser || djUser.isAnonymous){ showToast('Connecte-toi pour utiliser le mode DJ.'); clearAuthErrors(); openOverlay('account-overlay'); return; }
   if(radioModeActive){ showToast('Quitte la Radio Direct avant d\'ouvrir le mode DJ. 🔴'); return; }
   if(!DJ_URL){ showToast("L'adresse du mode DJ n'est pas encore configurée."); return; }
   try{ audioEl.pause(); }catch(e){}
