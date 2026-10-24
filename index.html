@@ -2006,6 +2006,19 @@ body:not(.is-admin) #tab-stats{display:none!important}
 @keyframes wavShine{0%{background-position:150% 0}60%,100%{background-position:-50% 0}}
 .ranking-cover .wav-badge{bottom:2px;left:2px;padding:1px 4px;font-size:7.5px;border-radius:4px}
 .np-art-cover-wrap .wav-badge{bottom:10px;left:10px}
+/* Badge "RIJOUL MUSIC AWARDS" (admin) : trophée doré personnalisé, en haut à gauche de la pochette.
+   Quand le titre est aussi certifié CONCERT, ce dernier est décalé à droite du trophée. */
+.rma-badge{position:absolute;top:8px;left:8px;z-index:3;display:flex;align-items:center;justify-content:center;width:28px;height:31px;border-radius:9px;background:radial-gradient(circle at 50% 30%,rgba(255,206,106,.28),rgba(10,8,4,.82) 70%);backdrop-filter:blur(6px);border:1px solid rgba(255,206,106,.75);box-shadow:0 0 12px rgba(255,176,32,.55),inset 0 1px 0 rgba(255,255,255,.25);cursor:default;overflow:hidden;animation:rmaGlow 3.2s ease-in-out infinite}
+.rma-badge svg{width:20px;height:22px;display:block;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.6))}
+.rma-badge::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%);background-size:250% 100%;animation:wavShine 3.6s ease-in-out infinite}
+@keyframes rmaGlow{0%,100%{box-shadow:0 0 10px rgba(255,176,32,.45),inset 0 1px 0 rgba(255,255,255,.25)}50%{box-shadow:0 0 18px rgba(255,200,70,.85),inset 0 1px 0 rgba(255,255,255,.35)}}
+.card-cover.has-rma .concert-badge{left:42px}
+.ranking-cover .rma-badge{top:2px;left:2px;width:19px;height:21px;border-radius:6px}
+.ranking-cover .rma-badge svg{width:13px;height:15px}
+.ranking-cover.has-rma .concert-badge-mini{left:24px}
+.np-art-cover-wrap .rma-badge{top:10px;left:10px;width:34px;height:38px;border-radius:11px}
+.np-art-cover-wrap .rma-badge svg{width:24px;height:27px}
+.np-art-cover-wrap.has-rma .concert-badge{left:52px}
 </style>
 </head>
 <body>
@@ -2016,6 +2029,29 @@ body:not(.is-admin) #tab-stats{display:none!important}
     <filter id="cover-sharpen" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
       <feConvolveMatrix order="3" preserveAlpha="true" kernelMatrix="0 -0.32 0  -0.32 2.28 -0.32  0 -0.32 0"/>
     </filter>
+  </defs>
+</svg>
+
+<!-- Trophée "Rijoul Music Awards" : symbole SVG réutilisé par tous les badges RMA -->
+<svg width="0" height="0" style="position:absolute;pointer-events:none;" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="rma-gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff3c4"/><stop offset=".45" stop-color="#ffc83d"/><stop offset="1" stop-color="#b86a00"/>
+    </linearGradient>
+    <linearGradient id="rma-gold-dark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e29a12"/><stop offset="1" stop-color="#7a4300"/>
+    </linearGradient>
+    <symbol id="rma-trophy" viewBox="0 0 32 36">
+      <path d="M8.5 5.5H5c-1 0-1.5.7-1.4 1.6.5 4.2 2.9 6.9 6 7.5" fill="none" stroke="url(#rma-gold)" stroke-width="1.9" stroke-linecap="round"/>
+      <path d="M23.5 5.5H27c1 0 1.5.7 1.4 1.6-.5 4.2-2.9 6.9-6 7.5" fill="none" stroke="url(#rma-gold)" stroke-width="1.9" stroke-linecap="round"/>
+      <path d="M8 3h16v9.2c0 5.6-3.6 9.6-8 9.6s-8-4-8-9.6z" fill="url(#rma-gold)"/>
+      <path d="M10.2 4.8h2.6v7.6c0 3.2 1 5.4 2.6 6.4-3.2-.6-5.2-3.4-5.2-7z" fill="#fff" opacity=".38"/>
+      <text x="16" y="15.4" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="11" font-weight="900" fill="#5a3000">R</text>
+      <rect x="14.1" y="21.5" width="3.8" height="5" fill="url(#rma-gold-dark)"/>
+      <path d="M10.5 26.3h11l1.6 3.4H8.9z" fill="url(#rma-gold)"/>
+      <rect x="7.5" y="29.7" width="17" height="4" rx="1.2" fill="url(#rma-gold-dark)"/>
+      <path d="M26.5 1.5l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7z" fill="#fff8d6"/>
+    </symbol>
   </defs>
 </svg>
 
@@ -2616,6 +2652,7 @@ body:not(.is-admin) #tab-stats{display:none!important}
                  juste calée sur la même position/lecture (voir syncNpVideoWithAudio). -->
             <video class="np-art" id="np-video" muted playsinline style="display:none"></video>
             <span class="concert-badge" tabindex="0" id="np-cover-concert-badge" data-tooltip="Ce titre est certifié pour être adapté au mode concert." style="display:none">🎤 CONCERT</span>
+            <span class="rma-badge" tabindex="0" id="np-cover-rma-badge" data-tooltip="Rijoul Music Awards" aria-label="Rijoul Music Awards" style="display:none"><svg viewBox="0 0 32 36" aria-hidden="true"><use href="#rma-trophy"/></svg></span>
             <span class="hd-badge" id="np-cover-hd-badge" style="display:none">HD</span>
             <span class="wav-badge" id="np-cover-wav-badge" style="display:none">WAV</span>
             <span class="video-badge" id="np-cover-video-badge" title="Contient une vidéo" style="display:none">🎥</span>
@@ -2944,6 +2981,13 @@ body:not(.is-admin) #tab-stats{display:none!important}
     <button type="button" class="btn btn-ghost btn-sm edit-concert-toggle" id="edit-video-badge-toggle" style="margin-top:10px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;">
       <span id="edit-video-badge-toggle-icon">🎥</span>
       <span id="edit-video-badge-toggle-label">Ajouter le badge Vidéo</span>
+    </button>
+
+    <!-- Badge RIJOUL MUSIC AWARDS (admin uniquement) : trophée doré affiché en
+         haut à gauche de la pochette. Se sauvegarde au clic. -->
+    <button type="button" class="btn btn-ghost btn-sm edit-concert-toggle" id="edit-rma-toggle" style="margin-top:10px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;">
+      <span id="edit-rma-toggle-icon">🏆</span>
+      <span id="edit-rma-toggle-label">Ajouter le trophée Rijoul Music Awards</span>
     </button>
 
     <!-- Volume propre à ce titre certifié : l'admin règle le curseur (simple
@@ -7510,9 +7554,10 @@ function paintGrid(gridId, emptyId, countId, list, texts){
     const isPlaying = t.id === currentTrackId;
     return `
     <div class="card ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
-      <div class="card-cover${t.wavBadge ? ' is-wav' : ''}">
+      <div class="card-cover${t.wavBadge ? ' is-wav' : ''}${t.rijoulAward ? ' has-rma' : ''}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge" tabindex="0" data-tooltip="Ce titre est certifié pour être adapté au mode concert.">🎤 CONCERT</span>` : ''}
+        ${t.rijoulAward ? `<span class="rma-badge" tabindex="0" data-tooltip="Rijoul Music Awards" aria-label="Rijoul Music Awards"><svg viewBox="0 0 32 36" aria-hidden="true"><use href="#rma-trophy"/></svg></span>` : ''}
         ${t.hdCertified && !t.wavBadge ? `<span class="hd-badge">HD</span>` : ''}
         ${t.wavBadge ? `<span class="wav-badge" title="Qualité WAV">WAV</span>` : ''}
         ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
@@ -7788,9 +7833,10 @@ function renderRanking(){
     return `
     <div class="ranking-row ${isPlaying ? 'is-playing' : ''} ${rankClass}" data-track-id="${t.id}">
       <span class="ranking-rank">${medal ? `<span class="ranking-medal">${medal}</span>` : ''}${i + 1}${changeHtml}</span>
-      <div class="ranking-cover${t.wavBadge ? ' is-wav' : ''}" data-play="${t.id}">
+      <div class="ranking-cover${t.wavBadge ? ' is-wav' : ''}${t.rijoulAward ? ' has-rma' : ''}" data-play="${t.id}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge-mini" aria-hidden="true">🎤</span>` : ''}
+        ${t.rijoulAward ? `<span class="rma-badge" title="Rijoul Music Awards"><svg viewBox="0 0 32 36" aria-hidden="true"><use href="#rma-trophy"/></svg></span>` : ''}
         ${t.hdCertified && !t.wavBadge ? `<span class="hd-badge">HD</span>` : ''}
         ${t.wavBadge ? `<span class="wav-badge" title="Qualité WAV">WAV</span>` : ''}
         ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
@@ -8118,9 +8164,10 @@ function renderHistory(){
     const isPlaying = t.id === currentTrackId;
     return `
     <div class="ranking-row ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
-      <div class="ranking-cover${t.wavBadge ? ' is-wav' : ''}" data-play="${t.id}">
+      <div class="ranking-cover${t.wavBadge ? ' is-wav' : ''}${t.rijoulAward ? ' has-rma' : ''}" data-play="${t.id}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge-mini" aria-hidden="true">🎤</span>` : ''}
+        ${t.rijoulAward ? `<span class="rma-badge" title="Rijoul Music Awards"><svg viewBox="0 0 32 36" aria-hidden="true"><use href="#rma-trophy"/></svg></span>` : ''}
         ${t.hdCertified && !t.wavBadge ? `<span class="hd-badge">HD</span>` : ''}
         ${t.wavBadge ? `<span class="wav-badge" title="Qualité WAV">WAV</span>` : ''}
         ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
@@ -8377,6 +8424,7 @@ let editEventFeatured = false;
 let editWavBadge = false;
 let editHdCertified = false;
 let editVideoBadge = false;
+let editRmaAward = false;
 let editConcertVolume = 80; // valeur affichée sur le curseur (simple aperçu tant que non verrouillé)
 let editConcertVolumeLocked = false; // reflète track.concertVolume (présence = verrouillé)
 function refreshEditEventToggleUI(){
@@ -8401,6 +8449,13 @@ function refreshEditWavToggleUI(){
   if(!btn || !label) return;
   btn.classList.toggle('is-active', editWavBadge);
   label.textContent = editWavBadge ? 'Badge WAV ✓ (affichage premium)' : 'Ajouter le badge WAV';
+}
+function refreshEditRmaToggleUI(){
+  const btn = document.getElementById('edit-rma-toggle');
+  const label = document.getElementById('edit-rma-toggle-label');
+  if(!btn || !label) return;
+  btn.classList.toggle('is-active', editRmaAward);
+  label.textContent = editRmaAward ? 'Rijoul Music Awards ✓ (trophée affiché)' : 'Ajouter le trophée Rijoul Music Awards';
 }
 function refreshEditVideoBadgeToggleUI(){
   const btn = document.getElementById('edit-video-badge-toggle');
@@ -8453,6 +8508,8 @@ function openEditModal(trackId){
   refreshEditHdToggleUI();
   editVideoBadge = !!track.videoBadge;
   refreshEditVideoBadgeToggleUI();
+  editRmaAward = !!track.rijoulAward;
+  refreshEditRmaToggleUI();
   editConcertVolumeLocked = typeof track.concertVolume === 'number';
   editConcertVolume = editConcertVolumeLocked ? track.concertVolume : 80;
   document.getElementById('edit-concert-volume').value = editConcertVolume;
@@ -8596,6 +8653,30 @@ document.getElementById('edit-wav-toggle').addEventListener('click', async ()=>{
   }catch(err){
     console.error(err);
     showToast('Impossible de mettre à jour le badge WAV.');
+  }finally{
+    btn.disabled = false;
+  }
+});
+/* Badge RIJOUL MUSIC AWARDS : réservé à l'admin (garde isAdmin ci-dessous +
+   openEditModal inaccessible aux autres). Se sauvegarde immédiatement au clic ;
+   le trophée apparaît/disparaît partout via onSnapshot (champ rijoulAward). */
+document.getElementById('edit-rma-toggle').addEventListener('click', async ()=>{
+  if(!isAdmin || !editingTrackId) return;
+  const btn = document.getElementById('edit-rma-toggle');
+  const newVal = !editRmaAward;
+  btn.disabled = true;
+  try{
+    if(newVal){
+      await tracksRef.doc(editingTrackId).update({ rijoulAward: true });
+    }else{
+      await tracksRef.doc(editingTrackId).update({ rijoulAward: firebase.firestore.FieldValue.delete() });
+    }
+    editRmaAward = newVal;
+    refreshEditRmaToggleUI();
+    showToast(newVal ? 'Trophée Rijoul Music Awards ajouté.' : 'Trophée Rijoul Music Awards retiré.');
+  }catch(err){
+    console.error(err);
+    showToast('Impossible de mettre à jour le trophée.');
   }finally{
     btn.disabled = false;
   }
@@ -11799,6 +11880,8 @@ function updateNpCoverBadges(track){
   const wavBadge = document.getElementById('np-cover-wav-badge');
   if(wavBadge){ const on = !!(track && track.wavBadge); wavBadge.style.display = on ? '' : 'none'; if(wavBadge.parentElement) wavBadge.parentElement.classList.toggle('is-wav', on); }
   if(videoBadge) videoBadge.style.display = (track && track.videoBadge) ? '' : 'none';
+  const rmaBadge = document.getElementById('np-cover-rma-badge');
+  if(rmaBadge){ const on = !!(track && track.rijoulAward); rmaBadge.style.display = on ? '' : 'none'; if(rmaBadge.parentElement) rmaBadge.parentElement.classList.toggle('has-rma', on); }
 }
 
 /* =========================================================
@@ -12021,7 +12104,7 @@ function hideFloatingTooltip(){
 // (le contenu étant régénéré via innerHTML, les écouteurs précédents sont
 // perdus avec les anciens noeuds ; data-tooltip-bound évite les doublons).
 function bindConcertBadgeTooltip(root){
-  (root || document).querySelectorAll('.concert-badge[data-tooltip]').forEach(badge=>{
+  (root || document).querySelectorAll('.concert-badge[data-tooltip], .rma-badge[data-tooltip]').forEach(badge=>{
     if(badge.dataset.tooltipBound) return;
     badge.dataset.tooltipBound = '1';
     badge.addEventListener('mouseenter', ()=> showFloatingTooltip(badge, badge.dataset.tooltip));
