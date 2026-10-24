@@ -1185,6 +1185,35 @@ input,textarea{ font-family:inherit; }
 .np-art-cover-wrap .concert-badge{ top:10px; left:10px; }
 .np-art-cover-wrap .hd-badge{ bottom:10px; left:10px; }
 .np-art-cover-wrap .video-badge{ bottom:10px; right:10px; width:26px; height:22px; font-size:13px; }
+/* ===== Chargement du titre : barre de progression + batterie à la place de la pochette ===== */
+.np-load{ position:absolute; inset:0; z-index:3; border-radius:inherit; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:16px;
+  background:radial-gradient(120% 90% at 50% 0%, rgba(169,114,255,.30), transparent 60%), radial-gradient(100% 80% at 50% 100%, rgba(255,176,32,.24), transparent 60%), rgba(20,14,30,.97);
+  box-shadow:inset 0 0 0 1px var(--glass-border-strong), 0 30px 70px -20px rgba(0,0,0,.75);
+  opacity:0; visibility:hidden; pointer-events:none; transition:opacity .25s ease, visibility .25s ease; }
+.np-art-cover-wrap.is-loading .np-load{ opacity:1; visibility:visible; }
+.np-art-cover-wrap.is-loading .np-art{ opacity:0; }
+.np-load-drums{ width:74%; max-width:170px; height:auto; overflow:visible; filter:drop-shadow(0 6px 14px rgba(0,0,0,.5)); }
+.np-load-drums .d-body{ fill:rgba(255,255,255,.07); stroke:rgba(255,255,255,.38); stroke-width:1.4; }
+.np-load-drums .d-head{ fill:rgba(255,255,255,.16); stroke:var(--copper-bright); stroke-width:1.4; }
+.np-load-drums .d-leg{ stroke:rgba(255,255,255,.3); stroke-width:1.4; stroke-linecap:round; }
+.np-load-drums .d-glow{ fill:var(--copper); opacity:0; }
+.np-load-drums .d-stick{ stroke:var(--copper-bright); stroke-width:3; stroke-linecap:round; }
+.np-load-drums .d-tip{ fill:#fff; }
+.np-load-drums .stick-l{ transform-origin:14px 8px; animation:npStickL .8s cubic-bezier(.5,0,.9,.6) infinite; }
+.np-load-drums .stick-r{ transform-origin:126px 8px; animation:npStickR .8s cubic-bezier(.5,0,.9,.6) infinite; animation-delay:.4s; }
+.np-load-drums .glow-l{ animation:npDrumGlow .8s ease-out infinite; }
+.np-load-drums .glow-r{ animation:npDrumGlow .8s ease-out infinite; animation-delay:.4s; }
+@keyframes npStickL{ 0%{ transform:rotate(0deg); } 45%{ transform:rotate(-26deg); } 100%{ transform:rotate(0deg); } }
+@keyframes npStickR{ 0%{ transform:rotate(0deg); } 45%{ transform:rotate(26deg); } 100%{ transform:rotate(0deg); } }
+@keyframes npDrumGlow{ 0%{ opacity:.85; } 30%{ opacity:0; } 100%{ opacity:0; } }
+.np-load-bar{ width:82%; height:8px; border-radius:99px; background:rgba(255,255,255,.10); overflow:hidden; box-shadow:inset 0 0 0 1px rgba(255,255,255,.08); }
+.np-load-fill{ height:100%; width:0%; border-radius:inherit; background:linear-gradient(90deg,var(--violet),var(--pink),var(--copper)); background-size:200% 100%; box-shadow:0 0 14px rgba(255,176,32,.55); transition:width .25s ease-out; animation:npLoadShift 1.4s linear infinite; }
+.np-load-bar.indet .np-load-fill{ width:38% !important; transition:none; animation:npLoadShift 1.4s linear infinite, npLoadSlide 1.2s ease-in-out infinite; }
+@keyframes npLoadShift{ from{ background-position:0% 0; } to{ background-position:200% 0; } }
+@keyframes npLoadSlide{ from{ transform:translateX(-110%); } to{ transform:translateX(280%); } }
+.np-load-pct{ font:600 11px var(--mono); letter-spacing:.08em; color:var(--text-dim); text-transform:uppercase; }
+@media (prefers-reduced-motion:reduce){ .np-load-drums .stick-l,.np-load-drums .stick-r,.np-load-drums .glow-l,.np-load-drums .glow-r,.np-load-fill{ animation:none; } }
+
 /* Titre vidéo dans le grand lecteur : la boîte occupe toute la largeur (et
    toute la hauteur disponible) du lecteur au lieu du carré fixe utilisé
    pour la pochette — voir .np-art-track.has-video ci-dessous, qui donne à
@@ -2526,6 +2555,22 @@ body:not(.is-admin) #np-menu-download-btn{display:none!important}
             <span class="hd-badge" id="np-cover-hd-badge" style="display:none">HD</span>
             <span class="wav-badge" id="np-cover-wav-badge" style="display:none">WAV</span>
             <span class="video-badge" id="np-cover-video-badge" title="Contient une vidéo" style="display:none">🎥</span>
+            <div class="np-load" id="np-load" role="progressbar" aria-label="Chargement du titre" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <svg class="np-load-drums" viewBox="0 0 140 90" aria-hidden="true">
+                <line class="d-leg" x1="40" y1="76" x2="32" y2="88"/><line class="d-leg" x1="40" y1="76" x2="48" y2="88"/>
+                <line class="d-leg" x1="102" y1="76" x2="94" y2="88"/><line class="d-leg" x1="102" y1="76" x2="110" y2="88"/>
+                <rect class="d-body" x="18" y="58" width="44" height="18" rx="3"/>
+                <ellipse class="d-head" cx="40" cy="58" rx="22" ry="6"/>
+                <ellipse class="d-glow glow-l" cx="40" cy="58" rx="22" ry="6"/>
+                <rect class="d-body" x="82" y="56" width="40" height="20" rx="3"/>
+                <ellipse class="d-head" cx="102" cy="56" rx="20" ry="5.5"/>
+                <ellipse class="d-glow glow-r" cx="102" cy="56" rx="20" ry="5.5"/>
+                <g class="stick-l"><line class="d-stick" x1="14" y1="8" x2="38" y2="54"/><circle class="d-tip" cx="38" cy="54" r="2.6"/></g>
+                <g class="stick-r"><line class="d-stick" x1="126" y1="8" x2="102" y2="52"/><circle class="d-tip" cx="102" cy="52" r="2.6"/></g>
+              </svg>
+              <div class="np-load-bar indet" id="np-load-bar"><div class="np-load-fill" id="np-load-fill"></div></div>
+              <div class="np-load-pct" id="np-load-pct">Chargement…</div>
+            </div>
           </div>
           <img class="np-art-side" id="np-art-next" alt="" aria-hidden="true">
         </div>
@@ -8785,11 +8830,50 @@ function foregroundAudioActive(){
   for(const j of audioLoadJobs.values()) if(!j.background) return true;
   return false;
 }
+/* Progression du chargement affichée dans le grand lecteur (barre + batterie, à la place de la pochette). */
+let npLoadTrackId = null, npLoadTimer = null;
+function setNpLoadProgress(frac, indeterminate){
+  const bar = document.getElementById('np-load-bar'), fill = document.getElementById('np-load-fill');
+  const pct = document.getElementById('np-load-pct'), box = document.getElementById('np-load');
+  if(!bar || !fill || !pct) return;
+  bar.classList.toggle('indet', !!indeterminate);
+  if(indeterminate){ pct.textContent = 'Chargement…'; return; }
+  const v = Math.max(0, Math.min(1, frac || 0));
+  fill.style.width = (v * 100).toFixed(1) + '%';
+  pct.textContent = 'Chargement ' + Math.round(v * 100) + ' %';
+  if(box) box.setAttribute('aria-valuenow', String(Math.round(v * 100)));
+}
+function showNpLoader(trackId){
+  npLoadTrackId = trackId;
+  const j = audioLoadJobs.get(trackId);
+  if(j && j.total > 0) setNpLoadProgress(j.done / j.total, false); else setNpLoadProgress(0, true);
+  clearTimeout(npLoadTimer);
+  // Petit délai : un titre déjà proche (cache hors-ligne) ne fait pas clignoter l'écran de chargement.
+  npLoadTimer = setTimeout(()=>{
+    const w = document.getElementById('np-cover-wrap');
+    if(npLoadTrackId === trackId && w) w.classList.add('is-loading');
+  }, 150);
+}
+function hideNpLoader(trackId){
+  if(trackId && npLoadTrackId !== trackId) return;
+  npLoadTrackId = null;
+  clearTimeout(npLoadTimer);
+  const w = document.getElementById('np-cover-wrap');
+  if(w) w.classList.remove('is-loading');
+}
+function reportAudioProgress(job){
+  if(job.trackId && job.trackId === npLoadTrackId && job.total > 0) setNpLoadProgress(job.done / job.total, false);
+}
 async function gatedAudioChunk(job, col, i){
   while(job.background && (foregroundAudioActive() || bgChunksInFlight >= BG_CHUNK_CONCURRENCY)) await audioSleep(200);
   const isBg = job.background;
   if(isBg) bgChunksInFlight++;
-  try{ return b64ToBytes(await fetchAudioChunk(col, i)); }
+  try{
+    const bytes = b64ToBytes(await fetchAudioChunk(col, i));
+    job.done = (job.done || 0) + 1;
+    reportAudioProgress(job);
+    return bytes;
+  }
   finally{ if(isBg) bgChunksInFlight--; }
 }
 async function getTrackAudioBlobUrl(track, opts){
@@ -8819,7 +8903,7 @@ async function getTrackAudioBlobUrl(track, opts){
     if(!background){ const j = audioLoadJobs.get(track.id); if(j) j.background = false; }
     return audioBlobFetchInFlight.get(track.id);
   }
-  const job = { background };
+  const job = { background, trackId: track.id, total: track.audioChunkCount || 0, done: 0 };
   audioLoadJobs.set(track.id, job);
   const fetchPromise = (async ()=>{
     // Lecture des morceaux en parallèle limité, avec nouvel essai et refus des
@@ -9611,9 +9695,11 @@ async function playTrackById(trackId, direction, opts){
     // morceau (et non après) : l'écho a ainsi le temps de démarrer pendant
     // qu'on attend le blob du morceau suivant, ce qui évite tout silence
     // entre la coupure du lecteur principal et le début du fondu.
+    if(audioBlobCache.has(trackId)) hideNpLoader(); else showNpLoader(trackId);
     const blobUrlPromise = getTrackAudioBlobUrl(track);
     const crossfadeReady = outgoingSrc ? crossfadeOutgoing(outgoingSrc, outgoingTime, CROSSFADE_MS) : Promise.resolve();
     const [blobUrl] = await Promise.all([blobUrlPromise, crossfadeReady]);
+    hideNpLoader(trackId);
     if(currentTrackId !== trackId){ trackChangeInFlight = false; return; } // l'utilisateur a changé de morceau entre-temps
     audioEl.src = blobUrl; // à partir d'ici, l'ancien morceau ne peut plus déclencher "ended" : le changement n'est plus "en vol"
     updateNpVideoForTrack(track, blobUrl);
@@ -9639,6 +9725,7 @@ async function playTrackById(trackId, direction, opts){
     });
     syncNowPlayingUI();
   }catch(e){
+    hideNpLoader(trackId);
     trackChangeInFlight = false;
     console.error(e);
     if(opts && opts.radio){
