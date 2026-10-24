@@ -1953,6 +1953,51 @@ input[type="range"]{ accent-color:var(--copper); }
 body:not(.is-admin) #upload-open-btn,body:not(.is-admin) #empty-upload-btn,body:not(.is-admin) #mine-upload-btn{display:none!important}
 /* Téléchargement WAV (admin) : item du menu "..." du grand lecteur */
 body:not(.is-admin) #np-menu-download-btn{display:none!important}
+
+/* =========================================================
+   STATISTIQUES DU SITE — menu réservé à l'admin
+   ========================================================= */
+body:not(.is-admin) #tab-stats{display:none!important}
+.stats-range-tabs{ display:flex; gap:8px; overflow-x:auto; margin-bottom:16px; scrollbar-width:none; align-items:center; }
+.stats-range-tabs::-webkit-scrollbar{ display:none; }
+.stats-range-btn{
+  border:1px solid var(--line); background:var(--panel); color:var(--text-dim);
+  padding:7px 15px; border-radius:999px; font-size:12.5px; font-weight:700;
+  white-space:nowrap; flex-shrink:0; transition:.2s cubic-bezier(.4,0,.2,1);
+}
+.stats-range-btn:hover{ color:var(--text); border-color:var(--glass-border-strong); }
+.stats-range-btn.active{ background:var(--copper); border-color:var(--copper); color:#241a06; box-shadow:0 2px 10px -2px rgba(255,176,32,0.5); }
+.stats-refresh{ margin-left:auto; }
+.stats-kpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:16px; }
+.stats-kpi{ background:var(--panel); border:1px solid var(--glass-border); border-radius:20px; padding:16px 16px 14px; }
+.stats-kpi-label{ font-size:12px; color:var(--text-faint); font-weight:700; letter-spacing:.02em; }
+.stats-kpi-value{ font-family:var(--display); font-size:30px; font-weight:800; letter-spacing:-0.02em; margin-top:4px; line-height:1.1; }
+.stats-kpi-sub{ font-family:var(--mono); font-size:11.5px; color:var(--text-dim); margin-top:4px; }
+.stats-card{ background:var(--panel); border:1px solid var(--glass-border); border-radius:22px; padding:18px 18px 16px; margin-bottom:16px; }
+.stats-card-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+.stats-card-title{ font-family:var(--display); font-size:16px; font-weight:800; margin:0; letter-spacing:-0.01em; }
+.stats-card-note{ font-family:var(--mono); font-size:11.5px; color:var(--text-faint); }
+.stats-bars{ display:flex; align-items:flex-end; gap:3px; height:160px; }
+.stats-bar-col{ flex:1; min-width:0; height:100%; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; }
+.stats-bar{ width:100%; border-radius:6px 6px 2px 2px; background:linear-gradient(180deg,var(--copper-bright),var(--copper)); min-height:2px; opacity:.9; }
+.stats-bar.peak{ background:linear-gradient(180deg,var(--pink),var(--violet)); opacity:1; }
+.stats-bar.zero{ background:var(--line-strong); opacity:.6; }
+.stats-axis{ display:flex; gap:3px; margin-top:6px; }
+.stats-axis span{ flex:1; min-width:0; text-align:center; font-family:var(--mono); font-size:10px; color:var(--text-faint); overflow:hidden; white-space:nowrap; }
+.stats-country-row{ display:grid; grid-template-columns:30px minmax(80px,170px) 1fr auto; align-items:center; gap:10px; padding:7px 0; border-top:1px solid var(--line); }
+.stats-country-row:first-child{ border-top:0; }
+.stats-flag{ font-size:20px; text-align:center; }
+.stats-country-name{ font-size:13.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.stats-country-track{ height:8px; border-radius:999px; background:var(--line); overflow:hidden; }
+.stats-country-fill{ height:100%; border-radius:999px; background:linear-gradient(90deg,var(--copper),var(--copper-bright)); }
+.stats-country-val{ font-family:var(--mono); font-size:12px; color:var(--text-dim); text-align:right; white-space:nowrap; }
+.stats-empty{ color:var(--text-faint); font-size:13px; padding:10px 0; }
+.stats-foot{ font-size:11.5px; color:var(--text-faint); line-height:1.5; margin-top:4px; }
+@media (max-width:600px){
+  .stats-kpi-value{ font-size:26px; }
+  .stats-country-row{ grid-template-columns:26px minmax(60px,110px) 1fr auto; gap:8px; }
+  .stats-bars{ height:130px; }
+}
 #np-menu-download-btn:disabled{opacity:.55;cursor:progress}
 /* Badge "WAV" (admin) : pochette en affichage premium (liseré doré, lueur, reflet animé) */
 .wav-badge{position:absolute;bottom:8px;left:8px;z-index:3;padding:3px 8px;border-radius:6px;background:linear-gradient(135deg,#fff3c4,#ffb020 45%,#b86a00);color:#2a1700;font-family:var(--mono);font-size:9.5px;font-weight:800;letter-spacing:.1em;line-height:1;box-shadow:0 0 12px rgba(255,176,32,.7),inset 0 1px 0 rgba(255,255,255,.6);cursor:default}
@@ -1994,6 +2039,7 @@ body:not(.is-admin) #np-menu-download-btn{display:none!important}
     <button class="tab-btn" data-view="extraits">Extraits</button>
     <button class="tab-btn" data-view="classement">Classement</button>
     <button class="tab-btn" data-view="historique">Historique</button>
+    <button class="tab-btn" data-view="stats" id="tab-stats">📊 Statistiques</button>
   </div>
   <!-- Champs leurres : absorbent l'autofill agressif de Chrome (email/mot de passe)
        pour qu'il ne se colle jamais dans la vraie barre de recherche juste en dessous. -->
@@ -2184,6 +2230,24 @@ body:not(.is-admin) #np-menu-download-btn{display:none!important}
       <h3>Aucune écoute pour l'instant</h3>
       <p>Les titres que tu écoutes apparaîtront ici, du plus récent au plus ancien.</p>
     </div>
+  </section>
+
+  <!-- STATISTIQUES — réservé à l'admin : visites, connexions, comptes
+       connectés ou non, pays des visiteurs, écoutes par heure. Les données
+       sont stockées dans la collection Firestore "siteStats". -->
+  <section id="view-stats" style="display:none;">
+    <div class="section-head">
+      <h2 class="section-title">Statistiques du site</h2>
+      <span class="section-count" id="stats-period-label"></span>
+    </div>
+    <div class="stats-range-tabs" id="stats-range-tabs">
+      <button class="stats-range-btn" data-range="today">Aujourd'hui</button>
+      <button class="stats-range-btn active" data-range="week">7 jours</button>
+      <button class="stats-range-btn" data-range="month">30 jours</button>
+      <button class="stats-range-btn" data-range="quarter">90 jours</button>
+      <button class="btn btn-ghost btn-sm stats-refresh" id="stats-refresh-btn">↻ Actualiser</button>
+    </div>
+    <div id="stats-body"></div>
   </section>
 
   <!-- DÉTAIL D'UNE PLAYLIST -->
@@ -4101,10 +4165,252 @@ document.getElementById('profile-save').addEventListener('click', async ()=>{
   }
 });
 
+/* =========================================================
+   STATISTIQUES DU SITE (menu "📊 Statistiques", réservé à l'admin)
+   Données stockées dans Firestore, collection "siteStats" : un document
+   par compteur ET par jour, id = "<clé>_<AAAA-MM-JJ>", champs {k, day, n}.
+   Clés : visit (visites), visitAuth / visitAnon (visites avec / sans
+   compte), login (connexions à un compte), listen (écoutes),
+   h00…h23 (écoutes par heure), c_FR, c_BE… (visites par pays).
+   Jours et heures sont calculés en heure de Paris pour que tout le
+   monde (visiteurs et admin) parle du même découpage.
+   Visite = une par session de navigateur (rechargements non recomptés).
+   ========================================================= */
+const siteStatsRef = db.collection('siteStats');
+const STATS_TZ = 'Europe/Paris';
+function statsParisParts(date){
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: STATS_TZ, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', hourCycle:'h23' }).formatToParts(date || new Date());
+  const o = {};
+  parts.forEach(p => { o[p.type] = p.value; });
+  return o;
+}
+function statsDayKey(date){ const p = statsParisParts(date); return p.year + '-' + p.month + '-' + p.day; }
+function statsHourKey(date){ const p = statsParisParts(date); return 'h' + (p.hour === '24' ? '00' : p.hour); }
+
+// Incrémente un ou plusieurs compteurs du jour (écriture groupée, silencieuse en cas d'échec).
+function statsRecord(entries){
+  try{
+    const day = statsDayKey();
+    const batch = db.batch();
+    entries.forEach(([k, n])=>{
+      batch.set(siteStatsRef.doc(k + '_' + day), { k, day, n: firebase.firestore.FieldValue.increment(n) }, { merge:true });
+    });
+    batch.commit().catch(err => console.warn('Statistiques : écriture impossible (règles Firestore "siteStats" publiées ?)', err && err.code || err));
+  }catch(e){ console.warn('Statistiques :', e); }
+}
+
+// Pays du visiteur (code ISO à 2 lettres, "XX" si inconnu), mis en cache pour la session.
+let statsCountryPromise = null;
+function statsGetCountry(){
+  if(statsCountryPromise) return statsCountryPromise;
+  statsCountryPromise = (async ()=>{
+    try{ const c = sessionStorage.getItem('rm_stat_cc'); if(c && /^[A-Z]{2}$/.test(c)) return c; }catch(e){}
+    const tryFetch = async (url, parse)=>{
+      const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      const timer = setTimeout(()=>{ try{ if(ctrl) ctrl.abort(); }catch(e){} }, 4500);
+      try{
+        const r = await fetch(url, ctrl ? { signal: ctrl.signal, cache:'no-store' } : { cache:'no-store' });
+        if(!r.ok) return null;
+        return await parse(r);
+      }catch(e){ return null; }
+      finally{ clearTimeout(timer); }
+    };
+    let cc = await tryFetch('https://api.country.is/', async r => { const j = await r.json(); return j && j.country; });
+    if(!cc) cc = await tryFetch('https://ipapi.co/country/', async r => (await r.text()));
+    cc = (typeof cc === 'string') ? cc.trim().toUpperCase() : '';
+    if(!/^[A-Z]{2}$/.test(cc)) cc = 'XX';
+    try{ sessionStorage.setItem('rm_stat_cc', cc); }catch(e){}
+    return cc;
+  })();
+  return statsCountryPromise;
+}
+
+// Appelée à chaque changement d'état de connexion (voir onAuthStateChanged).
+let statsVisitDone = false;
+async function statsOnAuth(realUser){
+  try{
+    if(!statsVisitDone){
+      statsVisitDone = true;
+      let already = false;
+      try{ already = sessionStorage.getItem('rm_stat_visit') === '1'; }catch(e){}
+      if(!already){
+        try{ sessionStorage.setItem('rm_stat_visit', '1'); }catch(e){}
+        const cc = await statsGetCountry();
+        statsRecord([['visit', 1], [realUser ? 'visitAuth' : 'visitAnon', 1], ['c_' + cc, 1]]);
+      }
+    }
+    if(realUser){
+      let last = null;
+      try{ last = sessionStorage.getItem('rm_stat_login'); }catch(e){}
+      if(last !== realUser.uid){
+        try{ sessionStorage.setItem('rm_stat_login', realUser.uid); }catch(e){}
+        statsRecord([['login', 1]]);
+      }
+    }
+  }catch(e){ console.warn('Statistiques :', e); }
+}
+
+/* --- Affichage admin --- */
+const STATS_RANGES = { today:1, week:7, month:30, quarter:90 };
+const STATS_RANGE_LABELS = { today:"Aujourd'hui", week:'7 derniers jours', month:'30 derniers jours', quarter:'90 derniers jours' };
+let statsRange = 'week';
+let statsLoadToken = 0;
+let statsProfilesCache = { at:0, count:null };
+
+function statsDaysList(n){
+  const [y, m, d] = statsDayKey().split('-').map(Number);
+  const base = Date.UTC(y, m - 1, d);
+  const out = [];
+  for(let i = n - 1; i >= 0; i--) out.push(new Date(base - i * 86400000).toISOString().slice(0, 10));
+  return out;
+}
+function statsFmt(n){ return (Number(n) || 0).toLocaleString('fr-FR'); }
+function statsFlag(cc){
+  if(!/^[A-Z]{2}$/.test(cc) || cc === 'XX') return '🌍';
+  return String.fromCodePoint(...cc.split('').map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+}
+function statsCountryName(cc){
+  if(cc === 'XX') return 'Pays inconnu';
+  try{ return new Intl.DisplayNames(['fr'], { type:'region' }).of(cc) || cc; }catch(e){ return cc; }
+}
+async function statsCountProfiles(){
+  if(statsProfilesCache.count !== null && Date.now() - statsProfilesCache.at < 60000) return statsProfilesCache.count;
+  let count = null;
+  try{
+    if(typeof usersRef.count === 'function'){
+      const snap = await usersRef.count().get();
+      count = snap.data().count;
+    }else{
+      const snap = await usersRef.get();
+      count = snap.size;
+    }
+  }catch(e){
+    try{ const snap = await usersRef.get(); count = snap.size; }catch(e2){ count = null; }
+  }
+  statsProfilesCache = { at: Date.now(), count };
+  return count;
+}
+
+async function loadStats(){
+  if(!isAdmin) return;
+  const token = ++statsLoadToken;
+  const body = document.getElementById('stats-body');
+  const days = statsDaysList(STATS_RANGES[statsRange] || 7);
+  document.getElementById('stats-period-label').textContent = STATS_RANGE_LABELS[statsRange] || '';
+  body.innerHTML = '<div class="ranking-loading">Chargement des statistiques…</div>';
+  try{
+    const [snap, profilesCount] = await Promise.all([
+      siteStatsRef.where('day', '>=', days[0]).where('day', '<=', days[days.length - 1]).get(),
+      statsCountProfiles()
+    ]);
+    if(token !== statsLoadToken) return;
+
+    const tot = { visit:0, visitAuth:0, visitAnon:0, login:0, listen:0 };
+    const perDay = {};
+    days.forEach(d => { perDay[d] = { visit:0, listen:0 }; });
+    const hours = new Array(24).fill(0);
+    const countries = {};
+    snap.forEach(doc=>{
+      const x = doc.data() || {};
+      const k = x.k, n = Number(x.n) || 0;
+      if(typeof k !== 'string') return;
+      if(Object.prototype.hasOwnProperty.call(tot, k)){
+        tot[k] += n;
+        if((k === 'visit' || k === 'listen') && perDay[x.day]) perDay[x.day][k] += n;
+      }else if(/^h([01][0-9]|2[0-3])$/.test(k)){
+        hours[parseInt(k.slice(1), 10)] += n;
+      }else if(/^c_[A-Z]{2}$/.test(k)){
+        const cc = k.slice(2);
+        countries[cc] = (countries[cc] || 0) + n;
+      }
+    });
+    body.innerHTML = renderStatsHtml(days, tot, perDay, hours, countries, profilesCount);
+  }catch(err){
+    if(token !== statsLoadToken) return;
+    console.error('Statistiques : lecture impossible', err);
+    body.innerHTML = '<div class="empty-state"><h3>Statistiques indisponibles</h3><p>Impossible de lire la collection « siteStats ». Vérifie que les règles Firestore mises à jour ont bien été publiées.</p></div>';
+  }
+}
+
+function statsBarsHtml(values, labels, titles, labelEvery){
+  const max = Math.max(1, ...values);
+  const peakIdx = values.some(v => v > 0) ? values.indexOf(Math.max(...values)) : -1;
+  const cols = values.map((v, i)=>{
+    const h = v > 0 ? Math.max(3, Math.round(v / max * 100)) : 2;
+    const cls = v === 0 ? 'zero' : (i === peakIdx ? 'peak' : '');
+    return '<div class="stats-bar-col" title="' + escapeHtml(titles[i]) + '"><div class="stats-bar ' + cls + '" style="height:' + h + '%"></div></div>';
+  }).join('');
+  const axis = labels.map((l, i) => '<span>' + (i % labelEvery === 0 ? escapeHtml(l) : '') + '</span>').join('');
+  return '<div class="stats-bars">' + cols + '</div><div class="stats-axis">' + axis + '</div>';
+}
+
+function renderStatsHtml(days, tot, perDay, hours, countries, profilesCount){
+  const connected = tot.visitAuth, anon = tot.visitAnon, vis = connected + anon;
+  const pct = n => vis > 0 ? Math.round(n / vis * 100) + ' %' : '—';
+  let html = '<div class="stats-kpis">'
+    + '<div class="stats-kpi"><div class="stats-kpi-label">Visites du site</div><div class="stats-kpi-value">' + statsFmt(tot.visit) + '</div><div class="stats-kpi-sub">1 visite = 1 session</div></div>'
+    + '<div class="stats-kpi"><div class="stats-kpi-label">Connexions</div><div class="stats-kpi-value">' + statsFmt(tot.login) + '</div><div class="stats-kpi-sub">à un compte</div></div>'
+    + '<div class="stats-kpi"><div class="stats-kpi-label">Visiteurs connectés</div><div class="stats-kpi-value">' + statsFmt(connected) + '</div><div class="stats-kpi-sub">' + pct(connected) + ' des visites</div></div>'
+    + '<div class="stats-kpi"><div class="stats-kpi-label">Non connectés</div><div class="stats-kpi-value">' + statsFmt(anon) + '</div><div class="stats-kpi-sub">' + pct(anon) + ' des visites</div></div>'
+    + '<div class="stats-kpi"><div class="stats-kpi-label">Écoutes</div><div class="stats-kpi-value">' + statsFmt(tot.listen) + '</div><div class="stats-kpi-sub">sur la période</div></div>'
+    + '<div class="stats-kpi"><div class="stats-kpi-label">Comptes (total)</div><div class="stats-kpi-value">' + (profilesCount === null ? '—' : statsFmt(profilesCount)) + '</div><div class="stats-kpi-sub">profils enregistrés</div></div>'
+    + '</div>';
+
+  // Écoutes par heure
+  const hasHours = hours.some(v => v > 0);
+  const peakH = hasHours ? hours.indexOf(Math.max(...hours)) : -1;
+  html += '<div class="stats-card"><div class="stats-card-head"><h3 class="stats-card-title">Écoutes par heure</h3><span class="stats-card-note">'
+    + (hasHours ? 'Pic à ' + String(peakH).padStart(2, '0') + 'h (' + statsFmt(hours[peakH]) + ' écoutes) · heure de Paris' : 'heure de Paris') + '</span></div>';
+  html += hasHours
+    ? statsBarsHtml(hours, hours.map((_, i) => String(i).padStart(2, '0')), hours.map((v, i) => String(i).padStart(2, '0') + 'h : ' + statsFmt(v) + ' écoute' + (v > 1 ? 's' : '')), 3)
+    : '<div class="stats-empty">Pas encore d\'écoute enregistrée sur cette période.</div>';
+  html += '</div>';
+
+  // Visites par jour
+  if(days.length > 1){
+    const vals = days.map(d => perDay[d].visit);
+    const every = days.length > 45 ? 10 : (days.length > 14 ? 5 : 1);
+    html += '<div class="stats-card"><div class="stats-card-head"><h3 class="stats-card-title">Visites par jour</h3><span class="stats-card-note">' + statsFmt(vals.reduce((a, b) => a + b, 0)) + ' au total</span></div>';
+    html += vals.some(v => v > 0)
+      ? statsBarsHtml(vals, days.map(d => d.slice(8) + '/' + d.slice(5, 7)), days.map(d => d.slice(8) + '/' + d.slice(5, 7) + ' : ' + statsFmt(perDay[d].visit) + ' visite(s), ' + statsFmt(perDay[d].listen) + ' écoute(s)'), every)
+      : '<div class="stats-empty">Pas encore de visite enregistrée sur cette période.</div>';
+    html += '</div>';
+  }
+
+  // Pays
+  const list = Object.entries(countries).sort((a, b) => b[1] - a[1]);
+  const totalC = list.reduce((a, [, n]) => a + n, 0);
+  html += '<div class="stats-card"><div class="stats-card-head"><h3 class="stats-card-title">Pays des visiteurs</h3><span class="stats-card-note">' + list.length + ' pays</span></div>';
+  if(!list.length){
+    html += '<div class="stats-empty">Pas encore de pays enregistré sur cette période.</div>';
+  }else{
+    const top = list[0][1];
+    html += list.slice(0, 20).map(([cc, n])=>
+      '<div class="stats-country-row"><span class="stats-flag">' + statsFlag(cc) + '</span><span class="stats-country-name">' + escapeHtml(statsCountryName(cc)) + '</span>'
+      + '<span class="stats-country-track"><span class="stats-country-fill" style="display:block;width:' + Math.max(2, Math.round(n / top * 100)) + '%"></span></span>'
+      + '<span class="stats-country-val">' + statsFmt(n) + ' · ' + Math.round(n / totalC * 100) + ' %</span></div>'
+    ).join('');
+  }
+  html += '</div>';
+  html += '<p class="stats-foot">Les statistiques sont enregistrées depuis la mise en place de ce menu (pas d\'historique avant). Une visite est comptée une fois par session de navigateur ; une connexion est comptée quand un compte est ouvert pendant la session.</p>';
+  return html;
+}
+
+document.querySelectorAll('.stats-range-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    statsRange = btn.dataset.range;
+    document.querySelectorAll('.stats-range-btn').forEach(b => b.classList.toggle('active', b === btn));
+    loadStats();
+  });
+});
+document.getElementById('stats-refresh-btn').addEventListener('click', ()=>{ statsProfilesCache.count = null; loadStats(); });
+
 auth.onAuthStateChanged(async (user)=>{
   const realUser = user && !user.isAnonymous ? user : null;
   isAdmin = !!(realUser && realUser.uid === ADMIN_UID);
   document.body.classList.toggle('is-admin', isAdmin);
+  if(!isAdmin && currentView === 'stats') switchView('library');
+  statsOnAuth(realUser); // compte la visite / la connexion pour les statistiques
   const ddDj=document.getElementById('dd-dj'); if(ddDj) ddDj.style.display = realUser ? '' : 'none';
   if(realUser){
     accountBtn.style.display = 'none';
@@ -4156,6 +4462,8 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click', ()=> switchView(btn.dataset.view));
 });
 function switchView(view){
+  // Menu Statistiques : réservé à l'admin.
+  if(view === 'stats' && !isAdmin) view = 'library';
   if((view === 'mine' || view === 'playlists' || view === 'historique') && !auth.currentUser){
     clearAuthErrors();
     openOverlay('account-overlay');
@@ -4169,6 +4477,7 @@ function switchView(view){
   document.getElementById('view-extraits').style.display = view === 'extraits' ? '' : 'none';
   document.getElementById('view-classement').style.display = view === 'classement' ? '' : 'none';
   document.getElementById('view-historique').style.display = view === 'historique' ? '' : 'none';
+  document.getElementById('view-stats').style.display = view === 'stats' ? '' : 'none';
   document.getElementById('view-playlist-detail').style.display = 'none';
   document.getElementById('view-artist-detail').style.display = 'none';
   document.getElementById('view-album-detail').style.display = 'none';
@@ -4198,6 +4507,9 @@ function switchView(view){
   if(view === 'extraits'){
     renderExtractsSection();
   }
+  if(view === 'stats'){
+    loadStats();
+  }
   renderTracks();
   renderPlaylistsGrid();
   // Le classement, l'historique et les extraits s'affichent seuls : on
@@ -4213,6 +4525,7 @@ function openPlaylistDetail(id){
   currentView = 'playlist-detail';
   document.querySelectorAll('.tab-btn').forEach(b=> b.classList.toggle('active', b.dataset.view === 'playlists'));
   document.getElementById('view-library').style.display = 'none';
+  document.getElementById('view-stats').style.display = 'none';
   document.getElementById('view-mine').style.display = 'none';
   document.getElementById('view-playlists').style.display = 'none';
   document.getElementById('view-artist-detail').style.display = 'none';
@@ -4264,6 +4577,7 @@ function openArtistPage(name){
   currentView = 'artist-detail';
   document.querySelectorAll('.tab-btn').forEach(b=> b.classList.remove('active'));
   document.getElementById('view-library').style.display = 'none';
+  document.getElementById('view-stats').style.display = 'none';
   document.getElementById('view-mine').style.display = 'none';
   document.getElementById('view-playlists').style.display = 'none';
   document.getElementById('view-extraits').style.display = 'none';
@@ -4401,7 +4715,7 @@ function openAlbumPage(id, fromArtistKey){
   artistReorderMode = false;
   currentView = 'album-detail';
   document.querySelectorAll('.tab-btn').forEach(b=> b.classList.remove('active'));
-  ['view-library','view-mine','view-playlists','view-extraits','view-classement','view-historique','view-playlist-detail','view-artist-detail'].forEach(v=>{
+  ['view-library','view-mine','view-playlists','view-extraits','view-classement','view-historique','view-stats','view-playlist-detail','view-artist-detail'].forEach(v=>{
     document.getElementById(v).style.display = 'none';
   });
   document.getElementById('view-album-detail').style.display = '';
@@ -6130,7 +6444,7 @@ function applyHeroTheme(theme){
 }
 function renderHero(){
   const hero = document.getElementById('hero');
-  if(currentView === 'classement' || currentView === 'historique' || currentView === 'mine' || currentView === 'playlists' || currentView === 'playlist-detail'){ hero.style.display = 'none'; return; }
+  if(currentView === 'classement' || currentView === 'historique' || currentView === 'stats' || currentView === 'mine' || currentView === 'playlists' || currentView === 'playlist-detail'){ hero.style.display = 'none'; return; }
   if(!allTracks.length || !libraryIds.length){ hero.style.display = 'none'; return; }
   // Priorité au titre choisi par l'admin comme "musique de l'événement" ;
   // à défaut, on retombe sur le dernier titre ajouté au catalogue.
@@ -6904,6 +7218,7 @@ async function tryLogRadioPlay(sched){
       .catch(err=> console.error('Radio Direct : incrément "plays" impossible :', err));
     playLogsRef.add({ trackId: sched.track.id, playedAt: firebase.firestore.FieldValue.serverTimestamp(), count: listeners, source: 'radio' })
       .catch(err=> console.error('Radio Direct : écriture "musicPlayLogs" impossible :', err));
+    { const _n = Math.min(listeners, 50); statsRecord([['listen', _n], [statsHourKey(), _n]]); } // statistiques
   }catch(err){
     // Un autre auditeur a déjà journalisé cette diffusion avant nous : rien
     // à faire, c'est le fonctionnement normal (une seule vue "groupée" par
@@ -10350,6 +10665,7 @@ function commitViewCount(trackId, skipGlobal){
       .catch(err => console.error('Échec incrément "plays" (vérifier les règles Firestore) :', err));
     playLogsRef.add({ trackId, playedAt: firebase.firestore.FieldValue.serverTimestamp() })
       .catch(err => console.error('Échec écriture "musicPlayLogs" (vérifier les règles Firestore) :', err));
+    statsRecord([['listen', 1], [statsHourKey(), 1]]); // statistiques : écoute + écoute par heure
   }
   recordListenHistory(trackId);
 }
