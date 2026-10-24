@@ -2018,6 +2018,69 @@ body:not(.is-admin) #tab-stats{display:none!important}
 .ranking-cover .rma-badge svg{width:14px;height:18px}
 .np-art-cover-wrap .rma-badge{top:10px;right:10px;width:34px;height:38px;border-radius:11px}
 .np-art-cover-wrap .rma-badge svg{width:27px;height:35px}
+
+/* ===== Zone « musique de l'événement » : affichage personnalisé « Rijoul Music Awards » =====
+   Activé par renderHero() (classe .hero-rma) quand le titre mis en avant porte le trophée. */
+.hero-rma-deco,.hero-rma-medal,.hero-rma-chip{display:none}
+.hero.hero-rma{
+  --hero-rgb:255,190,50; --hero-rgb-bright:255,226,140;
+  border:1.5px solid transparent;
+  background:
+    radial-gradient(720px 340px at 88% -10%, rgba(255,200,80,.30), transparent 65%) padding-box,
+    radial-gradient(520px 320px at 0% 110%, rgba(184,106,0,.28), transparent 70%) padding-box,
+    linear-gradient(150deg,#1b150a 0%,#0b0907 55%,#17110a 100%) padding-box,
+    linear-gradient(135deg,#fff3c4,#b86a00 28%,#ffe08a 52%,#7a4800 78%,#ffd978) border-box;
+  box-shadow:0 0 0 1px rgba(255,214,120,.12),0 34px 80px -24px rgba(0,0,0,.9),0 0 64px -12px rgba(255,176,32,.38),inset 0 1px 0 rgba(255,255,255,.2);
+}
+.hero.hero-rma::after{content:'';position:absolute;inset:0;pointer-events:none;border-radius:inherit;background:linear-gradient(115deg,transparent 40%,rgba(255,235,170,.13) 50%,transparent 60%);background-size:250% 100%;animation:wavShine 6.5s ease-in-out infinite}
+.hero.hero-rma .hero-rma-deco{display:block;position:absolute;inset:0;overflow:hidden;pointer-events:none;border-radius:inherit}
+.hero-rma-watermark{position:absolute;right:26px;top:50%;transform:translateY(-50%);width:176px;height:228px;opacity:.13;filter:drop-shadow(0 0 18px rgba(255,176,32,.5))}
+.hero-rma-deco i{position:absolute;bottom:-8px;width:4px;height:4px;border-radius:50%;background:radial-gradient(circle,#fff8d6,#ffb020);box-shadow:0 0 8px 1px rgba(255,190,50,.8);opacity:0;animation:rmaFloat 6s ease-in infinite}
+.hero-rma-deco i:nth-of-type(1){left:8%;animation-delay:0s}
+.hero-rma-deco i:nth-of-type(2){left:22%;animation-delay:1.4s;width:3px;height:3px}
+.hero-rma-deco i:nth-of-type(3){left:38%;animation-delay:3.1s}
+.hero-rma-deco i:nth-of-type(4){left:55%;animation-delay:.8s;width:3px;height:3px}
+.hero-rma-deco i:nth-of-type(5){left:70%;animation-delay:2.3s}
+.hero-rma-deco i:nth-of-type(6){left:84%;animation-delay:4.2s;width:3px;height:3px}
+.hero-rma-deco i:nth-of-type(7){left:94%;animation-delay:1.9s}
+@keyframes rmaFloat{0%{transform:translateY(0) scale(.6);opacity:0}15%{opacity:.95}100%{transform:translateY(-230px) scale(1.1);opacity:0}}
+.hero.hero-rma .hero-eyebrow{color:#ffe28c;letter-spacing:.22em;text-shadow:0 0 14px rgba(255,176,32,.55)}
+.hero.hero-rma .hero-title{
+  background:linear-gradient(100deg,#fff3c4,#ffd25a 32%,#ffffff 48%,#e0a020 66%,#fff3c4);background-size:260% auto;
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
+  animation:grad-flow 7s ease-in-out infinite;filter:drop-shadow(0 2px 16px rgba(255,176,32,.28));
+}
+.hero.hero-rma .hero-artist{color:#e9dcc0}
+.hero.hero-rma .hero-rma-chip{
+  display:inline-flex;align-items:center;gap:8px;margin:-8px 0 18px;padding:5px 12px 5px 8px;border-radius:999px;
+  border:1px solid transparent;
+  background:linear-gradient(165deg,#1d1810,#070605) padding-box,linear-gradient(135deg,#fff3c4,#c98a10 45%,#ffe08a 70%,#8a5200) border-box;
+  box-shadow:0 0 16px -2px rgba(255,176,32,.45),inset 0 1px 0 rgba(255,255,255,.14);
+  font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#ffe28c;position:relative;
+}
+.hero-rma-chip svg{width:15px;height:19px;flex-shrink:0;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+.hero-rma-chip span{font-weight:800}
+.hero-rma-chip b{font-weight:600;color:#bfa56a;padding-left:8px;border-left:1px solid rgba(255,214,120,.3)}
+.hero.hero-rma .vinyl-disc{box-shadow:0 28px 56px -18px rgba(0,0,0,.9),0 0 0 2px #ffd37a,0 0 0 6px rgba(255,176,32,.22),inset 0 0 44px rgba(255,176,32,.14),0 0 56px -4px rgba(255,176,32,.6)}
+.hero.hero-rma .turntable.playing .vinyl-disc{box-shadow:0 28px 56px -18px rgba(0,0,0,.9),0 0 0 2px #ffe08a,0 0 0 7px rgba(255,176,32,.3),inset 0 0 44px rgba(255,176,32,.2),0 0 76px -2px rgba(255,190,50,.85)}
+.hero.hero-rma .hero-rma-medal{
+  display:flex;align-items:center;justify-content:center;position:absolute;left:-10px;bottom:-8px;z-index:4;width:60px;height:60px;border-radius:50%;
+  border:2px solid transparent;
+  background:radial-gradient(circle at 50% 35%,rgba(255,205,90,.32),transparent 70%) padding-box,linear-gradient(165deg,#1d1810,#050403) padding-box,linear-gradient(135deg,#fff3c4,#c98a10 40%,#ffe08a 65%,#8a5200) border-box;
+  box-shadow:0 0 22px rgba(255,176,32,.65),0 8px 20px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.2);
+  animation:rmaGlow 3.2s ease-in-out infinite;
+}
+.hero-rma-medal svg{width:32px;height:42px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+@media (max-width:700px){
+  .hero-rma-watermark{right:-16px;top:6px;transform:none;width:112px;height:145px}
+  .hero.hero-rma .hero-rma-chip{margin:-8px auto 16px}
+  .hero.hero-rma .hero-eyebrow{justify-content:center}
+  .hero.hero-rma .hero-rma-medal{left:-4px;width:52px;height:52px}
+  .hero-rma-medal svg{width:28px;height:36px}
+}
+@media (prefers-reduced-motion:reduce){
+  .hero.hero-rma::after,.hero-rma-deco i,.hero.hero-rma .hero-title,.hero.hero-rma .hero-rma-medal{animation:none}
+}
 </style>
 </head>
 <body>
@@ -2189,7 +2252,13 @@ body:not(.is-admin) #tab-stats{display:none!important}
   <!-- HERO : dernier titre ajouté / musique de l'événement, thème visuel adapté au contenu -->
   <section class="hero" id="hero" style="display:none;">
     <div class="hero-theme-icon" id="hero-theme-icon" aria-hidden="true"></div>
+    <!-- Décor "Rijoul Music Awards" : visible uniquement quand le titre mis en avant porte le trophée (classe .hero-rma) -->
+    <div class="hero-rma-deco" aria-hidden="true">
+      <svg class="hero-rma-watermark" viewBox="0 0 32 41.5"><use href="#rma-trophy"/></svg>
+      <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+    </div>
     <div class="turntable" id="hero-turntable">
+      <span class="hero-rma-medal" title="Rijoul Music Awards" aria-label="Rijoul Music Awards"><svg viewBox="0 0 32 41.5" aria-hidden="true"><use href="#rma-trophy"/></svg></span>
       <div class="tonearm">
         <svg width="130" height="130" viewBox="0 0 130 130"><line x1="118" y1="12" x2="40" y2="70" stroke="#FFB020" stroke-width="4" stroke-linecap="round"/><circle cx="118" cy="12" r="9" fill="#121214" stroke="#FFB020" stroke-width="2"/><circle cx="40" cy="70" r="4" fill="#FFD37A"/></svg>
       </div>
@@ -2205,6 +2274,7 @@ body:not(.is-admin) #tab-stats{display:none!important}
       <p class="hero-eyebrow" id="hero-eyebrow">Dernier ajout</p>
       <h1 class="hero-title" id="hero-title">—</h1>
       <p class="hero-artist artist-link" id="hero-artist">—</p>
+      <p class="hero-rma-chip"><svg viewBox="0 0 32 41.5" aria-hidden="true"><use href="#rma-trophy"/></svg><span>Rijoul Music Awards</span><b>Titre primé</b></p>
       <div class="hero-actions">
         <button class="btn btn-gold" id="hero-play-cta">▶ Écouter</button>
         <div class="hero-uploader" id="hero-uploader"></div>
@@ -6575,11 +6645,16 @@ function renderHero(){
   const featured = allTracks.find(tr => tr.eventFeatured);
   const t = featured || allTracks.find(tr => tr.id === libraryIds[0]) || allTracks[0];
   hero.style.display = '';
-  const theme = detectHeroTheme(t);
+  // Titre primé aux Rijoul Music Awards : la zone passe en affichage « premium » (noir & or,
+  // médaille trophée, puce « Titre primé ») et prend le pas sur les thèmes d'ambiance.
+  const isRma = !!t.rijoulAward;
+  hero.classList.toggle('hero-rma', isRma);
+  const theme = isRma ? null : detectHeroTheme(t);
   applyHeroTheme(theme);
   const eyebrow = document.getElementById('hero-eyebrow');
   if(eyebrow){
-    if(theme) eyebrow.textContent = `${theme.icon} ${theme.label}`;
+    if(isRma) eyebrow.textContent = featured ? "✦ Musique de l'événement ✦" : "✦ À l'honneur ✦";
+    else if(theme) eyebrow.textContent = `${theme.icon} ${theme.label}`;
     else eyebrow.textContent = featured ? "🎉 Musique de l'événement" : 'Dernier ajout';
   }
   document.getElementById('hero-title').textContent = t.title || 'Sans titre';
