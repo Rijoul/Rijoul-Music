@@ -2009,15 +2009,15 @@ body:not(.is-admin) #tab-stats{display:none!important}
 /* Badge "RIJOUL MUSIC AWARDS" (admin) : trophée doré personnalisé, en haut à droite de la pochette.
    Sur les cartes, il s'efface au survol pour laisser place aux boutons modifier/supprimer de l'admin. */
 .rma-badge{position:absolute;top:8px;right:8px;z-index:3;display:flex;align-items:center;justify-content:center;width:28px;height:31px;border-radius:9px;background:radial-gradient(circle at 50% 30%,rgba(255,206,106,.28),rgba(10,8,4,.82) 70%);backdrop-filter:blur(6px);border:1px solid rgba(255,206,106,.75);box-shadow:0 0 12px rgba(255,176,32,.55),inset 0 1px 0 rgba(255,255,255,.25);cursor:default;overflow:hidden;animation:rmaGlow 3.2s ease-in-out infinite}
-.rma-badge svg{width:20px;height:22px;display:block;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.6))}
+.rma-badge svg{width:22px;height:28px;display:block;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.6))}
 .rma-badge::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%);background-size:250% 100%;animation:wavShine 3.6s ease-in-out infinite}
 @keyframes rmaGlow{0%,100%{box-shadow:0 0 10px rgba(255,176,32,.45),inset 0 1px 0 rgba(255,255,255,.25)}50%{box-shadow:0 0 18px rgba(255,200,70,.85),inset 0 1px 0 rgba(255,255,255,.35)}}
 .card-cover.has-actions .rma-badge{transition:opacity .15s}
 .card-cover.has-actions:hover .rma-badge{opacity:0;pointer-events:none}
 .ranking-cover .rma-badge{top:2px;right:2px;width:19px;height:21px;border-radius:6px}
-.ranking-cover .rma-badge svg{width:13px;height:15px}
+.ranking-cover .rma-badge svg{width:14px;height:18px}
 .np-art-cover-wrap .rma-badge{top:10px;right:10px;width:34px;height:38px;border-radius:11px}
-.np-art-cover-wrap .rma-badge svg{width:24px;height:27px}
+.np-art-cover-wrap .rma-badge svg{width:27px;height:35px}
 </style>
 </head>
 <body>
@@ -2040,16 +2040,45 @@ body:not(.is-admin) #tab-stats{display:none!important}
     <linearGradient id="rma-gold-dark" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#e29a12"/><stop offset="1" stop-color="#7a4300"/>
     </linearGradient>
-    <symbol id="rma-trophy" viewBox="0 0 32 36">
-      <path d="M8.5 5.5H5c-1 0-1.5.7-1.4 1.6.5 4.2 2.9 6.9 6 7.5" fill="none" stroke="url(#rma-gold)" stroke-width="1.9" stroke-linecap="round"/>
-      <path d="M23.5 5.5H27c1 0 1.5.7 1.4 1.6-.5 4.2-2.9 6.9-6 7.5" fill="none" stroke="url(#rma-gold)" stroke-width="1.9" stroke-linecap="round"/>
-      <path d="M8 3h16v9.2c0 5.6-3.6 9.6-8 9.6s-8-4-8-9.6z" fill="url(#rma-gold)"/>
-      <path d="M10.2 4.8h2.6v7.6c0 3.2 1 5.4 2.6 6.4-3.2-.6-5.2-3.4-5.2-7z" fill="#fff" opacity=".38"/>
-      <text x="16" y="15.4" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="11" font-weight="900" fill="#5a3000">R</text>
-      <rect x="14.1" y="21.5" width="3.8" height="5" fill="url(#rma-gold-dark)"/>
-      <path d="M10.5 26.3h11l1.6 3.4H8.9z" fill="url(#rma-gold)"/>
-      <rect x="7.5" y="29.7" width="17" height="4" rx="1.2" fill="url(#rma-gold-dark)"/>
-      <path d="M26.5 1.5l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7z" fill="#fff8d6"/>
+    <symbol id="rma-trophy" viewBox="0 -5.5 32 41.5">
+      <!-- Branches de laurier -->
+      <g fill="url(#rma-gold-dark)">
+        <ellipse cx="8.6" cy="23.6" rx="3.1" ry="1.35" transform="rotate(-35 8.6 23.6)"/>
+        <ellipse cx="6.6" cy="20.2" rx="3.1" ry="1.3" transform="rotate(-62 6.6 20.2)"/>
+        <ellipse cx="6.2" cy="16.4" rx="2.9" ry="1.2" transform="rotate(-85 6.2 16.4)"/>
+        <ellipse cx="23.4" cy="23.6" rx="3.1" ry="1.35" transform="rotate(35 23.4 23.6)"/>
+        <ellipse cx="25.4" cy="20.2" rx="3.1" ry="1.3" transform="rotate(62 25.4 20.2)"/>
+        <ellipse cx="25.8" cy="16.4" rx="2.9" ry="1.2" transform="rotate(85 25.8 16.4)"/>
+      </g>
+      <!-- Anses -->
+      <path d="M8.2 6H5.3c-.9 0-1.3.6-1.2 1.4.4 3.4 2.2 5.6 4.6 6.3" fill="none" stroke="url(#rma-gold)" stroke-width="1.7" stroke-linecap="round"/>
+      <path d="M23.8 6h2.9c.9 0 1.3.6 1.2 1.4-.4 3.4-2.2 5.6-4.6 6.3" fill="none" stroke="url(#rma-gold)" stroke-width="1.7" stroke-linecap="round"/>
+      <!-- Coupe -->
+      <path d="M8.2 3.6h15.6v8.4c0 5.4-3.5 9.4-7.8 9.4s-7.8-4-7.8-9.4z" fill="url(#rma-gold)"/>
+      <path d="M10.4 5.2h2.4v6.9c0 3 .9 5.1 2.4 6.1-3-.5-4.8-3.2-4.8-6.6z" fill="#fff" opacity=".4"/>
+      <rect x="6.8" y="2" width="18.4" height="2.4" rx="1.2" fill="url(#rma-gold)"/>
+      <rect x="6.8" y="2" width="18.4" height="1" rx=".5" fill="#fff" opacity=".45"/>
+      <!-- Note de musique gravée -->
+      <g>
+        <g fill="#fff3c4" opacity=".6" transform="translate(.35 .45)">
+          <ellipse cx="13.4" cy="15.4" rx="2.5" ry="1.9" transform="rotate(-20 13.4 15.4)"/>
+          <rect x="15.4" y="7" width="1.2" height="8.6"/>
+          <path d="M16.6 7c0 2.6 3.3 3 3.3 6.3-1-1.6-2.2-2.2-3.3-2.7z"/>
+        </g>
+        <g fill="#5a3000">
+          <ellipse cx="13.4" cy="15.4" rx="2.5" ry="1.9" transform="rotate(-20 13.4 15.4)"/>
+          <rect x="15.4" y="7" width="1.2" height="8.6"/>
+          <path d="M16.6 7c0 2.6 3.3 3 3.3 6.3-1-1.6-2.2-2.2-3.3-2.7z"/>
+        </g>
+      </g>
+      <!-- Pied + socle -->
+      <rect x="14.1" y="21.2" width="3.8" height="4.8" fill="url(#rma-gold-dark)"/>
+      <path d="M10.2 26h11.6l1.5 3.5H8.7z" fill="url(#rma-gold)"/>
+      <rect x="7.5" y="29.5" width="17" height="4.4" rx="1.3" fill="url(#rma-gold-dark)"/>
+      <rect x="7.5" y="29.5" width="17" height="1" rx=".5" fill="#fff" opacity=".35"/>
+      <text x="16" y="32.6" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="3" font-weight="900" fill="#fff3c4" textLength="13" lengthAdjust="spacingAndGlyphs">RIJOUL</text>
+      <!-- Étoile au sommet -->
+      <path transform="translate(0 -1.6)" d="M16-3.5l1.24 2.21 2.8.0-2.16 1.39.72 2.7L16 1.3l-2.6 1.5.72-2.7-2.16-1.39 2.8 0z" fill="#fff3c4" stroke="#ffb020" stroke-width=".5" stroke-linejoin="round"/>
     </symbol>
   </defs>
 </svg>
@@ -2651,7 +2680,7 @@ body:not(.is-admin) #tab-stats{display:none!important}
                  juste calée sur la même position/lecture (voir syncNpVideoWithAudio). -->
             <video class="np-art" id="np-video" muted playsinline style="display:none"></video>
             <span class="concert-badge" tabindex="0" id="np-cover-concert-badge" data-tooltip="Ce titre est certifié pour être adapté au mode concert." style="display:none">🎤 CONCERT</span>
-            <span class="rma-badge" tabindex="0" id="np-cover-rma-badge" data-tooltip="Rijoul Music Awards" aria-label="Rijoul Music Awards" style="display:none"><svg viewBox="0 0 32 36" aria-hidden="true"><use href="#rma-trophy"/></svg></span>
+            <span class="rma-badge" tabindex="0" id="np-cover-rma-badge" data-tooltip="Rijoul Music Awards" aria-label="Rijoul Music Awards" style="display:none"><svg viewBox="0 0 32 41.5" aria-hidden="true"><use href="#rma-trophy"/></svg></span>
             <span class="hd-badge" id="np-cover-hd-badge" style="display:none">HD</span>
             <span class="wav-badge" id="np-cover-wav-badge" style="display:none">WAV</span>
             <span class="video-badge" id="np-cover-video-badge" title="Contient une vidéo" style="display:none">🎥</span>
@@ -7556,7 +7585,7 @@ function paintGrid(gridId, emptyId, countId, list, texts){
       <div class="card-cover${t.wavBadge ? ' is-wav' : ''}${(canDelete || canEdit) ? ' has-actions' : ''}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge" tabindex="0" data-tooltip="Ce titre est certifié pour être adapté au mode concert.">🎤 CONCERT</span>` : ''}
-        ${t.rijoulAward ? `<span class="rma-badge" tabindex="0" data-tooltip="Rijoul Music Awards" aria-label="Rijoul Music Awards"><svg viewBox="0 0 32 36" aria-hidden="true"><use href="#rma-trophy"/></svg></span>` : ''}
+        ${t.rijoulAward ? `<span class="rma-badge" tabindex="0" data-tooltip="Rijoul Music Awards" aria-label="Rijoul Music Awards"><svg viewBox="0 0 32 41.5" aria-hidden="true"><use href="#rma-trophy"/></svg></span>` : ''}
         ${t.hdCertified && !t.wavBadge ? `<span class="hd-badge">HD</span>` : ''}
         ${t.wavBadge ? `<span class="wav-badge" title="Qualité WAV">WAV</span>` : ''}
         ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
@@ -7835,7 +7864,7 @@ function renderRanking(){
       <div class="ranking-cover${t.wavBadge ? ' is-wav' : ''}${t.rijoulAward ? ' has-rma' : ''}" data-play="${t.id}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge-mini" aria-hidden="true">🎤</span>` : ''}
-        ${t.rijoulAward ? `<span class="rma-badge" title="Rijoul Music Awards"><svg viewBox="0 0 32 36" aria-hidden="true"><use href="#rma-trophy"/></svg></span>` : ''}
+        ${t.rijoulAward ? `<span class="rma-badge" title="Rijoul Music Awards"><svg viewBox="0 0 32 41.5" aria-hidden="true"><use href="#rma-trophy"/></svg></span>` : ''}
         ${t.hdCertified && !t.wavBadge ? `<span class="hd-badge">HD</span>` : ''}
         ${t.wavBadge ? `<span class="wav-badge" title="Qualité WAV">WAV</span>` : ''}
         ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
@@ -8166,7 +8195,7 @@ function renderHistory(){
       <div class="ranking-cover${t.wavBadge ? ' is-wav' : ''}${t.rijoulAward ? ' has-rma' : ''}" data-play="${t.id}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge-mini" aria-hidden="true">🎤</span>` : ''}
-        ${t.rijoulAward ? `<span class="rma-badge" title="Rijoul Music Awards"><svg viewBox="0 0 32 36" aria-hidden="true"><use href="#rma-trophy"/></svg></span>` : ''}
+        ${t.rijoulAward ? `<span class="rma-badge" title="Rijoul Music Awards"><svg viewBox="0 0 32 41.5" aria-hidden="true"><use href="#rma-trophy"/></svg></span>` : ''}
         ${t.hdCertified && !t.wavBadge ? `<span class="hd-badge">HD</span>` : ''}
         ${t.wavBadge ? `<span class="wav-badge" title="Qualité WAV">WAV</span>` : ''}
         ${t.videoBadge ? `<span class="video-badge" title="Contient une vidéo">🎥</span>` : ''}
