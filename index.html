@@ -3885,6 +3885,16 @@ let libraryIds = [];           // ids des titres de l'accueil, dans l'ordre (plu
 let libraryCursor = null;      // dernier document lu (curseur startAfter pour la page suivante)
 let libraryHasMore = true;     // reste-t-il des titres à charger côté serveur ?
 let libraryLoading = false;
+/* --- Classement de l'accueil : écoutes + likes + heure de la journée + Rijoul Music Awards ---
+   L'accueil ne lit toujours pas tout le catalogue : en plus des 25 derniers titres, il récupère
+   un petit lot de « candidats » ciblés (les plus écoutés + les titres primés), puis les classe
+   avec le même moteur de score que « Pour vous ». */
+const HOME_TOP_PLAYS_LIMIT = 60;     // titres les plus écoutés ajoutés au lot de candidats
+const HOME_AWARD_LIMIT = 50;         // titres Rijoul Music Awards ajoutés au lot de candidats
+const HOME_RMA_BONUS = 12;           // coup de pouce de score d'un titre primé (monte-le pour les mettre encore plus en tête)
+const RECO_HOUR_WINDOW_MINUTES = 90; // fenêtre « même moment de la journée » (±1h30) pour le facteur horaire
+const homeCandidateIds = new Set();  // ids des candidats chargés pour l'accueil
+let homeOrderCache = { key: null, ids: [] }; // ordre d'accueil figé (recalculé toutes les 10 min ou si le lot change)
 let fullCatalogLoaded = false; // true seulement si une fonction qui scanne tout le catalogue l'a demandé (recherche, page artiste, « Pour vous »)
 let fullCatalogPromise = null;
 const missingTrackIds = new Set(); // ids introuvables (titres supprimés) : on ne les redemande pas
@@ -5566,8 +5576,24 @@ async function loadTopPlayedTracks(){
     mergeTrackDocs(snap.docs);
   }catch(err){ console.warn('Chargement du top des écoutes impossible :', err); }
 }
+// Candidats du classement d'accueil : les plus écoutés + les titres primés (2 petites requêtes
+// ciblées, à champ unique — aucun index composite requis). Les likes (tableau) ne sont pas
+// triables côté serveur : ils comptent dans le score des titres déjà chargés.
+async function loadHomeCandidates(){
+  try{
+    const [topSnap, awardSnap] = await Promise.all([
+      tracksRef.orderBy('plays', 'desc').limit(HOME_TOP_PLAYS_LIMIT).get(),
+      tracksRef.where('rijoulAward', '==', true).limit(HOME_AWARD_LIMIT).get()
+    ]);
+    const docs = topSnap.docs.concat(awardSnap.docs);
+    docs.forEach(d => homeCandidateIds.add(d.id));
+    mergeTrackDocs(docs);
+    onTracksChanged();
+  }catch(err){ console.warn("Candidats de l'accueil indisponibles :", err); }
+}
 loadLibraryPage();
 loadFeaturedTracks();
+loadHomeCandidates();
 { // Lien de partage ?track=ID : on lit ce seul titre
   const sharedId = new URLSearchParams(location.search).get('track');
   if(sharedId) requestTracks([sharedId]);
@@ -6835,13 +6861,16 @@ function timeSlotIndex(d){
 function buildTasteProfile(uid, referenceDate){
   const artistScore = Object.create(null); // affinité par artiste, pondérée par la fraîcheur des écoutes
   const trackPlayScore = Object.create(null); // affinité directe par titre déjà écouté
+  const hourWindowScore = Object.create(null); // affinité pour un titre dans la fenêtre horaire élargie (±1h30)
   const timeSlotScore = Object.create(null); // affinité pour un titre au moment de la journée où on se connecte
   const now = Date.now();
   // Tranche horaire "actuelle" : celle de l'instant où la recommandation
   // est (re)calculée — donc, en pratique, l'heure de connexion de
   // l'utilisateur, puisque le calcul se fige à l'ouverture de l'app puis
   // se rafraîchit au plus toutes les 10 minutes (voir scheduleInitialRecommendations).
-  const refSlot = timeSlotIndex(referenceDate || new Date());
+  const refDate = referenceDate || new Date();
+  const refSlot = timeSlotIndex(refDate);
+  const refMinuteOfDay = refDate.getHours() * 60 + refDate.getMinutes();
   if(uid){
     allHistoryEntries.forEach(h=>{
       const playedAtMs = getMillis(h.playedAt);
@@ -6859,9 +6888,20 @@ function buildTasteProfile(uid, referenceDate){
       if(playedAtMs !== null && timeSlotIndex(new Date(playedAtMs)) === refSlot){
         timeSlotScore[h.trackId] = (timeSlotScore[h.trackId] || 0) + recencyWeight;
       }
+      // Fenêtre horaire élargie : une écoute passée dans les ±1h30 de l'heure
+      // actuelle (en tenant compte du passage minuit) compte, d'autant plus
+      // qu'elle est proche de l'heure exacte.
+      if(playedAtMs !== null){
+        const pd = new Date(playedAtMs);
+        const diff = Math.abs((pd.getHours() * 60 + pd.getMinutes()) - refMinuteOfDay);
+        const circ = Math.min(diff, 1440 - diff);
+        if(circ <= RECO_HOUR_WINDOW_MINUTES){
+          hourWindowScore[h.trackId] = (hourWindowScore[h.trackId] || 0) + recencyWeight * (1 - 0.6 * circ / RECO_HOUR_WINDOW_MINUTES);
+        }
+      }
     });
   }
-  return { artistScore, trackPlayScore, timeSlotScore };
+  return { artistScore, trackPlayScore, timeSlotScore, hourWindowScore };
 }
 function trackRecommendationScore(t, profile, uid){
   let score = 0;
@@ -6888,6 +6928,11 @@ function trackRecommendationScore(t, profile, uid){
   //    écouté par le passé au même moment de la journée (à 10 minutes
   //    près) remonte dans la sélection.
   score += (profile.timeSlotScore[t.id] || 0) * 8;
+  // 7) Moment de la journée élargi (±1h30) : un titre écouté à cette heure-ci
+  //    les autres jours remonte, même si ce n'était pas à la minute près.
+  score += (profile.hourWindowScore ? (profile.hourWindowScore[t.id] || 0) : 0) * 5;
+  // 8) Rijoul Music Awards : un titre primé par l'admin est mis en avant.
+  if(t.rijoulAward) score += HOME_RMA_BONUS;
   return score;
 }
 function sortByRecommendation(list, uid, referenceDate){
@@ -6973,7 +7018,20 @@ function getOrderedLibraryTracks(){
   // Recherche : on parcourt tout ce qui est chargé (le catalogue complet est lu à la première saisie).
   if(searchTerm) return allTracks;
   const byId = new Map(allTracks.map(t => [t.id, t]));
-  return libraryIds.map(id => byId.get(id)).filter(Boolean);
+  // Lot classé = titres de l'accueil (derniers ajouts + pages chargées) + candidats ciblés
+  // (les plus écoutés et les titres primés).
+  const pool = new Set(libraryIds);
+  homeCandidateIds.forEach(id => pool.add(id));
+  const uid = auth.currentUser ? auth.currentUser.uid : null;
+  // Ordre figé : recalculé seulement si le lot change, si l'utilisateur change / son historique
+  // arrive, ou toutes les 10 minutes (l'heure de la journée avance). Un like ou une écoute ne
+  // fait donc pas « sauter » les cartes sous les doigts.
+  const key = [pool.size, uid || '', allHistoryEntries.length > 0 ? 'h' : '-', Math.floor(Date.now() / (10 * 60 * 1000))].join('|');
+  if(homeOrderCache.key !== key){
+    const list = [...pool].map(id => byId.get(id)).filter(Boolean);
+    homeOrderCache = { key, ids: sortByRecommendation(list, uid, new Date()).map(t => t.id) };
+  }
+  return homeOrderCache.ids.map(id => byId.get(id)).filter(Boolean);
 }
 
 /* =========================================================
@@ -7525,7 +7583,9 @@ document.getElementById('home-pl-see-all').addEventListener('click', ()=> switch
 document.getElementById('library-more-btn').addEventListener('click', async ()=>{
   const btn = document.getElementById('library-more-btn');
   libraryVisibleCount += LIBRARY_PAGE_SIZE;
-  if(!searchTerm && libraryHasMore){
+  // Le lot classé contient déjà plus de 25 titres : on ne lit une nouvelle page dans
+  // Firestore que lorsque tous les titres déjà chargés sont affichés.
+  if(!searchTerm && libraryHasMore && libraryVisibleCount > getOrderedLibraryTracks().length){
     // Charge UNIQUEMENT les 25 titres suivants.
     btn.disabled = true;
     try{ await loadLibraryPage(); }finally{ btn.disabled = false; }
