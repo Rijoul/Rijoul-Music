@@ -4174,7 +4174,7 @@ document.getElementById('profile-save').addEventListener('click', async ()=>{
    h00…h23 (écoutes par heure), c_FR, c_BE… (visites par pays).
    Jours et heures sont calculés en heure de Paris pour que tout le
    monde (visiteurs et admin) parle du même découpage.
-   Visite = une par session de navigateur (rechargements non recomptés).
+   Visite = un chargement de page (chaque rechargement est compté).
    ========================================================= */
 const siteStatsRef = db.collection('siteStats');
 const STATS_TZ = 'Europe/Paris';
@@ -4230,14 +4230,9 @@ let statsVisitDone = false;
 async function statsOnAuth(realUser){
   try{
     if(!statsVisitDone){
-      statsVisitDone = true;
-      let already = false;
-      try{ already = sessionStorage.getItem('rm_stat_visit') === '1'; }catch(e){}
-      if(!already){
-        try{ sessionStorage.setItem('rm_stat_visit', '1'); }catch(e){}
-        const cc = await statsGetCountry();
-        statsRecord([['visit', 1], [realUser ? 'visitAuth' : 'visitAnon', 1], ['c_' + cc, 1]]);
-      }
+      statsVisitDone = true; // une seule fois par chargement de page (pas à chaque changement d'état de connexion)
+      const cc = await statsGetCountry();
+      statsRecord([['visit', 1], [realUser ? 'visitAuth' : 'visitAnon', 1], ['c_' + cc, 1]]);
     }
     if(realUser){
       let last = null;
@@ -4348,7 +4343,7 @@ function renderStatsHtml(days, tot, perDay, hours, countries, profilesCount){
   const connected = tot.visitAuth, anon = tot.visitAnon, vis = connected + anon;
   const pct = n => vis > 0 ? Math.round(n / vis * 100) + ' %' : '—';
   let html = '<div class="stats-kpis">'
-    + '<div class="stats-kpi"><div class="stats-kpi-label">Visites du site</div><div class="stats-kpi-value">' + statsFmt(tot.visit) + '</div><div class="stats-kpi-sub">1 visite = 1 session</div></div>'
+    + '<div class="stats-kpi"><div class="stats-kpi-label">Visites du site</div><div class="stats-kpi-value">' + statsFmt(tot.visit) + '</div><div class="stats-kpi-sub">1 visite = 1 chargement de page</div></div>'
     + '<div class="stats-kpi"><div class="stats-kpi-label">Connexions</div><div class="stats-kpi-value">' + statsFmt(tot.login) + '</div><div class="stats-kpi-sub">à un compte</div></div>'
     + '<div class="stats-kpi"><div class="stats-kpi-label">Visiteurs connectés</div><div class="stats-kpi-value">' + statsFmt(connected) + '</div><div class="stats-kpi-sub">' + pct(connected) + ' des visites</div></div>'
     + '<div class="stats-kpi"><div class="stats-kpi-label">Non connectés</div><div class="stats-kpi-value">' + statsFmt(anon) + '</div><div class="stats-kpi-sub">' + pct(anon) + ' des visites</div></div>'
@@ -4392,7 +4387,7 @@ function renderStatsHtml(days, tot, perDay, hours, countries, profilesCount){
     ).join('');
   }
   html += '</div>';
-  html += '<p class="stats-foot">Les statistiques sont enregistrées depuis la mise en place de ce menu (pas d\'historique avant). Une visite est comptée une fois par session de navigateur ; une connexion est comptée quand un compte est ouvert pendant la session.</p>';
+  html += '<p class="stats-foot">Les statistiques sont enregistrées depuis la mise en place de ce menu (pas d\'historique avant). Une visite est comptée à chaque chargement ou rechargement de la page ; une connexion est comptée quand un compte est ouvert pendant la session.</p>';
   return html;
 }
 
