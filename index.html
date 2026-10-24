@@ -2582,7 +2582,7 @@ body:not(.is-admin) #np-menu-download-btn{display:none!important}
           <div class="np-lyrics-scroll" id="np-lyrics-scroll"></div>
           <div class="np-lyrics-empty" id="np-lyrics-empty">
             <span style="font-size:26px;">📝</span>
-            <span>Paroles non disponibles pour ce titre.</span>
+            <span id="np-lyrics-empty-text">Paroles non disponibles pour ce titre.</span>
           </div>
         </div>
       </div>
@@ -2964,6 +2964,7 @@ body:not(.is-admin) #np-menu-download-btn{display:none!important}
     </div>
 
     <button class="btn btn-gold btn-block" id="lyrics-submit" style="margin-top:16px;">Enregistrer les paroles</button>
+    <button type="button" class="btn btn-ghost btn-sm btn-block" id="lyrics-migrate-btn" style="margin-top:10px;">Migrer les anciennes paroles (une seule fois)</button>
   </div>
 </div>
 
@@ -3720,6 +3721,11 @@ let libraryLoading = false;
 let fullCatalogLoaded = false; // true seulement si une fonction qui scanne tout le catalogue l'a demandé (recherche, page artiste, « Pour vous »)
 let fullCatalogPromise = null;
 const missingTrackIds = new Set(); // ids introuvables (titres supprimés) : on ne les redemande pas
+// --- Paroles : stockées dans un document à part (musicLyrics/{trackId}), lues à la demande ---
+const lyricsCache = new Map();      // trackId -> texte des paroles ('' si aucune)
+const lyricsInFlight = new Map();   // trackId -> Promise de lecture en cours
+let allLyricsLoaded = false;        // true une fois toute la collection lue (recherche dans les paroles)
+let allLyricsPromise = null;
 let searchNorm = '';        // requête normalisée (sans accents/ponctuation)
 let searchTokens = [];      // mots de la requête normalisée
 const searchIndexCache = new WeakMap(); // index de recherche par titre (recalculé si le titre/artiste/paroles changent)
@@ -4965,6 +4971,8 @@ document.getElementById('search-input').addEventListener('input', (e)=>{
   renderTracks();
   // La recherche doit parcourir tout le catalogue : il n'est lu qu'à la première saisie.
   if(searchTerm) ensureFullCatalog().then(added=>{ if(added && searchTerm) renderTracks(); });
+  // Les paroles (documents à part) ne sont lues qu'une fois, dès qu'une recherche d'au moins 3 lettres est lancée.
+  if(searchNorm.length >= 3) ensureAllLyrics().then(loaded=>{ if(loaded && searchTerm) renderTracks(); });
 });
 /* Bouton "×" de la barre de recherche : vide le champ et relance la
    recherche (équivalent d'une saisie vide), sans jamais voler le focus
@@ -5023,6 +5031,55 @@ function mergeTrackDocs(docs){
   if(added) allTracks.sort((a, b) => trackCreatedMs(b) - trackCreatedMs(a));
   return added;
 }
+/* =========================================================
+   PAROLES À LA DEMANDE
+   - Les paroles ne sont plus dans la fiche du titre : elles vivent dans
+     musicLyrics/{trackId} ({ text }). La fiche ne garde qu'un booléen
+     "hasLyrics". Elles ne sont lues que quand on ouvre les paroles
+     (mode Lyrics, éditeur admin) ou quand on lance une recherche.
+   - Les anciens titres qui ont encore le champ "lyrics" restent lisibles
+     tels quels (aucune lecture) jusqu'à leur migration.
+   ========================================================= */
+function lyricsOf(t){
+  if(!t) return '';
+  if(lyricsCache.has(t.id)) return lyricsCache.get(t.id);
+  return t.lyrics || '';
+}
+async function fetchLyricsText(track){
+  if(!track) return '';
+  if(lyricsCache.has(track.id)) return lyricsCache.get(track.id);
+  if(track.lyrics) return String(track.lyrics);     // ancien format
+  if(track.hasLyrics !== true) return '';            // pas de paroles : zéro lecture
+  if(lyricsInFlight.has(track.id)) return lyricsInFlight.get(track.id);
+  const pr = (async ()=>{
+    try{
+      const d = await db.collection('musicLyrics').doc(track.id).get();
+      const text = d.exists ? String((d.data() || {}).text || '') : '';
+      lyricsCache.set(track.id, text);
+      return text;
+    }finally{ lyricsInFlight.delete(track.id); }
+  })();
+  lyricsInFlight.set(track.id, pr);
+  return pr;
+}
+// Recherche dans les paroles : lit toute la collection musicLyrics UNE fois (au besoin seulement).
+function ensureAllLyrics(){
+  if(allLyricsLoaded) return Promise.resolve(false);
+  if(allLyricsPromise) return allLyricsPromise;
+  allLyricsPromise = (async ()=>{
+    try{
+      const snap = await db.collection('musicLyrics').get();
+      snap.forEach(d=> lyricsCache.set(d.id, String((d.data() || {}).text || '')));
+      allLyricsLoaded = true;
+      return true;
+    }catch(err){
+      console.warn('Chargement des paroles pour la recherche impossible :', err);
+      return false;
+    }finally{ allLyricsPromise = null; }
+  })();
+  return allLyricsPromise;
+}
+
 async function loadLibraryPage(){
   if(libraryLoading || !libraryHasMore) return;
   libraryLoading = true;
@@ -6158,7 +6215,7 @@ function fuzzyWordMatch(tok, word){
   return 0;
 }
 function getTrackSearchIndex(t){
-  const lyr = t.lyrics || '';
+  const lyr = lyricsOf(t);
   let idx = searchIndexCache.get(t);
   if(idx && idx.title === t.title && idx.artist === t.artist && idx.lyr === lyr) return idx;
   const meta = normalizeSearchText((t.title || '') + ' ' + (t.artist || ''));
@@ -6231,8 +6288,9 @@ function sortBySearchRelevance(list){
 // Ligne de paroles (texte d'origine, avec accents) qui correspond à la
 // recherche, pour l'afficher sous le titre quand seul le texte correspond.
 function findLyricsSnippet(t){
-  if(!t || !t.lyrics || !searchTokens.length) return '';
-  const lines = String(t.lyrics).split(/\r?\n/).map(raw => raw.replace(LYRICS_BRACKETS_RE, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const lyrText = lyricsOf(t);
+  if(!t || !lyrText || !searchTokens.length) return '';
+  const lines = String(lyrText).split(/\r?\n/).map(raw => raw.replace(LYRICS_BRACKETS_RE, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
   const norm = lines.map(normalizeSearchText);
   let hit = norm.findIndex(n => searchNorm.length >= 3 && n.includes(searchNorm));
   if(hit < 0) hit = norm.findIndex(n => searchTokens.length >= 2 && searchTokens.every(k => k.length >= 3 && n.includes(k)));
@@ -7983,6 +8041,10 @@ async function deleteTrack(trackId){
       chunksSnap.forEach(doc => batch.delete(doc.ref));
       await batch.commit();
     }
+    if(track.hasLyrics || track.lyrics || lyricsCache.get(trackId)){
+      try{ await db.collection('musicLyrics').doc(trackId).delete(); }catch(e){ console.warn('Paroles non supprimées :', e); }
+    }
+    lyricsCache.delete(trackId);
     await tracksRef.doc(trackId).delete();
     if(audioBlobCache.has(trackId)){
       URL.revokeObjectURL(audioBlobCache.get(trackId));
@@ -8517,13 +8579,15 @@ document.getElementById('edit-audio-input').addEventListener('change', async (e)
    updateLyricsSyncPosition plus haut).
    ========================================================= */
 let lyricsTrackId = null;
-document.getElementById('edit-lyrics-open').addEventListener('click', ()=>{
+document.getElementById('edit-lyrics-open').addEventListener('click', async ()=>{
   if(!isAdmin || !editingTrackId) return;
   const track = allTracks.find(t => t.id === editingTrackId);
   if(!track) return;
   lyricsTrackId = editingTrackId;
   document.getElementById('lyrics-error').style.display = 'none';
-  document.getElementById('lyrics-textarea').value = track.lyrics || '';
+  let existingLyrics = '';
+  try{ existingLyrics = await fetchLyricsText(track); }catch(e){ console.warn('Lecture des paroles impossible :', e); }
+  document.getElementById('lyrics-textarea').value = existingLyrics;
   resetLyricsSyncTool();
   closeOverlay('edit-overlay');
   openOverlay('lyrics-overlay');
@@ -8536,9 +8600,17 @@ document.getElementById('lyrics-submit').addEventListener('click', async ()=>{
   const btn = document.getElementById('lyrics-submit');
   btn.disabled = true; btn.textContent = 'Enregistrement…';
   try{
-    await tracksRef.doc(lyricsTrackId).update({
-      lyrics: text || firebase.firestore.FieldValue.delete()
-    });
+    const FV = firebase.firestore.FieldValue;
+    const lyrId = lyricsTrackId;
+    if(text){
+      await db.collection('musicLyrics').doc(lyrId).set({ text, updatedAt: FV.serverTimestamp() });
+      await tracksRef.doc(lyrId).update({ hasLyrics: true, lyrics: FV.delete() });
+    }else{
+      await db.collection('musicLyrics').doc(lyrId).delete();
+      await tracksRef.doc(lyrId).update({ hasLyrics: FV.delete(), lyrics: FV.delete() });
+    }
+    lyricsCache.set(lyrId, text);
+    if(currentTrackId === lyrId) updateLyricsUIForTrack(allTracks.find(t => t.id === lyrId) || null);
     showToast('Paroles enregistrées.');
     closeOverlay('lyrics-overlay');
     lyricsTrackId = null;
@@ -8549,6 +8621,47 @@ document.getElementById('lyrics-submit').addEventListener('click', async ()=>{
   }finally{
     btn.disabled = false; btn.textContent = 'Enregistrer les paroles';
   }
+});
+
+// Migration unique : déplace les paroles encore stockées dans la fiche des titres vers musicLyrics.
+async function migrateLyricsToSeparateDocs(){
+  if(!isAdmin){ showToast("Réservé à l'admin."); return; }
+  await ensureFullCatalog();
+  const todo = allTracks.filter(t => Object.prototype.hasOwnProperty.call(t, 'lyrics'));
+  if(!todo.length){ showToast('Aucune ancienne parole à migrer.'); return; }
+  const FV = firebase.firestore.FieldValue;
+  let done = 0;
+  for(let i = 0; i < todo.length; i += 200){
+    const chunk = todo.slice(i, i + 200);
+    const batch = db.batch();
+    chunk.forEach(t=>{
+      const text = String(t.lyrics || '').trim();
+      const trackDoc = db.collection('musicTracks').doc(t.id); // accès direct : pas de relecture individuelle
+      if(text){
+        batch.set(db.collection('musicLyrics').doc(t.id), { text, updatedAt: FV.serverTimestamp() });
+        batch.update(trackDoc, { hasLyrics: true, lyrics: FV.delete() });
+      }else{
+        batch.update(trackDoc, { lyrics: FV.delete() });
+      }
+    });
+    await batch.commit();
+    chunk.forEach(t=>{
+      const text = String(t.lyrics || '').trim();
+      lyricsCache.set(t.id, text);
+      if(text) t.hasLyrics = true;
+      delete t.lyrics;
+    });
+    done += chunk.length;
+  }
+  showToast('Paroles migrées : ' + done + ' titre' + (done > 1 ? 's' : '') + '.');
+}
+document.getElementById('lyrics-migrate-btn').addEventListener('click', async ()=>{
+  if(!confirm("Déplacer toutes les paroles stockées dans les fiches vers la collection musicLyrics ? (à faire une seule fois)")) return;
+  const btn = document.getElementById('lyrics-migrate-btn');
+  btn.disabled = true;
+  try{ await migrateLyricsToSeparateDocs(); }
+  catch(err){ console.error(err); showToast('Migration impossible (vérifie les règles Firestore musicLyrics).'); }
+  finally{ btn.disabled = false; }
 });
 
 /* =========================================================
@@ -11442,6 +11555,8 @@ function renderLyricsLines(){
   if(!currentLyricsData || !currentLyricsData.lines.length){
     scroll.style.display = 'none';
     empty.style.display = 'flex';
+    const emptyText = document.getElementById('np-lyrics-empty-text');
+    if(emptyText) emptyText.textContent = (lyricsLoading || currentLyricsData === null) ? 'Chargement des paroles…' : 'Paroles non disponibles pour ce titre.';
     return;
   }
   empty.style.display = 'none';
@@ -11499,6 +11614,12 @@ function refreshLyricsView(){
   if(!artWrap) return;
   artWrap.classList.toggle('lyrics-active', lyricsModeOn);
   if(!lyricsModeOn) return;
+  if(currentLyricsData === null && !lyricsLoading){
+    // Le mode Lyrics vient d'être activé sur un titre dont les paroles n'ont pas encore été lues.
+    const cur = allTracks.find(x => x.id === currentTrackId);
+    if(cur){ loadLyricsForTrack(cur, lyricsLoadToken); return; }
+    currentLyricsData = parseLyrics('');
+  }
   renderLyricsLines();
   updateLyricsSyncPosition(audioEl.currentTime || 0);
 }
@@ -11526,9 +11647,31 @@ function saveLyricsModeSetting(enabled){
 }
 // Recharge les paroles du titre en cours (appelé à chaque changement de
 // titre, comme updateNpCoverBadges / updateAiEnhanceUIForTrack ci-dessus).
+let lyricsLoadToken = 0;
+let lyricsLoading = false;
+async function loadLyricsForTrack(track, token){
+  lyricsLoading = true;
+  refreshLyricsView();
+  let text = '';
+  try{ text = await fetchLyricsText(track); }catch(e){ console.warn('Paroles indisponibles :', e); }
+  if(token !== lyricsLoadToken) return; // le titre a changé entre-temps
+  lyricsLoading = false;
+  currentLyricsData = parseLyrics(text);
+  refreshLyricsView();
+}
 function updateLyricsUIForTrack(track){
-  currentLyricsData = parseLyrics(track && track.lyrics ? track.lyrics : '');
+  const token = ++lyricsLoadToken;
   currentLyricsLineIndex = -1;
+  lyricsLoading = false;
+  if(!track){ currentLyricsData = parseLyrics(''); refreshLyricsView(); return; }
+  const known = lyricsCache.has(track.id) || !!track.lyrics || track.hasLyrics !== true;
+  if(known){
+    currentLyricsData = parseLyrics(lyricsOf(track));
+  }else{
+    // Paroles dans un document à part : lues seulement quand le mode Lyrics est affiché.
+    currentLyricsData = null;
+    if(lyricsModeOn){ loadLyricsForTrack(track, token); return; }
+  }
   refreshLyricsView();
 }
 document.getElementById('np-menu-lyrics-toggle').addEventListener('change', function(){
