@@ -3214,7 +3214,7 @@ const audioBlobFetchInFlight = new Map(); // trackId -> Promise en cours (évite
    - mapLimit : lecture en parallèle limitée (stabilité réseau mobile).
    - evictAudioCache : révoque les anciennes blob URLs (le cache grossissait
      sans limite à chaque titre écouté). */
-const AUDIO_CACHE_MAX = 6;        // nb max de blob URLs gardées en mémoire
+const AUDIO_CACHE_MAX = 3;        // nb max de titres audio gardés en mémoire (précédent / en cours / suivant)
 const AUDIO_CHUNK_RETRIES = 3;    // essais par morceau
 const AUDIO_CHUNK_CONCURRENCY = 4; // morceaux lus en parallèle
 function b64ToBytes(b64){
@@ -3247,16 +3247,24 @@ async function mapLimit(count, limit, fn){
   return out;
 }
 function evictAudioCache(keepIds){
+  const inUse = (url)=>{
+    try{ if(typeof audioEl !== 'undefined' && audioEl && audioEl.src === url) return true; }catch(e){}
+    try{ if(typeof npVideoEl !== 'undefined' && npVideoEl && npVideoEl.src === url) return true; }catch(e){}
+    return false;
+  };
+  const drop = (id, url)=>{ try{ URL.revokeObjectURL(url); }catch(e){} audioBlobCache.delete(id); };
+  // 1re passe : on retire d'abord les titres qui ne sont ni précédent, ni en cours, ni suivant.
   for(const [id, url] of audioBlobCache){
     if(audioBlobCache.size <= AUDIO_CACHE_MAX) break;
-    if(keepIds.has(id)) continue;
-    // Ne jamais révoquer une URL actuellement utilisée par le lecteur.
-    try{
-      if(typeof audioEl !== 'undefined' && audioEl && audioEl.src === url) continue;
-      if(typeof npVideoEl !== 'undefined' && npVideoEl && npVideoEl.src === url) continue;
-    }catch(e){}
-    try{ URL.revokeObjectURL(url); }catch(e){}
-    audioBlobCache.delete(id);
+    if(keepIds.has(id) || inUse(url)) continue;
+    drop(id, url);
+  }
+  // 2e passe : limite STRICTE de 3 titres en RAM (on ne retire jamais le titre en cours de lecture).
+  for(const [id, url] of audioBlobCache){
+    if(audioBlobCache.size <= AUDIO_CACHE_MAX) break;
+    let cur = null; try{ cur = currentTrackId; }catch(e){}
+    if(id === cur || inUse(url)) continue;
+    drop(id, url);
   }
 }
 function audioCacheKeepIds(extraId){
@@ -3267,6 +3275,8 @@ function audioCacheKeepIds(extraId){
     if(Array.isArray(currentQueue) && currentQueue.length > 1 && currentTrackIndex >= 0){
       const nx = currentQueue[(currentTrackIndex + 1) % currentQueue.length];
       if(nx) keep.add(nx.id);
+      const pv = currentQueue[(currentTrackIndex - 1 + currentQueue.length) % currentQueue.length];
+      if(pv) keep.add(pv.id);
     }
   }catch(e){}
   return keep;
@@ -3465,10 +3475,10 @@ const tracksRef = db.collection("musicTracks");
   const base = (id)=> id === undefined ? db.collection("musicTracks").doc() : db.collection("musicTracks").doc(id);
   async function patchTrack(id, deleted){
     try{
-      if(deleted){ allTracks = allTracks.filter(t => t.id !== id); }
+      if(deleted){ allTracks = allTracks.filter(t => t.id !== id); libraryIds = libraryIds.filter(x => x !== id); }
       else{
         const d = await db.collection("musicTracks").doc(id).get();
-        if(d.exists){ const o = { id: d.id, ...d.data() }; const i = allTracks.findIndex(t => t.id === id); if(i >= 0) allTracks[i] = o; else allTracks.unshift(o); }
+        if(d.exists){ const o = { id: d.id, ...d.data() }; const i = allTracks.findIndex(t => t.id === id); if(i >= 0) allTracks[i] = o; else { allTracks.unshift(o); if(!libraryIds.includes(id)) libraryIds.unshift(id); } }
       }
       onTracksChanged();
     }catch(e){ console.warn('Mise à jour locale du titre impossible :', e); }
@@ -3655,8 +3665,16 @@ let allTracks = [];      // tout le catalogue, tel que reçu de Firestore (onSna
 let currentQueue = [];    // liste actuellement affichée (filtrée / vue active)
 let currentView = 'library'; // 'library' | 'mine' | 'playlists' | 'playlist-detail' | 'classement'
 let searchTerm = '';
-const LIBRARY_PAGE_SIZE = 50;
-let libraryVisibleCount = LIBRARY_PAGE_SIZE; // nombre de titres affichés sur l'accueil (par tranches de 50)
+const LIBRARY_PAGE_SIZE = 25;
+let libraryVisibleCount = LIBRARY_PAGE_SIZE; // nombre de titres affichés sur l'accueil (par tranches de 25)
+// --- Chargement paginé du catalogue : seuls les titres affichés sont lus dans Firestore ---
+let libraryIds = [];           // ids des titres de l'accueil, dans l'ordre (plus récent d'abord)
+let libraryCursor = null;      // dernier document lu (curseur startAfter pour la page suivante)
+let libraryHasMore = true;     // reste-t-il des titres à charger côté serveur ?
+let libraryLoading = false;
+let fullCatalogLoaded = false; // true seulement si une fonction qui scanne tout le catalogue l'a demandé (recherche, page artiste, « Pour vous »)
+let fullCatalogPromise = null;
+const missingTrackIds = new Set(); // ids introuvables (titres supprimés) : on ne les redemande pas
 let searchNorm = '';        // requête normalisée (sans accents/ponctuation)
 let searchTokens = [];      // mots de la requête normalisée
 const searchIndexCache = new WeakMap(); // index de recherche par titre (recalculé si le titre/artiste/paroles changent)
@@ -4117,6 +4135,14 @@ function switchView(view){
   }
   if(view === 'historique'){
     renderHistory();
+    requestHistoryTracks();
+  }
+  if(view === 'mine' && auth.currentUser){
+    // « Mes titres » : on ne lit que les titres ajoutés par cet utilisateur.
+    tracksRef.where('uploaderId', '==', auth.currentUser.uid).get().then(snap=>{
+      mergeTrackDocs(snap.docs);
+      if(currentView === 'mine') renderTracks();
+    }).catch(err=> console.warn('Chargement de tes titres impossible :', err));
   }
   if(view === 'extraits'){
     renderExtractsSection();
@@ -4142,6 +4168,17 @@ function openPlaylistDetail(id){
   document.getElementById('view-album-detail').style.display = 'none';
   document.getElementById('view-playlist-detail').style.display = '';
   renderTracks();
+  if(id === RADIO_PLAYLIST_ID){
+    requestTracks(radioStateRawIds);
+  }else if(id === FOR_YOU_PLAYLIST_ID){
+    ensureFullCatalog().then(()=>{
+      if(!cachedForYouPlaylist) computeAndFreezeRecommendations();
+      if(currentPlaylistId === id){ getForYouPlaylist(); renderTracks(); }
+    });
+  }else{
+    const _pl = currentPlaylist();
+    if(_pl && Array.isArray(_pl.trackIds)) requestTracks(_pl.trackIds);
+  }
 }
 document.getElementById('playlist-detail-back').addEventListener('click', ()=>{
   // La playlist "Pour vous" (et la Radio Direct) est toujours ouverte
@@ -4185,6 +4222,8 @@ function openArtistPage(name){
   document.getElementById('view-album-detail').style.display = 'none';
   document.getElementById('view-artist-detail').style.display = '';
   renderArtistDetail();
+  // Les titres d'un artiste se retrouvent en parcourant le catalogue : lu une seule fois, à la demande.
+  ensureFullCatalog().then(added=>{ if(added) renderArtistDetail(); });
 }
 function renderArtistDetail(){
   if(currentView !== 'artist-detail' || !currentArtistKey) return;
@@ -4316,6 +4355,8 @@ function openAlbumPage(id, fromArtistKey){
   });
   document.getElementById('view-album-detail').style.display = '';
   renderAlbumDetail();
+  const _al = allAlbums.find(a => a.id === id);
+  if(_al && Array.isArray(_al.trackIds)) requestTracks(_al.trackIds);
 }
 function renderAlbumDetail(){
   if(currentView !== 'album-detail') return;
@@ -4877,6 +4918,8 @@ document.getElementById('search-input').addEventListener('input', (e)=>{
   libraryVisibleCount = LIBRARY_PAGE_SIZE; // nouvelle recherche : on repart des 50 premiers
   document.getElementById('search-wrap').classList.toggle('has-value', e.target.value.length > 0);
   renderTracks();
+  // La recherche doit parcourir tout le catalogue : il n'est lu qu'à la première saisie.
+  if(searchTerm) ensureFullCatalog().then(added=>{ if(added && searchTerm) renderTracks(); });
 });
 /* Bouton "×" de la barre de recherche : vide le champ et relance la
    recherche (équivalent d'une saisie vide), sans jamais voler le focus
@@ -4916,17 +4959,105 @@ function onTracksChanged(){
   openSharedTrackFromURL();
   refreshPlayerForCurrentTrack();
 }
-async function loadTracksOnce(){
+/* =========================================================
+   CHARGEMENT À LA DEMANDE DU CATALOGUE
+   - Accueil : 25 titres lus dans Firestore (limit + startAfter) ; « Afficher plus »
+     ne lit QUE les 25 suivants.
+   - Les autres écrans lisent uniquement les titres dont ils ont besoin (par id).
+   - Seules la recherche, les pages artiste et « Pour vous » lisent tout le catalogue
+     (ensureFullCatalog), car elles doivent le parcourir en entier.
+   ========================================================= */
+function trackCreatedMs(t){ const m = getMillis(t.createdAt); return m === null ? 9e15 : m; }
+function mergeTrackDocs(docs){
+  let added = false;
+  docs.forEach(d=>{
+    const o = { id: d.id, ...d.data() };
+    const i = allTracks.findIndex(t => t.id === d.id);
+    if(i >= 0) allTracks[i] = o; else { allTracks.push(o); added = true; }
+  });
+  if(added) allTracks.sort((a, b) => trackCreatedMs(b) - trackCreatedMs(a));
+  return added;
+}
+async function loadLibraryPage(){
+  if(libraryLoading || !libraryHasMore) return;
+  libraryLoading = true;
   try{
-    const snap = await tracksRef.orderBy('createdAt', 'desc').get();
-    allTracks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    let q = tracksRef.orderBy('createdAt', 'desc').limit(LIBRARY_PAGE_SIZE);
+    if(libraryCursor) q = q.startAfter(libraryCursor);
+    const snap = await q.get();
+    mergeTrackDocs(snap.docs);
+    snap.docs.forEach(d=>{ if(!libraryIds.includes(d.id)) libraryIds.push(d.id); });
+    if(snap.docs.length) libraryCursor = snap.docs[snap.docs.length - 1];
+    if(snap.docs.length < LIBRARY_PAGE_SIZE) libraryHasMore = false;
     onTracksChanged();
   }catch(err){
     console.error('Erreur de chargement de la musique :', err);
     showToast("Impossible de charger la musique pour le moment.");
+  }finally{
+    libraryLoading = false;
   }
 }
-loadTracksOnce();
+// Lit uniquement les titres demandés (par paquets de 10 ids) qui ne sont pas déjà en mémoire.
+async function ensureTracksById(ids){
+  const need = [...new Set((ids || []).filter(Boolean))]
+    .filter(id => !missingTrackIds.has(id) && !allTracks.some(t => t.id === id));
+  if(!need.length) return false;
+  const chunks = [];
+  for(let i = 0; i < need.length; i += 10) chunks.push(need.slice(i, i + 10));
+  let added = false;
+  await Promise.all(chunks.map(async chunk=>{
+    try{
+      const snap = await tracksRef.where(firebase.firestore.FieldPath.documentId(), 'in', chunk).get();
+      const found = new Set(snap.docs.map(d => d.id));
+      if(mergeTrackDocs(snap.docs)) added = true;
+      chunk.forEach(id=>{ if(!found.has(id)) missingTrackIds.add(id); });
+    }catch(err){
+      console.warn('Chargement des titres impossible :', err);
+    }
+  }));
+  return added;
+}
+function requestTracks(ids){
+  ensureTracksById(ids).then(added=>{ if(added) onTracksChanged(); });
+}
+function ensureFullCatalog(){
+  if(fullCatalogLoaded) return Promise.resolve(false);
+  if(fullCatalogPromise) return fullCatalogPromise;
+  fullCatalogPromise = (async ()=>{
+    try{
+      const snap = await tracksRef.orderBy('createdAt', 'desc').get();
+      const added = mergeTrackDocs(snap.docs);
+      fullCatalogLoaded = true;
+      return added;
+    }catch(err){
+      console.error('Erreur de chargement du catalogue complet :', err);
+      return false;
+    }finally{
+      fullCatalogPromise = null;
+    }
+  })();
+  return fullCatalogPromise;
+}
+// Titre « musique de l'événement » (hero) : une petite requête ciblée plutôt que tout le catalogue.
+async function loadFeaturedTracks(){
+  try{
+    const snap = await tracksRef.where('eventFeatured', '==', true).limit(10).get();
+    if(snap.docs.length && mergeTrackDocs(snap.docs)) onTracksChanged();
+  }catch(err){ console.warn('Titre en vedette introuvable :', err); }
+}
+// Classement « Depuis toujours » : uniquement les 100 titres les plus écoutés.
+async function loadTopPlayedTracks(){
+  try{
+    const snap = await tracksRef.orderBy('plays', 'desc').limit(100).get();
+    mergeTrackDocs(snap.docs);
+  }catch(err){ console.warn('Chargement du top des écoutes impossible :', err); }
+}
+loadLibraryPage();
+loadFeaturedTracks();
+{ // Lien de partage ?track=ID : on lit ce seul titre
+  const sharedId = new URLSearchParams(location.search).get('track');
+  if(sharedId) requestTracks([sharedId]);
+}
 
 // Photos des pages artiste (ajoutées par l'admin) : peu de documents, on
 // écoute toute la collection en direct pour que la photo apparaisse sans
@@ -5043,7 +5174,8 @@ function floatTo16BitPCM(float32Array){
 async function downloadExtractAsMp3(extractId){
   const ex = allExtracts.find(e => e.id === extractId);
   if(!ex) return;
-  const track = allTracks.find(t => t.id === ex.trackId);
+  let track = allTracks.find(t => t.id === ex.trackId);
+  if(!track){ await ensureTracksById([ex.trackId]); track = allTracks.find(t => t.id === ex.trackId); }
   if(!track){ showToast("Ce titre n'est plus disponible."); return; }
   if(typeof lamejs === 'undefined'){ showToast("L'encodeur MP3 n'a pas pu se charger."); return; }
   const btn = document.querySelector(`[data-download-extract="${extractId}"]`);
@@ -5098,7 +5230,8 @@ async function downloadExtractAsMp3(extractId){
 async function playExtractById(extractId){
   const ex = allExtracts.find(e => e.id === extractId);
   if(!ex) return;
-  const track = allTracks.find(t => t.id === ex.trackId);
+  let track = allTracks.find(t => t.id === ex.trackId);
+  if(!track){ await ensureTracksById([ex.trackId]); track = allTracks.find(t => t.id === ex.trackId); }
   if(!track){ showToast("Ce titre n'est plus disponible."); return; }
   const applyClip = ()=>{
     audioEl.currentTime = ex.start || 0;
@@ -5267,7 +5400,9 @@ function subscribeToPlaylists(uid){
     });
     renderPlaylistsGrid();
     renderHomePlaylistsSection();
-    if(currentView === 'playlist-detail') renderTracks();
+    // Pochettes des playlists : on ne lit que le 1er titre de chaque playlist sans pochette propre.
+    requestTracks(allPlaylists.filter(p => !p.coverURL).map(p => (Array.isArray(p.trackIds) ? p.trackIds[0] : null)).filter(Boolean));
+    if(currentView === 'playlist-detail'){ const _p = currentPlaylist(); if(_p && Array.isArray(_p.trackIds)) requestTracks(_p.trackIds); renderTracks(); }
     if(document.getElementById('add-to-playlist-overlay').classList.contains('open')) renderAddToPlaylistList();
     if(document.getElementById('add-tracks-overlay').classList.contains('open')){
       renderAddTracksList(document.getElementById('add-tracks-search').value.trim().toLowerCase());
@@ -5803,6 +5938,11 @@ function openAddTracksModal(){
   document.getElementById('add-tracks-search').value = '';
   renderAddTracksList('');
   openOverlay('add-tracks-overlay');
+  ensureFullCatalog().then(added=>{
+    if(added && document.getElementById('add-tracks-overlay').classList.contains('open')){
+      renderAddTracksList(document.getElementById('add-tracks-search').value.trim().toLowerCase());
+    }
+  });
 }
 document.getElementById('add-tracks-search').addEventListener('input', (e)=> renderAddTracksList(e.target.value.trim().toLowerCase()));
 function renderAddTracksList(filter){
@@ -5889,11 +6029,11 @@ function applyHeroTheme(theme){
 function renderHero(){
   const hero = document.getElementById('hero');
   if(currentView === 'classement' || currentView === 'historique' || currentView === 'mine' || currentView === 'playlists' || currentView === 'playlist-detail'){ hero.style.display = 'none'; return; }
-  if(!allTracks.length){ hero.style.display = 'none'; return; }
+  if(!allTracks.length || !libraryIds.length){ hero.style.display = 'none'; return; }
   // Priorité au titre choisi par l'admin comme "musique de l'événement" ;
   // à défaut, on retombe sur le dernier titre ajouté au catalogue.
   const featured = allTracks.find(tr => tr.eventFeatured);
-  const t = featured || allTracks[0];
+  const t = featured || allTracks.find(tr => tr.id === libraryIds[0]) || allTracks[0];
   hero.style.display = '';
   const theme = detectHeroTheme(t);
   applyHeroTheme(theme);
@@ -6295,6 +6435,7 @@ function computeAndFreezeRecommendations(){
 // connexion et à l'historique d'écoute de s'établir avant de figer la
 // sélection initiale.
 function scheduleInitialRecommendations(){
+  if(!fullCatalogLoaded) return; // sans catalogue complet, pas de calcul (évite de lire des titres non affichés)
   if(recommendationsInitialized || recommendationsScheduled) return;
   if(!allTracks.length) return;
   recommendationsScheduled = true;
@@ -6314,15 +6455,10 @@ function startRecommendationsRefreshTimer(){
 // pour ne jamais les faire disparaître), sinon l'ordre par défaut du
 // catalogue en attendant le calcul initial.
 function getOrderedLibraryTracks(){
-  if(!recommendationsInitialized) return allTracks;
+  // Recherche : on parcourt tout ce qui est chargé (le catalogue complet est lu à la première saisie).
+  if(searchTerm) return allTracks;
   const byId = new Map(allTracks.map(t => [t.id, t]));
-  const ordered = [];
-  cachedLibraryOrderIds.forEach(id=>{
-    const t = byId.get(id);
-    if(t){ ordered.push(t); byId.delete(id); }
-  });
-  byId.forEach(t => ordered.push(t));
-  return ordered;
+  return libraryIds.map(id => byId.get(id)).filter(Boolean);
 }
 
 /* =========================================================
@@ -6345,7 +6481,9 @@ function getForYouPlaylist(){
   sharedPlaylistCache[FOR_YOU_PLAYLIST_ID] = temp;
   return temp;
 }
-function playForYouPlaylist(){
+async function playForYouPlaylist(){
+  await ensureFullCatalog();
+  if(!cachedForYouPlaylist) computeAndFreezeRecommendations();
   const pl = getForYouPlaylist();
   const list = pl.trackIds.map(id => allTracks.find(t => t.id === id)).filter(Boolean);
   if(!list.length){ showToast("Pas encore assez de titres pour te proposer une sélection."); return; }
@@ -6353,7 +6491,7 @@ function playForYouPlaylist(){
   currentTrackIndex = 0;
   playTrackById(list[0].id);
 }
-function openForYouPlaylist(){
+async function openForYouPlaylist(){
   getForYouPlaylist();
   openPlaylistDetail(FOR_YOU_PLAYLIST_ID);
 }
@@ -6414,6 +6552,7 @@ async function refreshRadioState(){
     if(!ids.length){
       // Repli : pas encore d'écoutes cette semaine (nouvelle installation) ->
       // on démarre la radio avec le Top "Depuis toujours" en attendant.
+      await ensureFullCatalog();
       ids = allTracks.slice()
         .filter(t => (t.plays || 0) > 0)
         .sort((a,b)=> (b.plays||0) - (a.plays||0))
@@ -6429,8 +6568,13 @@ async function refreshRadioState(){
     radioStateRefreshing = false;
   }
 }
+function radioFullyLoaded(){
+  return radioStateRawIds.length > 0 && radioStateRawIds.every(id => missingTrackIds.has(id) || allTracks.some(t => t.id === id));
+}
 function applyRadioTrackIds(ids){
   radioStateRawIds = Array.isArray(ids) ? ids : [];
+  // Accueil : seul le 1er titre du programme (pochette de la carte) est lu ; le reste est lu à l'ouverture / au lancement de la radio.
+  if(radioStateRawIds.length) requestTracks([radioStateRawIds[0]]);
   radioTrackIds = radioStateRawIds.filter(id => allTracks.some(t=> t.id === id));
   radioTracksCache = radioTrackIds.map(id=> allTracks.find(t=> t.id === id)).filter(Boolean);
   sharedPlaylistCache[RADIO_PLAYLIST_ID] = getRadioPlaylist();
@@ -6466,6 +6610,7 @@ function getRadioPlaylist(){
 // écriture réseau). slotStart identifie de façon unique CETTE diffusion
 // précise de ce titre (sert à ne créditer les vues qu'une seule fois).
 function computeRadioSchedule(){
+  if(!radioFullyLoaded()) return null; // le planning dépend de TOUTES les durées du programme
   const list = radioTracksCache;
   if(!list.length) return null;
   const durations = list.map(t => (t.duration && isFinite(t.duration) && t.duration > 3) ? t.duration : RADIO_DEFAULT_TRACK_SECONDS);
@@ -6702,6 +6847,8 @@ async function playRadioTrack(sched){
 // Rejoint la Radio Direct pile à l'instant présent (bouton "Lire" / carte
 // d'accueil / ligne d'un titre dans le détail de la playlist Radio).
 async function joinRadioLive(){
+  await ensureTracksById(radioStateRawIds);
+  applyRadioTrackIds(radioStateRawIds);
   if(!radioTracksCache.length){ showToast("La Radio Direct n'a pas encore de titres à diffuser."); return; }
   const sched = computeRadioSchedule();
   if(!sched){ showToast("La Radio Direct n'a pas encore de titres à diffuser."); return; }
@@ -6859,8 +7006,14 @@ function renderHomePlaylistsSection(){
   });
 }
 document.getElementById('home-pl-see-all').addEventListener('click', ()=> switchView('playlists'));
-document.getElementById('library-more-btn').addEventListener('click', ()=>{
+document.getElementById('library-more-btn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('library-more-btn');
   libraryVisibleCount += LIBRARY_PAGE_SIZE;
+  if(!searchTerm && libraryHasMore){
+    // Charge UNIQUEMENT les 25 titres suivants.
+    btn.disabled = true;
+    try{ await loadLibraryPage(); }finally{ btn.disabled = false; }
+  }
   renderTracks();
 });
 
@@ -6877,7 +7030,12 @@ function renderTracks(){
     });
     const libMoreWrap = document.getElementById('library-more-wrap');
     const libMoreBtn = document.getElementById('library-more-btn');
-    if(list.length > libraryVisibleCount){
+    const moreOnServer = !searchTerm && libraryHasMore;
+    if(moreOnServer) document.getElementById('library-count').textContent = list.length + '+ titres';
+    if(moreOnServer){
+      libMoreBtn.textContent = 'Afficher ' + LIBRARY_PAGE_SIZE + ' titres de plus';
+      libMoreWrap.style.display = '';
+    }else if(list.length > libraryVisibleCount){
       const rest = list.length - libraryVisibleCount;
       libMoreBtn.textContent = 'Afficher ' + Math.min(LIBRARY_PAGE_SIZE, rest) + ' titre' + (Math.min(LIBRARY_PAGE_SIZE, rest) > 1 ? 's' : '') + ' de plus (' + rest + ' restant' + (rest > 1 ? 's' : '') + ')';
       libMoreWrap.style.display = '';
@@ -7016,6 +7174,12 @@ async function loadRankingPeriod(period){
 
   if(period === 'all'){
     rankingPeriodPlays = null;
+    const tokenAll = ++rankingPeriodLoadToken;
+    document.getElementById('ranking-list').innerHTML = '<div class="ranking-loading">Chargement du classement…</div>';
+    document.getElementById('classement-empty').style.display = 'none';
+    document.getElementById('ranking-more-wrap').style.display = 'none';
+    await loadTopPlayedTracks(); // uniquement les 100 titres les plus écoutés
+    if(tokenAll !== rankingPeriodLoadToken) return;
     renderRanking();
     return;
   }
@@ -7042,6 +7206,9 @@ async function loadRankingPeriod(period){
       counts[trackId] = (counts[trackId] || 0) + (data.count || 1);
     });
     rankingPeriodPlays = counts;
+    // Seuls les titres les plus écoutés de la période sont lus.
+    await ensureTracksById(Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 100).map(e => e[0]));
+    if(token !== rankingPeriodLoadToken) return;
   }catch(err){
     console.error('Impossible de charger le classement pour cette période :', err);
     if(token !== rankingPeriodLoadToken) return;
@@ -7483,11 +7650,12 @@ function recordListenHistory(trackId){
     playedAt: firebase.firestore.FieldValue.serverTimestamp()
   }).catch(err=> console.error("Historique : écriture impossible :", err));
 }
+function requestHistoryTracks(){ requestTracks(allHistoryEntries.map(h => h.trackId)); }
 function subscribeToHistory(uid){
   if(historyUnsub) historyUnsub();
   historyUnsub = musicHistoryEntriesRef(uid).orderBy('playedAt', 'desc').limit(100).onSnapshot((snap)=>{
     allHistoryEntries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    if(currentView === 'historique') renderHistory();
+    if(currentView === 'historique'){ renderHistory(); requestHistoryTracks(); }
     // Ne réaffine PAS le tri "coup de cœur" en direct : la recommandation
     // n'est calculée qu'une seule fois à l'ouverture de l'application
     // (voir scheduleInitialRecommendations). On tente simplement de la
@@ -7618,7 +7786,10 @@ async function loadRewindPeriod(period){
     if(cutoff) query = query.where('playedAt', '>=', cutoff);
     const snap = await query.get();
     if(token !== rewindLoadToken) return; // une autre période a été demandée entre-temps
-    renderRewind(snap.docs.map(d => d.data()), period);
+    const rwEntries = snap.docs.map(d => d.data());
+    await ensureTracksById([...new Set(rwEntries.map(e => e.trackId).filter(Boolean))]);
+    if(token !== rewindLoadToken) return;
+    renderRewind(rwEntries, period);
   }catch(err){
     console.error("Impossible de calculer le Rewind :", err);
     if(token !== rewindLoadToken) return;
@@ -8711,6 +8882,8 @@ function prefetchTrackById(trackId, kind){
   kind = kind || 'next';
   if(!trackId || audioBlobCache.has(trackId) || audioBlobFetchInFlight.has(trackId)) return;
   if(!prefetchPolicy(kind)) return;
+  // Limite de 3 titres en RAM : un préchargement au survol ne doit jamais éjecter précédent/en cours/suivant.
+  if(kind === 'hover' && audioBlobCache.size + audioBlobFetchInFlight.size >= AUDIO_CACHE_MAX) return;
   if(kind === 'hover'){
     // Un seul préchargement au survol à la fois.
     if(hoverPrefetchId && audioBlobFetchInFlight.has(hoverPrefetchId)) return;
@@ -9359,7 +9532,11 @@ function stopEq(){
 }
 
 async function playTrackById(trackId, direction, opts){
-  const track = allTracks.find(t => t.id === trackId);
+  let track = allTracks.find(t => t.id === trackId);
+  if(!track){
+    if(await ensureTracksById([trackId])) onTracksChanged();
+    track = allTracks.find(t => t.id === trackId);
+  }
   if(!track) return;
   // Toute lecture qui n'est pas un enchaînement interne de la Radio Direct
   // (rejoindre, avancer au titre suivant du programme...) fait quitter le
@@ -9553,6 +9730,15 @@ function playAdjacent(delta, opts){
   const curIdx = currentTrackId ? currentQueue.findIndex(t => t.id === currentTrackId) : -1;
   const base = curIdx >= 0 ? curIdx : currentTrackIndex;
   let idx = base + delta;
+  if(delta > 0 && idx >= currentQueue.length && libraryHasMore && currentView === 'library' && !searchTerm){
+    const prevLen = currentQueue.length;
+    libraryVisibleCount += LIBRARY_PAGE_SIZE;
+    loadLibraryPage().then(()=>{
+      const nx = currentQueue[prevLen] || currentQueue[0];
+      if(nx) playTrackById(nx.id, 1, opts);
+    });
+    return;
+  }
   if(idx < 0) idx = currentQueue.length - 1;
   if(idx >= currentQueue.length) idx = 0;
   playTrackById(currentQueue[idx].id, delta > 0 ? 1 : -1, opts);
