@@ -2008,7 +2008,7 @@ body:not(.is-admin) #tab-stats{display:none!important}
 .np-art-cover-wrap .wav-badge{bottom:10px;left:10px}
 /* Badge "RIJOUL MUSIC AWARDS" (admin) : trophée doré personnalisé, en haut à droite de la pochette.
    Sur les cartes, il s'efface au survol pour laisser place aux boutons modifier/supprimer de l'admin. */
-.rma-badge{position:absolute;top:8px;right:8px;z-index:3;display:flex;align-items:center;justify-content:center;width:28px;height:31px;border-radius:9px;background:radial-gradient(circle at 50% 30%,rgba(255,206,106,.28),rgba(10,8,4,.82) 70%);backdrop-filter:blur(6px);border:1px solid rgba(255,206,106,.75);box-shadow:0 0 12px rgba(255,176,32,.55),inset 0 1px 0 rgba(255,255,255,.25);cursor:default;overflow:hidden;animation:rmaGlow 3.2s ease-in-out infinite}
+.rma-badge{position:absolute;top:8px;right:8px;z-index:3;display:flex;align-items:center;justify-content:center;width:28px;height:31px;border-radius:9px;border:1.2px solid transparent;background:radial-gradient(circle at 50% 38%,rgba(255,205,90,.30),transparent 68%) padding-box,linear-gradient(165deg,#1d1810,#050403) padding-box,linear-gradient(135deg,#fff3c4,#c98a10 40%,#ffe08a 65%,#8a5200) border-box;backdrop-filter:blur(6px);box-shadow:0 0 12px rgba(255,176,32,.5),0 2px 6px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.18);cursor:default;overflow:hidden;animation:rmaGlow 3.2s ease-in-out infinite}
 .rma-badge svg{width:22px;height:28px;display:block;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.6))}
 .rma-badge::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%);background-size:250% 100%;animation:wavShine 3.6s ease-in-out infinite}
 @keyframes rmaGlow{0%,100%{box-shadow:0 0 10px rgba(255,176,32,.45),inset 0 1px 0 rgba(255,255,255,.25)}50%{box-shadow:0 0 18px rgba(255,200,70,.85),inset 0 1px 0 rgba(255,255,255,.35)}}
@@ -2040,45 +2040,75 @@ body:not(.is-admin) #tab-stats{display:none!important}
     <linearGradient id="rma-gold-dark" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#e29a12"/><stop offset="1" stop-color="#7a4300"/>
     </linearGradient>
+    <linearGradient id="rma-metal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6e4200"/><stop offset=".16" stop-color="#e8a826"/><stop offset=".3" stop-color="#fff4c2"/>
+      <stop offset=".45" stop-color="#ffd25a"/><stop offset=".68" stop-color="#b87208"/><stop offset=".86" stop-color="#ffd978"/><stop offset="1" stop-color="#7a4800"/>
+    </linearGradient>
+    <linearGradient id="rma-metal-v" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff0b0"/><stop offset=".5" stop-color="#e0a020"/><stop offset="1" stop-color="#8a5200"/>
+    </linearGradient>
+    <linearGradient id="rma-marble" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#34343a"/><stop offset=".5" stop-color="#121214"/><stop offset="1" stop-color="#050506"/>
+    </linearGradient>
+    <linearGradient id="rma-diamond" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#bfe6ff"/><stop offset="1" stop-color="#7fb8e6"/>
+    </linearGradient>
+    <radialGradient id="rma-ruby" cx=".35" cy=".3" r=".8">
+      <stop offset="0" stop-color="#ff9aa8"/><stop offset=".5" stop-color="#d4122e"/><stop offset="1" stop-color="#6a0014"/>
+    </radialGradient>
     <symbol id="rma-trophy" viewBox="0 -5.5 32 41.5">
-      <!-- Branches de laurier -->
-      <g fill="url(#rma-gold-dark)">
-        <ellipse cx="8.6" cy="23.6" rx="3.1" ry="1.35" transform="rotate(-35 8.6 23.6)"/>
-        <ellipse cx="6.6" cy="20.2" rx="3.1" ry="1.3" transform="rotate(-62 6.6 20.2)"/>
-        <ellipse cx="6.2" cy="16.4" rx="2.9" ry="1.2" transform="rotate(-85 6.2 16.4)"/>
-        <ellipse cx="23.4" cy="23.6" rx="3.1" ry="1.35" transform="rotate(35 23.4 23.6)"/>
-        <ellipse cx="25.4" cy="20.2" rx="3.1" ry="1.3" transform="rotate(62 25.4 20.2)"/>
-        <ellipse cx="25.8" cy="16.4" rx="2.9" ry="1.2" transform="rotate(85 25.8 16.4)"/>
+      <!-- Laurier fin -->
+      <g fill="url(#rma-metal-v)" opacity=".95">
+        <ellipse cx="9.4" cy="20.6" rx="2.4" ry=".95" transform="rotate(-32 9.4 20.6)"/>
+        <ellipse cx="7.9" cy="17.8" rx="2.4" ry=".95" transform="rotate(-56 7.9 17.8)"/>
+        <ellipse cx="7.3" cy="14.8" rx="2.3" ry=".9" transform="rotate(-78 7.3 14.8)"/>
+        <ellipse cx="22.6" cy="20.6" rx="2.4" ry=".95" transform="rotate(32 22.6 20.6)"/>
+        <ellipse cx="24.1" cy="17.8" rx="2.4" ry=".95" transform="rotate(56 24.1 17.8)"/>
+        <ellipse cx="24.7" cy="14.8" rx="2.3" ry=".9" transform="rotate(78 24.7 14.8)"/>
       </g>
-      <!-- Anses -->
-      <path d="M8.2 6H5.3c-.9 0-1.3.6-1.2 1.4.4 3.4 2.2 5.6 4.6 6.3" fill="none" stroke="url(#rma-gold)" stroke-width="1.7" stroke-linecap="round"/>
-      <path d="M23.8 6h2.9c.9 0 1.3.6 1.2 1.4-.4 3.4-2.2 5.6-4.6 6.3" fill="none" stroke="url(#rma-gold)" stroke-width="1.7" stroke-linecap="round"/>
-      <!-- Coupe -->
-      <path d="M8.2 3.6h15.6v8.4c0 5.4-3.5 9.4-7.8 9.4s-7.8-4-7.8-9.4z" fill="url(#rma-gold)"/>
-      <path d="M10.4 5.2h2.4v6.9c0 3 .9 5.1 2.4 6.1-3-.5-4.8-3.2-4.8-6.6z" fill="#fff" opacity=".4"/>
-      <rect x="6.8" y="2" width="18.4" height="2.4" rx="1.2" fill="url(#rma-gold)"/>
-      <rect x="6.8" y="2" width="18.4" height="1" rx=".5" fill="#fff" opacity=".45"/>
-      <!-- Note de musique gravée -->
-      <g>
-        <g fill="#fff3c4" opacity=".6" transform="translate(.35 .45)">
+      <!-- Anses en volute -->
+      <g fill="none" stroke="url(#rma-metal-v)" stroke-width="1.5" stroke-linecap="round">
+        <path d="M8.5 5C4.2 4.6 2.7 7.8 4.6 10.4c1.2 1.6 3 2.2 5 1.8"/>
+        <path d="M23.5 5c4.3-.4 5.8 2.8 3.9 5.4-1.2 1.6-3 2.2-5 1.8"/>
+      </g>
+      <circle cx="9.7" cy="12.2" r="1" fill="#ffd978"/><circle cx="22.3" cy="12.2" r="1" fill="#ffd978"/>
+      <!-- Coupe goblet -->
+      <path d="M7.8 3.4h16.4s.5 7.6-2.5 12.4c-1.6 2.7-3.4 4.1-4.5 4.8h-2.4c-1.1-.7-2.9-2.1-4.5-4.8C7.3 11 7.8 3.4 7.8 3.4z" fill="url(#rma-metal)"/>
+      <path d="M9.6 5h2c-.1 3.4.7 7 2.6 10.2.7 1.1 1.4 1.9 2 2.5-1.6-.9-3.2-2.3-4.5-4.4C9.7 10.6 9.4 7.6 9.6 5z" fill="#fff" opacity=".42"/>
+      <rect x="6.6" y="1.8" width="18.8" height="2.5" rx="1.25" fill="url(#rma-metal)"/>
+      <rect x="6.6" y="1.8" width="18.8" height=".9" rx=".45" fill="#fff" opacity=".5"/>
+      <!-- Note gravée -->
+      <g transform="translate(3.6 2.3) scale(.8)">
+        <g fill="#fff3c4" opacity=".55" transform="translate(.4 .5)">
           <ellipse cx="13.4" cy="15.4" rx="2.5" ry="1.9" transform="rotate(-20 13.4 15.4)"/>
-          <rect x="15.4" y="7" width="1.2" height="8.6"/>
-          <path d="M16.6 7c0 2.6 3.3 3 3.3 6.3-1-1.6-2.2-2.2-3.3-2.7z"/>
+          <rect x="15.4" y="7" width="1.2" height="8.6"/><path d="M16.6 7c0 2.6 3.3 3 3.3 6.3-1-1.6-2.2-2.2-3.3-2.7z"/>
         </g>
-        <g fill="#5a3000">
+        <g fill="#4a2600">
           <ellipse cx="13.4" cy="15.4" rx="2.5" ry="1.9" transform="rotate(-20 13.4 15.4)"/>
-          <rect x="15.4" y="7" width="1.2" height="8.6"/>
-          <path d="M16.6 7c0 2.6 3.3 3 3.3 6.3-1-1.6-2.2-2.2-3.3-2.7z"/>
+          <rect x="15.4" y="7" width="1.2" height="8.6"/><path d="M16.6 7c0 2.6 3.3 3 3.3 6.3-1-1.6-2.2-2.2-3.3-2.7z"/>
         </g>
       </g>
-      <!-- Pied + socle -->
-      <rect x="14.1" y="21.2" width="3.8" height="4.8" fill="url(#rma-gold-dark)"/>
-      <path d="M10.2 26h11.6l1.5 3.5H8.7z" fill="url(#rma-gold)"/>
-      <rect x="7.5" y="29.5" width="17" height="4.4" rx="1.3" fill="url(#rma-gold-dark)"/>
-      <rect x="7.5" y="29.5" width="17" height="1" rx=".5" fill="#fff" opacity=".35"/>
-      <text x="16" y="32.6" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="3" font-weight="900" fill="#fff3c4" textLength="13" lengthAdjust="spacingAndGlyphs">RIJOUL</text>
-      <!-- Étoile au sommet -->
-      <path transform="translate(0 -1.6)" d="M16-3.5l1.24 2.21 2.8.0-2.16 1.39.72 2.7L16 1.3l-2.6 1.5.72-2.7-2.16-1.39 2.8 0z" fill="#fff3c4" stroke="#ffb020" stroke-width=".5" stroke-linejoin="round"/>
+      <!-- Pied, noeud et rubis -->
+      <rect x="14.6" y="20.2" width="2.8" height="4.6" fill="url(#rma-metal)"/>
+      <ellipse cx="16" cy="22.6" rx="3.2" ry="1.25" fill="url(#rma-metal)"/>
+      <circle cx="16" cy="22.6" r=".95" fill="url(#rma-ruby)" stroke="#ffe9a0" stroke-width=".3"/>
+      <rect x="10.2" y="24.6" width="11.6" height="1.5" rx=".75" fill="url(#rma-metal)"/>
+      <!-- Socle marbre noir -->
+      <path d="M9 26.3h14l1.3 7.1H7.7z" fill="url(#rma-marble)"/>
+      <path d="M9 26.3h14l1.3 7.1H7.7z" fill="none" stroke="url(#rma-metal-v)" stroke-width=".6" stroke-linejoin="round"/>
+      <path d="M10.4 27h2.4l-.9 6.3h-.6z" fill="#fff" opacity=".1"/>
+      <rect x="10.6" y="28.5" width="10.8" height="3.4" rx=".7" fill="url(#rma-metal)"/>
+      <rect x="10.6" y="28.5" width="10.8" height="3.4" rx=".7" fill="none" stroke="#5a3400" stroke-width=".25"/>
+      <text x="16" y="31" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="2.5" font-weight="900" fill="#3a1e00" textLength="8" lengthAdjust="spacingAndGlyphs">R·M·A</text>
+      <!-- Diamant facetté -->
+      <g transform="translate(1.92 -1.1) scale(.88)">
+        <path d="M13.2-4.4h5.6l2.4 2.3L16 2.8l-5.2-4.9z" fill="url(#rma-diamond)" stroke="#7fb8e6" stroke-width=".3" stroke-linejoin="round"/>
+        <path d="M10.8-2.1h10.4M13.2-4.4l1.4 2.3L16 2.8M18.8-4.4l-1.4 2.3L16 2.8M14.6-2.1L16-4.4l1.4 2.3" fill="none" stroke="#fff" stroke-width=".25" opacity=".85"/>
+        <path d="M13.2-4.4l1.4 2.3H10.8z" fill="#fff" opacity=".7"/>
+      </g>
+      <!-- Éclats -->
+      <path d="M24.6-3.6l.5 1.4 1.4.5-1.4.5-.5 1.4-.5-1.4-1.4-.5 1.4-.5z" fill="#fff8d6"/>
+      <path d="M8.6 4.4l.35.95.95.35-.95.35-.35.95-.35-.95-.95-.35.95-.35z" fill="#fff"/>
     </symbol>
   </defs>
 </svg>
