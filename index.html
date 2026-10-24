@@ -2006,19 +2006,18 @@ body:not(.is-admin) #tab-stats{display:none!important}
 @keyframes wavShine{0%{background-position:150% 0}60%,100%{background-position:-50% 0}}
 .ranking-cover .wav-badge{bottom:2px;left:2px;padding:1px 4px;font-size:7.5px;border-radius:4px}
 .np-art-cover-wrap .wav-badge{bottom:10px;left:10px}
-/* Badge "RIJOUL MUSIC AWARDS" (admin) : trophée doré personnalisé, en haut à gauche de la pochette.
-   Quand le titre est aussi certifié CONCERT, ce dernier est décalé à droite du trophée. */
-.rma-badge{position:absolute;top:8px;left:8px;z-index:3;display:flex;align-items:center;justify-content:center;width:28px;height:31px;border-radius:9px;background:radial-gradient(circle at 50% 30%,rgba(255,206,106,.28),rgba(10,8,4,.82) 70%);backdrop-filter:blur(6px);border:1px solid rgba(255,206,106,.75);box-shadow:0 0 12px rgba(255,176,32,.55),inset 0 1px 0 rgba(255,255,255,.25);cursor:default;overflow:hidden;animation:rmaGlow 3.2s ease-in-out infinite}
+/* Badge "RIJOUL MUSIC AWARDS" (admin) : trophée doré personnalisé, en haut à droite de la pochette.
+   Sur les cartes, il s'efface au survol pour laisser place aux boutons modifier/supprimer de l'admin. */
+.rma-badge{position:absolute;top:8px;right:8px;z-index:3;display:flex;align-items:center;justify-content:center;width:28px;height:31px;border-radius:9px;background:radial-gradient(circle at 50% 30%,rgba(255,206,106,.28),rgba(10,8,4,.82) 70%);backdrop-filter:blur(6px);border:1px solid rgba(255,206,106,.75);box-shadow:0 0 12px rgba(255,176,32,.55),inset 0 1px 0 rgba(255,255,255,.25);cursor:default;overflow:hidden;animation:rmaGlow 3.2s ease-in-out infinite}
 .rma-badge svg{width:20px;height:22px;display:block;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.6))}
 .rma-badge::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%);background-size:250% 100%;animation:wavShine 3.6s ease-in-out infinite}
 @keyframes rmaGlow{0%,100%{box-shadow:0 0 10px rgba(255,176,32,.45),inset 0 1px 0 rgba(255,255,255,.25)}50%{box-shadow:0 0 18px rgba(255,200,70,.85),inset 0 1px 0 rgba(255,255,255,.35)}}
-.card-cover.has-rma .concert-badge{left:42px}
-.ranking-cover .rma-badge{top:2px;left:2px;width:19px;height:21px;border-radius:6px}
+.card-cover.has-actions .rma-badge{transition:opacity .15s}
+.card-cover.has-actions:hover .rma-badge{opacity:0;pointer-events:none}
+.ranking-cover .rma-badge{top:2px;right:2px;width:19px;height:21px;border-radius:6px}
 .ranking-cover .rma-badge svg{width:13px;height:15px}
-.ranking-cover.has-rma .concert-badge-mini{left:24px}
-.np-art-cover-wrap .rma-badge{top:10px;left:10px;width:34px;height:38px;border-radius:11px}
+.np-art-cover-wrap .rma-badge{top:10px;right:10px;width:34px;height:38px;border-radius:11px}
 .np-art-cover-wrap .rma-badge svg{width:24px;height:27px}
-.np-art-cover-wrap.has-rma .concert-badge{left:52px}
 </style>
 </head>
 <body>
@@ -7554,7 +7553,7 @@ function paintGrid(gridId, emptyId, countId, list, texts){
     const isPlaying = t.id === currentTrackId;
     return `
     <div class="card ${isPlaying ? 'is-playing' : ''}" data-track-id="${t.id}">
-      <div class="card-cover${t.wavBadge ? ' is-wav' : ''}${t.rijoulAward ? ' has-rma' : ''}">
+      <div class="card-cover${t.wavBadge ? ' is-wav' : ''}${(canDelete || canEdit) ? ' has-actions' : ''}">
         <img src="${escapeHtml(t.coverURL || fallbackCoverSvg())}" alt="">
         ${t.concertCertified ? `<span class="concert-badge" tabindex="0" data-tooltip="Ce titre est certifié pour être adapté au mode concert.">🎤 CONCERT</span>` : ''}
         ${t.rijoulAward ? `<span class="rma-badge" tabindex="0" data-tooltip="Rijoul Music Awards" aria-label="Rijoul Music Awards"><svg viewBox="0 0 32 36" aria-hidden="true"><use href="#rma-trophy"/></svg></span>` : ''}
