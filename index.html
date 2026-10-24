@@ -8783,18 +8783,27 @@ document.getElementById('edit-event-toggle').addEventListener('click', async ()=
   btn.disabled = true;
   try{
     const batch = db.batch();
+    const clearedIds = [];
     if(newVal){
-      allTracks.forEach(t=>{
-        if(t.eventFeatured && t.id !== editingTrackId){
-          batch.update(tracksRef.doc(t.id), { eventFeatured: firebase.firestore.FieldValue.delete() });
+      // Un seul titre en avant à la fois : on cherche dans Firestore (et pas seulement dans les
+      // titres déjà chargés à l'écran) tous les autres titres encore marqués, pour les démarquer.
+      const snap = await tracksRef.where('eventFeatured', '==', true).get();
+      snap.docs.forEach(d=>{
+        if(d.id !== editingTrackId){
+          batch.update(db.collection('musicTracks').doc(d.id), { eventFeatured: firebase.firestore.FieldValue.delete() });
+          clearedIds.push(d.id);
         }
       });
-      batch.update(tracksRef.doc(editingTrackId), { eventFeatured: true });
+      batch.update(db.collection('musicTracks').doc(editingTrackId), { eventFeatured: true });
     }else{
-      batch.update(tracksRef.doc(editingTrackId), { eventFeatured: firebase.firestore.FieldValue.delete() });
+      batch.update(db.collection('musicTracks').doc(editingTrackId), { eventFeatured: firebase.firestore.FieldValue.delete() });
     }
     await batch.commit();
-    await loadTracksOnce();
+    // Un batch ne passe pas par le rafraîchissement automatique de tracksRef.doc() : on met donc
+    // à jour les copies en mémoire à la main, puis on redessine l'accueil (zone événement incluse).
+    clearedIds.forEach(id=>{ const t = allTracks.find(x => x.id === id); if(t) delete t.eventFeatured; });
+    { const cur = allTracks.find(x => x.id === editingTrackId); if(cur){ if(newVal) cur.eventFeatured = true; else delete cur.eventFeatured; } }
+    onTracksChanged();
     editEventFeatured = newVal;
     refreshEditEventToggleUI();
     showToast(newVal ? "Titre mis en avant comme musique de l'événement." : "Mise en avant retirée.");
