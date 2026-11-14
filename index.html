@@ -479,6 +479,8 @@ async function startWelcome(user){
     await Promise.race([ (document.fonts && document.fonts.ready) || Promise.resolve(), wait(2500) ]);
     await new Promise(function(r){ requestAnimationFrame(function(){ requestAnimationFrame(r); }); });
     hideGate();
+    startPresence(user);
+    if(user.uid === ADMIN_UID) mountAdminLauncher();
   }catch(e){
     console.error(e);
     if(booted){ location.reload(); return; }   // échec en cours d'installation : on repart d'une page propre
@@ -504,6 +506,207 @@ auth.onAuthStateChanged(function(user){
   if(signupBusy) return;                                // l'inscription en cours finit son travail elle-même
   route(user);
 });
+
+
+/* =========================================================
+   PRÉSENCE (tous les comptes approuvés) + LISTE DES COMPTES (admin)
+   Collection Firestore « presence/{uid} » :
+   { displayName, email, lastLogin, lastSeen, online }
+   ========================================================= */
+var presenceCol = db.collection('presence');
+var HEARTBEAT_MS = 60000;       // un « signe de vie » toutes les 60 s
+var ONLINE_WINDOW_MS = 150000;  // en ligne = signe de vie reçu il y a moins de 2 min 30
+var presenceTimer = null, presenceUser = null, presenceBound = false;
+function ts(){ return firebase.firestore.FieldValue.serverTimestamp(); }
+function noop(){}
+
+function beat(){
+  if(!presenceUser || navigator.onLine === false) return;
+  presenceCol.doc(presenceUser.uid).set({ lastSeen: ts(), online: true }, { merge:true }).catch(noop);
+}
+function markOffline(){
+  if(!presenceUser) return Promise.resolve();
+  var p = presenceCol.doc(presenceUser.uid).set({ lastSeen: ts(), online: false }, { merge:true }).catch(noop);
+  return Promise.race([p, wait(1500)]);
+}
+function stopPresence(){ if(presenceTimer){ clearInterval(presenceTimer); presenceTimer = null; } presenceUser = null; }
+
+function startPresence(user){
+  if(presenceTimer || !user) return;
+  presenceUser = user;
+  var data = {
+    displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'Compte'),
+    email: user.email || null,
+    lastSeen: ts(),
+    online: true
+  };
+  try{
+    var d = new Date(user.metadata.lastSignInTime);   // vraie date de connexion (ne change pas à un simple rechargement)
+    if(!isNaN(d.getTime())) data.lastLogin = firebase.firestore.Timestamp.fromDate(d);
+  }catch(e){}
+  presenceCol.doc(user.uid).set(data, { merge:true }).catch(function(err){
+    console.warn('Présence non enregistrée (règles Firestore « presence » à publier ?) :', err && err.code || err);
+  });
+  presenceTimer = setInterval(beat, HEARTBEAT_MS);
+  if(!presenceBound){
+    presenceBound = true;
+    document.addEventListener('visibilitychange', function(){ if(!document.hidden) beat(); });
+    window.addEventListener('online', beat);
+    window.addEventListener('pageshow', beat);
+    window.addEventListener('pagehide', function(){ markOffline(); });
+  }
+}
+// Déconnexion (y compris depuis le site) : on passe d'abord le compte « hors ligne ».
+var _origSignOut = auth.signOut.bind(auth);
+auth.signOut = async function(){ try{ await markOffline(); }catch(e){} stopPresence(); return _origSignOut(); };
+
+/* ---------- Panneau admin : liste des comptes ---------- */
+function injectAccStyle(){
+  if(document.getElementById('rmacc-style')) return;
+  var st = document.createElement('style'); st.id = 'rmacc-style';
+  st.textContent =
+'.rmacc{--gold:#FFB020;--mut:#a9a0b8;--line:rgba(255,255,255,.12);color:#f5f1fa;font-family:Inter,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:-.011em;box-sizing:border-box}'+
+'.rmacc *{box-sizing:border-box}'+
+'.rmacc-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-bottom:14px}'+
+'.rmacc-title{font-size:18px;font-weight:800;margin:0;flex:1 1 auto}'+
+'.rmacc-count{font-size:13px;color:var(--mut)}'+
+'.rmacc-count b{color:#3ddc84}'+
+'.rmacc-tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}'+
+'.rmacc-search{flex:1 1 180px;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:inherit;font:inherit;font-size:14px}'+
+'.rmacc-search:focus{outline:2px solid var(--gold);outline-offset:1px}'+
+'.rmacc-chip{padding:9px 13px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--mut);font:inherit;font-size:13px;font-weight:600;cursor:pointer}'+
+'.rmacc-chip.on{background:var(--gold);border-color:var(--gold);color:#1a1200}'+
+'.rmacc-list{display:flex;flex-direction:column;gap:8px}'+
+'.rmacc-row{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.04)}'+
+'.rmacc-who{display:flex;align-items:center;gap:11px;min-width:0}'+
+'.rmacc-dot{flex:none;width:11px;height:11px;border-radius:50%;background:#5b5568;box-shadow:0 0 0 3px rgba(255,255,255,.06)}'+
+'.rmacc-dot.on{background:#3ddc84;box-shadow:0 0 0 3px rgba(61,220,132,.2);animation:rmacc-pulse 2s ease-in-out infinite}'+
+'@keyframes rmacc-pulse{50%{box-shadow:0 0 0 6px rgba(61,220,132,.05)}}'+
+'.rmacc-name{font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'+
+'.rmacc-mail{font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'+
+'.rmacc-cell{font-size:13px;min-width:0}'+
+'.rmacc-cell small{display:block;font-size:11px;color:var(--mut);margin-bottom:1px;text-transform:uppercase;letter-spacing:.04em}'+
+'.rmacc-live{font-size:12px;font-weight:700;padding:5px 10px;border-radius:999px;white-space:nowrap;background:rgba(255,255,255,.07);color:var(--mut)}'+
+'.rmacc-live.on{background:rgba(61,220,132,.16);color:#3ddc84}'+
+'.rmacc-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;margin-left:6px;vertical-align:middle;background:rgba(255,255,255,.08);color:var(--mut);text-transform:uppercase}'+
+'.rmacc-badge.pending{background:rgba(255,176,32,.18);color:var(--gold)}'+
+'.rmacc-badge.rejected{background:rgba(255,90,90,.18);color:#ff7a7a}'+
+'.rmacc-badge.admin{background:rgba(169,114,255,.22);color:#c9a6ff}'+
+'.rmacc-empty{padding:28px;text-align:center;color:var(--mut);font-size:14px}'+
+'@media(max-width:640px){.rmacc-row{grid-template-columns:1fr auto;}.rmacc-who{grid-column:1}.rmacc-live{grid-column:2;grid-row:1}.rmacc-cell{grid-column:1/-1}}'+
+'.rmacc-modal{position:fixed;inset:0;z-index:2147482000;display:flex;align-items:flex-start;justify-content:center;padding:max(16px,env(safe-area-inset-top)) 14px 16px;background:rgba(5,5,15,.78);backdrop-filter:blur(6px);overflow-y:auto}'+
+'.rmacc-modal .rmacc{width:100%;max-width:860px;margin:auto 0;padding:20px;border-radius:20px;border:1px solid var(--line);background:#0d0916}'+
+'.rmacc-x{border:0;background:rgba(255,255,255,.08);color:#f5f1fa;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer}'+
+'.rmacc-launch{position:fixed;left:14px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:2147481000;padding:9px 14px;border-radius:999px;border:1px solid rgba(255,176,32,.5);background:#0d0916;color:#FFB020;font:700 13px Inter,sans-serif;cursor:pointer;box-shadow:0 8px 24px -8px #000}';
+  document.head.appendChild(st);
+}
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function tsDate(t){ return t && typeof t.toDate === 'function' ? t.toDate() : null; }
+function fmtDate(d){ return d ? d.toLocaleString('fr-FR', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'; }
+function fmtAgo(d){
+  if(!d) return '—';
+  var s = Math.max(0, Math.round((Date.now() - d.getTime()) / 1000));
+  if(s < 60) return "à l’instant";
+  var m = Math.round(s / 60); if(m < 60) return 'il y a ' + m + ' min';
+  var h = Math.round(m / 60); if(h < 24) return 'il y a ' + h + ' h';
+  var j = Math.round(h / 24); return 'il y a ' + j + (j > 1 ? ' jours' : ' jour');
+}
+
+// Monte la liste des comptes dans n'importe quel élément. Renvoie une fonction pour la démonter.
+function mountAccounts(container){
+  injectAccStyle();
+  var access = {}, pres = {}, filter = 'all', q = '', unsubs = [], tick = null;
+  var root = document.createElement('div'); root.className = 'rmacc';
+  root.innerHTML =
+    '<div class="rmacc-head"><h3 class="rmacc-title">Comptes</h3><span class="rmacc-count" data-count></span></div>'+
+    '<div class="rmacc-tools"><input class="rmacc-search" type="search" placeholder="Rechercher un nom ou un e-mail…" aria-label="Rechercher un compte">'+
+    '<button class="rmacc-chip on" data-f="all">Tous</button><button class="rmacc-chip" data-f="on">En ligne</button><button class="rmacc-chip" data-f="off">Hors ligne</button></div>'+
+    '<div class="rmacc-list" data-list><div class="rmacc-empty">Chargement…</div></div>';
+  container.appendChild(root);
+  var listEl = root.querySelector('[data-list]'), countEl = root.querySelector('[data-count]');
+
+  function rows(){
+    var ids = {}; Object.keys(access).forEach(function(k){ ids[k] = 1; }); Object.keys(pres).forEach(function(k){ ids[k] = 1; });
+    var now = Date.now();
+    return Object.keys(ids).map(function(uid){
+      var a = access[uid] || {}, p = pres[uid] || {};
+      var seen = tsDate(p.lastSeen), login = tsDate(p.lastLogin) || tsDate(a.lastLogin);
+      var live = !!seen && p.online !== false && (now - seen.getTime()) < ONLINE_WINDOW_MS;
+      return {
+        uid: uid,
+        name: p.displayName || a.displayName || (a.email ? a.email.split('@')[0] : 'Compte'),
+        email: p.email || a.email || '',
+        status: uid === ADMIN_UID ? 'admin' : (a.status || (access[uid] ? 'pending' : '')),
+        seen: seen, login: login, live: live
+      };
+    });
+  }
+  function render(){
+    var all = rows(), online = all.filter(function(r){ return r.live; }).length;
+    countEl.innerHTML = '<b>' + online + ' en ligne</b> · ' + all.length + ' compte' + (all.length > 1 ? 's' : '');
+    var needle = q.trim().toLowerCase();
+    var list = all.filter(function(r){
+      if(filter === 'on' && !r.live) return false;
+      if(filter === 'off' && r.live) return false;
+      return !needle || (r.name + ' ' + r.email).toLowerCase().indexOf(needle) !== -1;
+    }).sort(function(a, b){
+      if(a.live !== b.live) return a.live ? -1 : 1;
+      var ta = (a.seen || a.login || 0) && (a.seen || a.login).getTime(), tb = (b.seen || b.login || 0) && (b.seen || b.login).getTime();
+      return (tb || 0) - (ta || 0);
+    });
+    if(!list.length){ listEl.innerHTML = '<div class="rmacc-empty">Aucun compte à afficher.</div>'; return; }
+    listEl.innerHTML = list.map(function(r){
+      var badge = r.status && r.status !== 'approved' ? '<span class="rmacc-badge ' + esc(r.status) + '">' + (r.status === 'pending' ? 'en attente' : r.status === 'rejected' ? 'refusé' : esc(r.status)) + '</span>' : '';
+      return '<div class="rmacc-row">'+
+        '<div class="rmacc-who"><span class="rmacc-dot' + (r.live ? ' on' : '') + '"></span><div style="min-width:0"><div class="rmacc-name">' + esc(r.name) + badge + '</div><div class="rmacc-mail">' + esc(r.email) + '</div></div></div>'+
+        '<div class="rmacc-cell"><small>Dernière connexion</small>' + esc(fmtDate(r.login)) + '</div>'+
+        '<div class="rmacc-cell"><small>Dernière activité</small>' + (r.live ? 'maintenant' : esc(r.seen ? fmtAgo(r.seen) : 'jamais vu')) + '</div>'+
+        '<span class="rmacc-live' + (r.live ? ' on' : '') + '">' + (r.live ? '● En direct' : 'Hors ligne') + '</span></div>';
+    }).join('');
+  }
+  root.querySelector('.rmacc-search').addEventListener('input', function(e){ q = e.target.value; render(); });
+  Array.prototype.forEach.call(root.querySelectorAll('.rmacc-chip'), function(b){
+    b.addEventListener('click', function(){
+      filter = b.getAttribute('data-f');
+      Array.prototype.forEach.call(root.querySelectorAll('.rmacc-chip'), function(c){ c.classList.toggle('on', c === b); });
+      render();
+    });
+  });
+  function fail(err){ listEl.innerHTML = '<div class="rmacc-empty">Lecture impossible (' + esc(err && err.code || 'erreur') + '). Vérifie les règles Firestore de « presence » et « musicAccess ».</div>'; }
+  unsubs.push(accessCol.onSnapshot(function(s){ access = {}; s.forEach(function(d){ access[d.id] = d.data(); }); render(); }, fail));
+  unsubs.push(presenceCol.onSnapshot(function(s){ pres = {}; s.forEach(function(d){ pres[d.id] = d.data(); }); render(); }, fail));
+  tick = setInterval(render, 15000);   // rafraîchit « il y a… » et l'état en ligne
+
+  return function unmount(){
+    unsubs.forEach(function(u){ u(); }); if(tick) clearInterval(tick);
+    if(root.parentNode) root.parentNode.removeChild(root);
+  };
+}
+
+function openAccountsModal(){
+  if(document.getElementById('rmacc-modal')) return;
+  injectAccStyle();
+  var modal = document.createElement('div'); modal.className = 'rmacc-modal'; modal.id = 'rmacc-modal';
+  var box = document.createElement('div'); modal.appendChild(box);
+  var unmount = mountAccounts(box);
+  var x = document.createElement('button'); x.className = 'rmacc-x'; x.setAttribute('aria-label', 'Fermer'); x.textContent = '×';
+  box.querySelector('.rmacc-head').appendChild(x);
+  function close(){ unmount(); document.removeEventListener('keydown', onKey); if(modal.parentNode) modal.parentNode.removeChild(modal); }
+  function onKey(e){ if(e.key === 'Escape') close(); }
+  x.addEventListener('click', close);
+  modal.addEventListener('mousedown', function(e){ if(e.target === modal) close(); });
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(modal);
+}
+function mountAdminLauncher(){
+  if(document.getElementById('rmacc-launch')) return;
+  injectAccStyle();
+  var b = document.createElement('button'); b.id = 'rmacc-launch'; b.className = 'rmacc-launch'; b.textContent = '👥 Comptes';
+  b.addEventListener('click', openAccountsModal);
+  document.body.appendChild(b);
+}
+// Pour l'intégrer dans le menu Statistiques : window.rmAccounts.mount(unÉlément)
+window.rmAccounts = { mount: mountAccounts, open: openAccountsModal };
 
 })();
 </script>
