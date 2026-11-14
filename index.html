@@ -480,7 +480,7 @@ async function startWelcome(user){
     await new Promise(function(r){ requestAnimationFrame(function(){ requestAnimationFrame(r); }); });
     hideGate();
     startPresence(user);
-    if(user.uid === ADMIN_UID) mountAdminLauncher();
+    if(user.uid === ADMIN_UID) mountInStats();
   }catch(e){
     console.error(e);
     if(booted){ location.reload(); return; }   // échec en cours d'installation : on repart d'une page propre
@@ -597,7 +597,7 @@ function injectAccStyle(){
 '.rmacc-modal{position:fixed;inset:0;z-index:2147482000;display:flex;align-items:flex-start;justify-content:center;padding:max(16px,env(safe-area-inset-top)) 14px 16px;background:rgba(5,5,15,.78);backdrop-filter:blur(6px);overflow-y:auto}'+
 '.rmacc-modal .rmacc{width:100%;max-width:860px;margin:auto 0;padding:20px;border-radius:20px;border:1px solid var(--line);background:#0d0916}'+
 '.rmacc-x{border:0;background:rgba(255,255,255,.08);color:#f5f1fa;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer}'+
-'.rmacc-launch{position:fixed;left:14px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:2147481000;padding:9px 14px;border-radius:999px;border:1px solid rgba(255,176,32,.5);background:#0d0916;color:#FFB020;font:700 13px Inter,sans-serif;cursor:pointer;box-shadow:0 8px 24px -8px #000}';
+'.rmacc-section{margin:24px 0 8px;padding:16px;border:1px solid rgba(255,255,255,.12);border-radius:18px;background:rgba(255,255,255,.03);max-width:100%;overflow:hidden}';
   document.head.appendChild(st);
 }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -698,14 +698,91 @@ function openAccountsModal(){
   document.addEventListener('keydown', onKey);
   document.body.appendChild(modal);
 }
-function mountAdminLauncher(){
-  if(document.getElementById('rmacc-launch')) return;
-  injectAccStyle();
-  var b = document.createElement('button'); b.id = 'rmacc-launch'; b.className = 'rmacc-launch'; b.textContent = '👥 Comptes';
-  b.addEventListener('click', openAccountsModal);
-  document.body.appendChild(b);
+/* ---------- Intégration dans le menu Statistiques (admin uniquement) ---------- */
+// Si l'emplacement n'est pas trouvé automatiquement, indiquer ici le sélecteur CSS du panneau Statistiques (ex. '#view-stats').
+var STATS_PANEL_SELECTOR = '';
+var statsWrap = null, statsUnmount = null, statsObs = null, statsTimer = null;
+
+function normTxt(s){ return String(s || '').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim().toLowerCase(); }
+function isStatsLabel(el){
+  if(el.children.length > 2) return false;
+  var t = normTxt(el.textContent);
+  return t === 'statistiques' || t === 'statistique' || t === 'stats';
 }
-// Pour l'intégrer dans le menu Statistiques : window.rmAccounts.mount(unÉlément)
+function isVisible(el){ return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length); }
+function outsideOurs(el){ return !el.closest('.rmacc, .rmacc-section, #rmg-gate'); }
+
+function findStatsTrigger(){
+  var list = document.querySelectorAll('a,button,[role="tab"],[role="button"],li,[data-view],[data-tab],[data-page],[data-section],[data-target],[onclick]');
+  for(var i = 0; i < list.length; i++){ if(outsideOurs(list[i]) && isStatsLabel(list[i])) return list[i]; }
+  return null;
+}
+function panelFromTrigger(t){
+  var attrs = ['aria-controls','data-target','data-tab','data-view','data-page','data-section','data-panel','data-go','data-route','href'];
+  var el = t;
+  for(var d = 0; el && d < 3; d++, el = el.parentElement){
+    for(var k = 0; k < attrs.length; k++){
+      var v = el.getAttribute(attrs[k]); if(!v) continue;
+      v = v.replace(/^#/, ''); if(!/^[\w-]+$/.test(v)) continue;
+      var names = [v, 'view-' + v, v + '-view', 'page-' + v, v + '-page', 'panel-' + v, v + '-panel', 'tab-' + v, v + '-tab', 'section-' + v, v + '-section'];
+      for(var n = 0; n < names.length; n++){
+        var c = names[n], found = [];
+        var byId = document.getElementById(c); if(byId) found.push(byId);
+        Array.prototype.push.apply(found, document.querySelectorAll('[data-view="' + c + '"],[data-page="' + c + '"],[data-panel="' + c + '"],[data-tab-panel="' + c + '"]'));
+        for(var f = 0; f < found.length; f++){
+          var node = found[f];
+          if(node !== t && !node.contains(t) && !t.contains(node) && outsideOurs(node)) return node;
+        }
+      }
+    }
+  }
+  return null;
+}
+function panelFromNames(trigger){
+  var re = /(^|[-_\s])stats?($|[-_\s])|statistique|statistics/i;
+  var all = document.querySelectorAll('div[id],section[id],main[id],article[id],div[class],section[class],main[class],article[class]');
+  for(var i = 0; i < all.length; i++){
+    var el = all[i];
+    if(!outsideOurs(el) || el.closest('nav,aside,header,button,a')) continue;
+    if(trigger && (el === trigger || el.contains(trigger) || trigger.contains(el))) continue;
+    if(re.test(el.id || '') || re.test(typeof el.className === 'string' ? el.className : '')) return el;
+  }
+  return null;
+}
+function panelFromHeading(){
+  var hs = document.querySelectorAll('h1,h2,h3,h4,h5,h6,[class*="title"],[class*="heading"]');
+  for(var i = 0; i < hs.length; i++){
+    var h = hs[i];
+    if(!outsideOurs(h) || h.closest('nav,aside,button,a,[role="tab"]') || !isVisible(h) || !isStatsLabel(h)) continue;
+    return h.closest('section,main,article,[class*="view"],[class*="page"],[class*="panel"]') || h.parentElement;
+  }
+  return null;
+}
+function findStatsHost(){
+  if(STATS_PANEL_SELECTOR){ var forced = document.querySelector(STATS_PANEL_SELECTOR); if(forced) return forced; }
+  var trig = findStatsTrigger();
+  return (trig && panelFromTrigger(trig)) || panelFromNames(trig) || panelFromHeading();
+}
+function attachStats(){
+  if(statsWrap && statsWrap.isConnected) return;
+  if(statsUnmount){ try{ statsUnmount(); }catch(e){} statsUnmount = null; }
+  if(statsWrap && statsWrap.parentNode) statsWrap.parentNode.removeChild(statsWrap);
+  statsWrap = null;
+  var host = findStatsHost(); if(!host) return;
+  var wrap = document.createElement('div'); wrap.className = 'rmacc-section'; wrap.id = 'rmacc-section';
+  host.appendChild(wrap);
+  statsWrap = wrap; statsUnmount = mountAccounts(wrap);
+}
+function scheduleStats(){ if(statsTimer) return; statsTimer = setTimeout(function(){ statsTimer = null; attachStats(); }, 250); }
+function mountInStats(){
+  injectAccStyle();
+  if(statsObs) return;
+  statsObs = new MutationObserver(scheduleStats);
+  statsObs.observe(document.body, { childList:true, subtree:true });
+  document.addEventListener('click', scheduleStats, true);
+  scheduleStats();
+}
+// Intégration manuelle possible : window.rmAccounts.mount(unÉlément)
 window.rmAccounts = { mount: mountAccounts, open: openAccountsModal };
 
 })();
