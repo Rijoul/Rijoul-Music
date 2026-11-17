@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "rijoul.music.v1.beta",
+    "sha256_cert_fingerprints": ["00:7B:9E:33:5E:56:34:63:B8:F0:07:E0:17:0D:B4:47:C3:14:AA:14:98:52:26:05:12:9C:EE:37:76:2D:21:93"]
+  }
+}]
