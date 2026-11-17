@@ -4,7 +4,7 @@
    Les musiques téléchargées restent dans IndexedDB (gérées par le site).
    Les appels Firestore / Auth ne sont JAMAIS interceptés.
    Pense à changer VERSION à chaque mise à jour de index.html. */
-const VERSION = 'v7';
+const VERSION = 'v8';
 const CACHE = 'rijoul-shell-' + VERSION;
 
 const SHELL = ['./', './index.html'];
